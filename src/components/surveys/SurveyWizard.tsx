@@ -126,7 +126,6 @@ export default function SurveyWizard({ projectId, surveyType, onComplete, onBack
     }
 
     setFormData(prev => ({ ...prev, ...patch }));
-    setMode('manual');
   };
 
   useEffect(() => {

@@ -120,8 +120,7 @@ export default function Settings({ user, onBack, onLogout, notifications = [] }:
               <h1 className="text-2xl font-black text-slate-800 tracking-tight">Account & Settings</h1>
               <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-blue-50 text-blue-800 border border-blue-100">
                 {user.role === 'ADMIN' ? 'Administrator' :
-                 user.role === 'SALES' ? 'Sales Representative' :
-                 user.role === 'MANAGER' ? 'Manager' : 'Technician'}
+                 user.role === 'PROCUREMENT' ? 'Procurement & Sourcing' : 'Accounting & Finance'}
               </span>
             </div>
             <p className="text-[11px] font-medium text-slate-500 mt-0.5">
@@ -207,8 +206,7 @@ export default function Settings({ user, onBack, onLogout, notifications = [] }:
                   {
                     label: 'Role',
                     value: user.role === 'ADMIN' ? 'Administrator' :
-                           user.role === 'SALES' ? 'Sales Representative' :
-                           user.role === 'MANAGER' ? 'Manager' : 'Technician',
+                           user.role === 'PROCUREMENT' ? 'Procurement & Sourcing' : 'Accounting & Finance',
                     color: '#1E3A8A'
                   },
                   { label: 'User ID Reference', value: user.id, mono: true, color: '#64748B' },
@@ -228,9 +226,8 @@ export default function Settings({ user, onBack, onLogout, notifications = [] }:
             <div className="rounded-2xl p-6 bg-white border border-slate-200">
               <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Company Position</p>
               <p className="text-base font-black text-slate-800 mb-2">
-                {user.role === 'ADMIN' ? 'Administrator / Sales Engineer' :
-                 user.role === 'SALES' ? 'Sales Representative' :
-                 user.role === 'MANAGER' ? 'Project Manager' : 'Field CCTV & Systems Technician'}
+                {user.role === 'ADMIN' ? 'Administrator' :
+                 user.role === 'PROCUREMENT' ? 'Procurement & Sourcing Specialist' : 'Accounting & Financial Auditor'}
               </p>
               <p className="text-xs text-slate-400 font-semibold">Department: Security and Technology Solutions</p>
             </div>

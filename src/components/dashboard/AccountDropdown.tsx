@@ -34,8 +34,7 @@ export default function AccountDropdown({ user, onLogout, onSettings }: Props) {
 
   const roleLabel =
     user.role === 'ADMIN' ? 'Administrator' :
-    user.role === 'SALES' ? 'Sales Representative' :
-    user.role === 'MANAGER' ? 'Project Manager' : 'Field Technician';
+    user.role === 'PROCUREMENT' ? 'Procurement & Sourcing' : 'Accounting & Finance';
 
   return (
     <div ref={ref} className="relative">

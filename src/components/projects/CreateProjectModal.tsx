@@ -284,7 +284,6 @@ export default function CreateProjectModal({ userRole, onClose, onCreate, isComp
                 </div>
               </div>
 
-              {userRole !== 'TECHNICIAN' && (
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label style={labelStyle}>Client Email (Optional)</label>
@@ -312,7 +311,6 @@ export default function CreateProjectModal({ userRole, onClose, onCreate, isComp
                     />
                   </div>
                 </div>
-              )}
 
               <div>
                 <label style={labelStyle}>{isCompanyMode ? 'Project/Survey Location Address' : 'Project Location Address'}</label>

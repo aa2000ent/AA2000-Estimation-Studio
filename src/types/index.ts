@@ -3,7 +3,7 @@ type User = {
   id: string;
   fullName: string;
   email: string;
-  role?: 'TECHNICIAN' | 'ADMIN' | 'SALES' | 'MANAGER';
+  role?: 'ACCOUNTING' | 'PROCUREMENT' | 'ADMIN';
   department?: string;
   phone?: string;
 };

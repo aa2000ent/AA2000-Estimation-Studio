@@ -224,11 +224,14 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
   const { toast } = useToast();
   const showPrices = !!(user && (
     user.role === 'ADMIN' || 
-    user.role === 'SALES' || 
+    user.role === 'ACCOUNTING' ||
+    user.role === 'PROCUREMENT' ||
     user.id.toLowerCase().includes('admin') || 
-    user.id.toLowerCase().includes('sales') ||
+    user.id.toLowerCase().includes('accounting') ||
+    user.id.toLowerCase().includes('procurement') ||
     user.email?.toLowerCase().includes('admin') ||
-    user.email?.toLowerCase().includes('sales')
+    user.email?.toLowerCase().includes('accounting') ||
+    user.email?.toLowerCase().includes('procurement')
   ));
 
   const [priceTier, setPriceTier] = useState<'srp' | 'contractorPrice' | 'dealerPrice'>('srp');
@@ -293,6 +296,16 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
   const [aiError, setAiError] = useState<string | null>(null);
   const [aiObservations, setAiObservations] = useState<string | null>(null);
   const [aiConfidence, setAiConfidence] = useState<number | null>(null);
+
+  // Auto-dismiss safety timer for completed estimation scan modal
+  useEffect(() => {
+    if (isAiEstimating && aiStep >= AI_STEPS.length) {
+      const timer = setTimeout(() => {
+        setIsAiEstimating(false);
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [isAiEstimating, aiStep]);
 
   // Product catalog search state
   const [activeSearchId, setActiveSearchId] = useState<string | null>(null);
@@ -843,31 +856,6 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
     setShowEditQuotation(false);
   }, [showQuotationModal]);
 
-  const fetchBulkPrices = async (
-    items: { name: string; category?: string; unit?: string }[]
-  ): Promise<Record<string, { srp: number; contractorPrice: number; dealerPrice: number; brand?: string; category?: string }>> => {
-    if (items.length === 0) return {};
-
-    const priceMap: Record<string, { srp: number; contractorPrice: number; dealerPrice: number; brand?: string; category?: string }> = {};
-
-    for (const item of items) {
-      try {
-        const est = await getEstimatedItemPricing(item.name, 'contractor');
-        priceMap[item.name] = {
-          srp: est.price,
-          contractorPrice: est.contractorPrice,
-          dealerPrice: est.dealerPrice,
-          brand: est.brand,
-          category: item.category || 'Hardware'
-        };
-      } catch (err) {
-        console.error(`Error estimating price for ${item.name}`, err);
-      }
-    }
-
-    return priceMap;
-  };
-
   // Real AI estimation runner
   const runAiEstimation = async () => {
     setAiError(null);
@@ -909,9 +897,6 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
       clearInterval(stepInterval);
       setAiStep(AI_STEPS.length);
 
-      // Fetch bulk dynamic prices using Mistral for all the consumables returned by the analysis
-      const bulkPrices = await fetchBulkPrices(result.consumables);
-
       setManpower(
         result.manpower.map(m => {
           const dayRate = getRoleDefaultDayRate(m.role);
@@ -922,22 +907,22 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
             hours: m.hours,
             manDays: m.manDays,
             dayRate,
-            totalCost: dayRate * m.manDays,
+            totalCost: m.totalCost || (dayRate * m.manDays),
           };
         })
       );
+
       setConsumables(
         result.consumables.map(c => {
-          const pricing = bulkPrices[c.name] || {};
-          const srp = Number(pricing.srp) || (c as any).srp || c.unitPrice || 0;
-          const contractorPrice = Number(pricing.contractorPrice) || (c as any).contractorPrice || Math.round(srp * 0.85);
-          const dealerPrice = Number(pricing.dealerPrice) || (c as any).dealerPrice || Math.round(srp * 0.75);
+          const srp = Number(c.srp) || c.unitPrice || 0;
+          const contractorPrice = Number(c.contractorPrice) || Math.round(srp * 0.85);
+          const dealerPrice = Number(c.dealerPrice) || Math.round(srp * 0.75);
           const unitPrice = priceTier === 'srp' ? srp : priceTier === 'contractorPrice' ? contractorPrice : dealerPrice;
           return {
             id: crypto.randomUUID(),
             name: c.name,
-            brand: pricing.brand || detectBrandFromName(c.name) || '',
-            category: mapCategoryToOption(pricing.category || c.category),
+            brand: (c as any).brand || detectBrandFromName(c.name) || '',
+            category: mapCategoryToOption(c.category),
             quantity: c.quantity,
             unit: c.unit || 'pcs',
             srp,
@@ -948,6 +933,7 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
           };
         })
       );
+
       setFees(
         result.fees.map(f => ({
           id: crypto.randomUUID(),
@@ -956,6 +942,7 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
           description: f.description,
         }))
       );
+
       if (result.scopeOfWorks && result.scopeOfWorks.length > 0) {
         setScopeOfWorks(
           result.scopeOfWorks.map((s, idx) => ({
@@ -967,6 +954,7 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
           }))
         );
       }
+
       if (result.constraints) {
         setConstraints({
           physical: result.constraints.physical || '',
@@ -974,12 +962,15 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
           installation: result.constraints.installation || '',
         });
       }
+
       if (result.observations) {
         setAiObservations(result.observations);
       }
+
       if (result.confidenceScore >= 0) {
         setAiConfidence(result.confidenceScore);
       }
+
       // Store full AI-generated quotation structure for the modal
       setAiQuotation(result);
 
@@ -996,7 +987,11 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
       setAiBaseline(baselineObj);
       localStorage.setItem(`aa2000_ai_baseline_${project.id}`, JSON.stringify(baselineObj));
 
-      setTimeout(() => setIsAiEstimating(false), 500);
+      // Fast, smooth auto-close so the user doesn't wait
+      setTimeout(() => {
+        setIsAiEstimating(false);
+        toast.success('Bill of Quantities generated successfully!');
+      }, 500);
     } catch (err: unknown) {
       clearInterval(stepInterval);
       setAiError(err instanceof Error ? err.message : 'AI estimation failed. Please try again.');
@@ -1413,17 +1408,15 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
               {hasFiles ? `ANALYZE ${floorPlanFiles.length} FLOOR PLAN${floorPlanFiles.length > 1 ? 'S' : ''}` : 'AI ESTIMATE SCAN'}
             </button>
 
-            {user?.role !== 'TECHNICIAN' && (
-              <button
-                onClick={handleExportPdf}
-                className="px-4 py-2 rounded-xl text-xs font-bold bg-white text-slate-500 border border-slate-200 hover:text-[#1E3A8A] transition-colors flex items-center gap-1.5"
-              >
-                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
-                </svg>
-                Export PDF
-              </button>
-            )}
+            <button
+              onClick={handleExportPdf}
+              className="px-4 py-2 rounded-xl text-xs font-bold bg-white text-slate-500 border border-slate-200 hover:text-[#1E3A8A] transition-colors flex items-center gap-1.5 cursor-pointer"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+              </svg>
+              Export PDF
+            </button>
           </div>
         </div>
       </header>
@@ -2305,6 +2298,17 @@ CCTV:                { bg: '#EFF6FF', color: '#1E3A8A', label: 'CCTV System',   
       {isAiEstimating && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="w-full max-w-md bg-white rounded-3xl border border-slate-200 shadow-2xl p-6 text-center overflow-hidden relative">
+            {/* Close Button */}
+            <button
+              onClick={() => setIsAiEstimating(false)}
+              className="absolute top-4 right-4 z-20 w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 flex items-center justify-center transition-colors cursor-pointer"
+              title="Close modal"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+
             <div className="absolute -top-12 -left-12 w-32 h-32 rounded-full blur-2xl opacity-40 animate-pulse" style={{ background: '#2563EB' }}></div>
             <div className="absolute -bottom-12 -right-12 w-32 h-32 rounded-full blur-2xl opacity-30 animate-pulse" style={{ background: '#3B82F6' }}></div>
 
@@ -2325,7 +2329,7 @@ CCTV:                { bg: '#EFF6FF', color: '#1E3A8A', label: 'CCTV System',   
                 <p className="text-xs font-bold text-red-700 leading-relaxed mb-4">{aiError}</p>
                 <button
                   onClick={() => { setAiError(null); setIsAiEstimating(false); }}
-                  className="w-full py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-xl transition-all shadow-sm"
+                  className="w-full py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-xl transition-all shadow-sm cursor-pointer"
                 >
                   Dismiss & Close
                 </button>
@@ -2379,6 +2383,17 @@ CCTV:                { bg: '#EFF6FF', color: '#1E3A8A', label: 'CCTV System',   
                     ? (hasFiles ? 'Mistral Vision processing your floor plan...' : 'Processing Neural Model Data...')
                     : 'Bill of quantities computed successfully'}
                 </p>
+
+                {aiStep >= AI_STEPS.length && (
+                  <div className="mt-4 relative z-10">
+                    <button
+                      onClick={() => setIsAiEstimating(false)}
+                      className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-black transition-all shadow-md shadow-blue-500/20 cursor-pointer animate-fade-in"
+                    >
+                      View Estimation Results
+                    </button>
+                  </div>
+                )}
               </>
             )}
           </div>

@@ -1,15 +1,13 @@
 // Constants for roles and permissions
 export const ROLES = {
-  TECHNICIAN: 'TECHNICIAN',
+  ACCOUNTING: 'ACCOUNTING',
+  PROCUREMENT: 'PROCUREMENT',
   ADMIN: 'ADMIN',
-  MANAGER: 'MANAGER',
-  SALES: 'SALES',
 } as const;
 
 export type Role = typeof ROLES[keyof typeof ROLES];
 
-// ── Hardcoded user credentials for OJT testing ──
-// Bypass Supabase auth — validate against this list
+// ── Hardcoded user credentials for testing ──
 export interface UserCredential {
   employeeId: string;
   pin: string;
@@ -18,19 +16,30 @@ export interface UserCredential {
 }
 
 export const USER_CREDENTIALS: UserCredential[] = [
-  { employeeId: 'ADMIN',      pin: '111111', fullName: 'Admin',      role: 'ADMIN' },
-  { employeeId: 'SALES',      pin: '111111', fullName: 'Sales',      role: 'SALES' },
-  { employeeId: 'TECHNICIAN', pin: '111111', fullName: 'Technician', role: 'TECHNICIAN' },
+  { employeeId: 'ACCOUNTING',  pin: '111111', fullName: 'Accounting',  role: 'ACCOUNTING' },
+  { employeeId: 'PROCUREMENT', pin: '111111', fullName: 'Procurement', role: 'PROCUREMENT' },
+  { employeeId: 'ADMIN',       pin: '111111', fullName: 'Admin',       role: 'ADMIN' },
 ];
 
 // User roles and their permissions
 export const ROLE_PERMISSIONS: Record<Role, string[]> = {
-  [ROLES.TECHNICIAN]: [
-    'view_own_projects',
-    'create_surveys',
-    'edit_own_surveys',
-    'submit_for_approval',
+  [ROLES.ACCOUNTING]: [
+    'view_all_projects',
     'view_estimates',
+    'audit_costs',
+    'view_pricing',
+    'approve_financials',
+    'export_reports',
+    'view_quotations',
+  ],
+  [ROLES.PROCUREMENT]: [
+    'view_all_projects',
+    'view_estimates',
+    'view_materials',
+    'manage_pricelists',
+    'export_boq',
+    'view_boq_breakdown',
+    'audit_hardware',
   ],
   [ROLES.ADMIN]: [
     'view_all_projects',
@@ -40,19 +49,6 @@ export const ROLE_PERMISSIONS: Record<Role, string[]> = {
     'manage_users',
     'manage_surveys',
     'manage_settings',
-  ],
-  [ROLES.MANAGER]: [
-    'view_all_projects',
-    'create_projects',
-    'edit_assigned_projects',
-    'approve_estimates',
-    'assign_technicians',
-  ],
-  [ROLES.SALES]: [
-    'view_all_projects',
-    'create_projects',
-    'edit_assigned_projects',
-    'view_estimates',
   ],
 };
 

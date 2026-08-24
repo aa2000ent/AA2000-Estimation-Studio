@@ -592,24 +592,63 @@ export default function FloorPlanView({ projects, onAddToProjectEstimation, onSc
               )}
 
               {analyzing && (
-                <div className="rounded-xl bg-blue-50 border border-blue-100 p-4 space-y-3">
-                  <div className="flex items-center gap-3">
-                    <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin shrink-0" />
-                    <span className="text-sm font-bold text-blue-900">AI is generating your BOQ estimation...</span>
+                <div className="rounded-2xl bg-gradient-to-b from-blue-50/90 via-blue-50/50 to-indigo-50/40 border border-blue-200/80 p-5 space-y-4 shadow-sm animate-fade-in">
+                  {/* Header with status text and step progress badge */}
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <h4 className="text-sm font-bold text-slate-900">AI is generating your BOQ estimation...</h4>
+                      <p className="text-xs text-slate-500 font-medium mt-0.5">Extracting floor components and estimating bill of quantities</p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="text-[11px] font-extrabold text-blue-700 bg-blue-100/90 border border-blue-200/80 px-2.5 py-1 rounded-full">
+                        Step {analysisStep + 1} of {ANALYSIS_STEPS.length}
+                      </span>
+                    </div>
                   </div>
-                  <div className="space-y-1.5">
-                    {ANALYSIS_STEPS.map((step, i) => (
-                      <div key={i} className={`flex items-center gap-2 text-xs transition-all duration-500 ${i <= analysisStep ? 'opacity-100' : 'opacity-30'}`}>
-                        {i < analysisStep ? (
-                          <svg className="w-3.5 h-3.5 text-emerald-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" /></svg>
-                        ) : i === analysisStep ? (
-                          <div className="w-3.5 h-3.5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin shrink-0" />
-                        ) : (
-                          <div className="w-3.5 h-3.5 rounded-full border border-slate-300 shrink-0" />
-                        )}
-                        <span className={i === analysisStep ? 'font-bold text-blue-700' : i < analysisStep ? 'text-emerald-600 font-semibold' : 'text-slate-400'}>{step}</span>
-                      </div>
-                    ))}
+
+                  {/* Smooth Progress Bar */}
+                  <div className="w-full bg-blue-200/60 rounded-full h-1.5 overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-all duration-700 ease-out bg-gradient-to-r from-blue-600 to-indigo-600"
+                      style={{ width: `${Math.round(((analysisStep + 1) / ANALYSIS_STEPS.length) * 100)}%` }}
+                    />
+                  </div>
+
+                  {/* Step Checklist (Single active spinner, completed checks, pending dots) */}
+                  <div className="space-y-1 pt-1">
+                    {ANALYSIS_STEPS.map((step, i) => {
+                      const isDone = i < analysisStep;
+                      const isCurrent = i === analysisStep;
+                      return (
+                        <div
+                          key={i}
+                          className={`flex items-center gap-2.5 text-xs px-2.5 py-1.5 rounded-lg transition-all duration-300 ${
+                            isCurrent
+                              ? 'bg-white/90 border border-blue-200/80 shadow-xs text-blue-950 font-bold'
+                              : isDone
+                              ? 'text-slate-600 font-medium'
+                              : 'text-slate-400 opacity-60'
+                          }`}
+                        >
+                          {isDone ? (
+                            <div className="w-4 h-4 rounded-full bg-emerald-100 text-emerald-600 border border-emerald-200 flex items-center justify-center shrink-0">
+                              <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                              </svg>
+                            </div>
+                          ) : isCurrent ? (
+                            <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin shrink-0" />
+                          ) : (
+                            <div className="w-4 h-4 rounded-full border border-slate-300/80 bg-slate-100/60 flex items-center justify-center shrink-0">
+                              <div className="w-1.5 h-1.5 rounded-full bg-slate-300" />
+                            </div>
+                          )}
+                          <span className={isCurrent ? 'text-blue-900 font-bold' : isDone ? 'text-slate-700' : 'text-slate-400'}>
+                            {step}
+                          </span>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}

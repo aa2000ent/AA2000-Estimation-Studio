@@ -273,7 +273,7 @@ export default function CreateSurveyForm({
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
-                  <div className={userRole === 'TECHNICIAN' ? 'col-span-2' : ''}>
+                  <div>
                     <label style={labelStyle}>Client Contact Name (Optional)</label>
                     <input
                       value={form.clientName}
@@ -282,28 +282,24 @@ export default function CreateSurveyForm({
                       placeholder="e.g. Juan Dela Cruz (Optional)"
                     />
                   </div>
-                  {userRole !== 'TECHNICIAN' && (
-                    <>
-                      <div>
-                        <label style={labelStyle}>Client Contact Number (Optional)</label>
-                        <input
-                          value={form.clientContactNumber}
-                          onChange={e => update('clientContactNumber', e.target.value)}
-                          style={inputStyle}
-                          placeholder="e.g. 09171234567 (Optional)"
-                        />
-                      </div>
-                      <div className="col-span-2">
-                        <label style={labelStyle}>Client Email Address (Optional)</label>
-                        <input
-                          value={form.clientEmail}
-                          onChange={e => update('clientEmail', e.target.value)}
-                          style={inputStyle}
-                          placeholder="e.g. client@email.com (Optional)"
-                        />
-                      </div>
-                    </>
-                  )}
+                  <div>
+                    <label style={labelStyle}>Client Contact Number (Optional)</label>
+                    <input
+                      value={form.clientContactNumber}
+                      onChange={e => update('clientContactNumber', e.target.value)}
+                      style={inputStyle}
+                      placeholder="e.g. 09171234567 (Optional)"
+                    />
+                  </div>
+                  <div className="col-span-2">
+                    <label style={labelStyle}>Client Email Address (Optional)</label>
+                    <input
+                      value={form.clientEmail}
+                      onChange={e => update('clientEmail', e.target.value)}
+                      style={inputStyle}
+                      placeholder="e.g. client@email.com (Optional)"
+                    />
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">

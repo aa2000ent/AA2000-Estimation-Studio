@@ -199,16 +199,18 @@ export default function ProjectDetail({ user, project, onBack, onStartSurvey, on
             Back to Dashboard
           </button>
           <div className="flex items-center gap-3">
-            <button
-              onClick={() => setIsEditing(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-blue-700 bg-blue-50 border border-blue-200 hover:bg-blue-100 transition-colors cursor-pointer"
-              title="Edit all project details"
-            >
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-              </svg>
-              Edit Project
-            </button>
+            {user.role === 'ADMIN' && (
+              <button
+                onClick={() => setIsEditing(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-blue-700 bg-blue-50 border border-blue-200 hover:bg-blue-100 transition-colors cursor-pointer"
+                title="Edit all project details"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
+                Edit Project
+              </button>
+            )}
             <StatusBadge status={project.status} />
             <span className="text-[10px] font-bold text-slate-400 font-mono">ID: {project.id}</span>
           </div>
@@ -227,16 +229,16 @@ export default function ProjectDetail({ user, project, onBack, onStartSurvey, on
       )}
 
       <main className="max-w-7xl mx-auto px-6 py-8">
-        {/* Management / Sales Approval Banner */}
-        {(user.role === 'ADMIN' || user.role === 'SALES' || user.role === 'MANAGER') && project.status === 'Finalized' && (
+        {/* Financial & Admin Approval Banner */}
+        {(user.role === 'ADMIN' || user.role === 'ACCOUNTING') && project.status === 'Finalized' && (
           <div className="bg-white border border-slate-200 rounded-3xl p-6 mb-8 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm animate-fade-in-up">
             <div>
               <div className="flex items-center gap-2 mb-1">
                 <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-                <h3 className="text-xs font-black text-slate-800 uppercase tracking-wide">Awaiting Management / Sales Approval</h3>
+                <h3 className="text-xs font-black text-slate-800 uppercase tracking-wide">Awaiting Financial & Admin Approval</h3>
               </div>
               <p className="text-[11px] leading-relaxed text-slate-400 font-semibold">
-                Please review the technician's ground-validated survey and cost estimation, then approve or request adjustments.
+                Please review the ground-validated survey and cost estimation, then approve or request adjustments.
               </p>
             </div>
             <div className="flex gap-2 w-full sm:w-auto shrink-0">
@@ -257,14 +259,14 @@ export default function ProjectDetail({ user, project, onBack, onStartSurvey, on
         )}
 
         {/* Reopen banner — for approved/rejected surveys that need to be accessed/edited again */}
-        {(user.role === 'ADMIN' || user.role === 'SALES' || user.role === 'MANAGER') && (project.status === 'Finalized - Approved' || project.status === 'Finalized - Rejected') && (
+        {(user.role === 'ADMIN' || user.role === 'ACCOUNTING') && (project.status === 'Finalized - Approved' || project.status === 'Finalized - Rejected') && (
           <div className="bg-white border border-slate-200 rounded-3xl p-6 mb-8 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm">
             <div>
               <h3 className="text-xs font-black text-slate-800 uppercase tracking-wide">
                 {project.status === 'Finalized - Approved' ? 'Project Survey Approved & Locked' : 'Project Survey Rejected'}
               </h3>
               <p className="text-[11px] leading-relaxed text-slate-400 font-semibold mt-0.5">
-                Reopen this project to allow further adjustments by the technician, sales, or management.
+                Reopen this project to allow further adjustments.
               </p>
             </div>
             <button
@@ -321,22 +323,19 @@ export default function ProjectDetail({ user, project, onBack, onStartSurvey, on
                 {/* Details row */}
                 <div className="flex flex-wrap items-center gap-6">
                   {/* Client Contact Phone */}
-                  {/* Client Contact Phone (Admin / Sales Only) */}
-                  {user.role !== 'TECHNICIAN' && (
-                    <div className="flex items-center gap-2.5">
-                      <div
-                        className="w-8 h-8 rounded-lg flex items-center justify-center bg-slate-50 border border-slate-100 text-[#1E3A8A]"
-                      >
-                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 6.75c0 8.284 6.716 15 15 15h2.25a2.25 2.25 0 002.25-2.25v-1.372c0-.516-.351-.966-.852-1.091l-4.423-1.106c-.44-.11-.902.055-1.173.417l-.97 1.293c-2.824-1.47-5.112-3.758-6.58-6.58l1.293-.97c.362-.271.527-.734.417-1.173L6.963 3.102a1.125 1.125 0 00-1.091-.852H3.562A2.25 2.25 0 001.312 4.5v2.25z" />
-                        </svg>
-                      </div>
-                      <div>
-                        <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Client Contact</p>
-                        <p className="text-xs font-semibold text-slate-600">{project.clientPhone || 'Not set'}</p>
-                      </div>
+                  <div className="flex items-center gap-2.5">
+                    <div
+                      className="w-8 h-8 rounded-lg flex items-center justify-center bg-slate-50 border border-slate-100 text-[#1E3A8A]"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 6.75c0 8.284 6.716 15 15 15h2.25a2.25 2.25 0 002.25-2.25v-1.372c0-.516-.351-.966-.852-1.091l-4.423-1.106c-.44-.11-.902.055-1.173.417l-.97 1.293c-2.824-1.47-5.112-3.758-6.58-6.58l1.293-.97c.362-.271.527-.734.417-1.173L6.963 3.102a1.125 1.125 0 00-1.091-.852H3.562A2.25 2.25 0 001.312 4.5v2.25z" />
+                      </svg>
                     </div>
-                  )}
+                    <div>
+                      <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Client Contact</p>
+                      <p className="text-xs font-semibold text-slate-600">{project.clientPhone || 'Not set'}</p>
+                    </div>
+                  </div>
 
                   {/* Client Email (Admin Only) */}
                   {user.role === 'ADMIN' && (

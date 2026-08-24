@@ -4,7 +4,7 @@
 // ─────────────────────────────────────────────
 
 export interface RoleTheme {
-  role: 'TECHNICIAN' | 'SALES' | 'ADMIN';
+  role: 'ACCOUNTING' | 'PROCUREMENT' | 'ADMIN';
   primary: string;
   primaryDark: string;
   primaryLight: string;
@@ -36,65 +36,65 @@ export interface RoleTheme {
   quickActions: { label: string; icon: string }[];
 }
 
-const TECHNICIAN_THEME: RoleTheme = {
-  role: 'TECHNICIAN',
-  primary: '#2563EB',
-  primaryDark: '#1D4ED8',
-  primaryLight: '#3B82F6',
-  secondary: '#0EA5E9',
-  accent: '#38BDF8',
-  heroGradient: 'linear-gradient(135deg, #1E3A8A 0%, #1D4ED8 45%, #2563EB 100%)',
-  sidebarGradient: 'linear-gradient(180deg, #EFF6FF 0%, #DBEAFE 100%)',
-  buttonGradient: 'linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%)',
-  primaryAlpha08: 'rgba(37,99,235,0.08)',
-  primaryAlpha12: 'rgba(37,99,235,0.12)',
-  primaryAlpha20: 'rgba(37,99,235,0.20)',
-  primaryAlpha30: 'rgba(37,99,235,0.30)',
+const ACCOUNTING_THEME: RoleTheme = {
+  role: 'ACCOUNTING',
+  primary: '#0D9488',
+  primaryDark: '#0F766E',
+  primaryLight: '#14B8A6',
+  secondary: '#059669',
+  accent: '#2DD4BF',
+  heroGradient: 'linear-gradient(135deg, #134E4A 0%, #0F766E 45%, #0D9488 100%)',
+  sidebarGradient: 'linear-gradient(180deg, #F0FDFA 0%, #CCFBF1 100%)',
+  buttonGradient: 'linear-gradient(135deg, #0D9488 0%, #0F766E 100%)',
+  primaryAlpha08: 'rgba(13,148,136,0.08)',
+  primaryAlpha12: 'rgba(13,148,136,0.12)',
+  primaryAlpha20: 'rgba(13,148,136,0.20)',
+  primaryAlpha30: 'rgba(13,148,136,0.30)',
   onPrimary: '#FFFFFF',
-  badgeBg: 'rgba(37,99,235,0.10)',
-  badgeText: '#1D4ED8',
-  sidebarBg: '#EFF6FF',
-  sidebarBorder: '#DBEAFE',
-  roleLabel: 'Field Technician',
+  badgeBg: 'rgba(13,148,136,0.10)',
+  badgeText: '#0F766E',
+  sidebarBg: '#F0FDFA',
+  sidebarBorder: '#CCFBF1',
+  roleLabel: 'Accounting & Finance',
   roleEmoji: '',
   heroSubtitle:
-    'Welcome to your field dispatch portal. Access your assigned sites, fill out security survey wizard modules, and submit hardware requirements directly from the field.',
+    'Welcome to your accounting & audit portal. Review project cost estimations, audit manpower and logistical fees, verify contractor/dealer margins, and approve commercial quotations.',
   quickActions: [
-    { label: 'Start Survey', icon: '' },
-    { label: 'Open Workspace', icon: '' },
-    { label: 'Missing Requirements', icon: '' },
-    { label: 'Submit Requirements', icon: '' },
+    { label: 'Audit Costs', icon: '' },
+    { label: 'Commercial Quotes', icon: '' },
+    { label: 'Financial Review', icon: '' },
+    { label: 'Cost Reports', icon: '' },
   ],
 };
 
-const SALES_THEME: RoleTheme = {
-  role: 'SALES',
-  primary: '#22C55E',
-  primaryDark: '#16A34A',
-  primaryLight: '#4ADE80',
-  secondary: '#10B981',
-  accent: '#34D399',
-  heroGradient: 'linear-gradient(135deg, #14532D 0%, #16A34A 45%, #22C55E 100%)',
-  sidebarGradient: 'linear-gradient(180deg, #F0FDF4 0%, #DCFCE7 100%)',
-  buttonGradient: 'linear-gradient(135deg, #22C55E 0%, #16A34A 100%)',
-  primaryAlpha08: 'rgba(34,197,94,0.08)',
-  primaryAlpha12: 'rgba(34,197,94,0.12)',
-  primaryAlpha20: 'rgba(34,197,94,0.20)',
-  primaryAlpha30: 'rgba(34,197,94,0.30)',
+const PROCUREMENT_THEME: RoleTheme = {
+  role: 'PROCUREMENT',
+  primary: '#D97706',
+  primaryDark: '#B45309',
+  primaryLight: '#F59E0B',
+  secondary: '#EA580C',
+  accent: '#FBBF24',
+  heroGradient: 'linear-gradient(135deg, #78350F 0%, #B45309 45%, #D97706 100%)',
+  sidebarGradient: 'linear-gradient(180deg, #FFFBEB 0%, #FEF3C7 100%)',
+  buttonGradient: 'linear-gradient(135deg, #D97706 0%, #B45309 100%)',
+  primaryAlpha08: 'rgba(217,119,6,0.08)',
+  primaryAlpha12: 'rgba(217,119,6,0.12)',
+  primaryAlpha20: 'rgba(217,119,6,0.20)',
+  primaryAlpha30: 'rgba(217,119,6,0.30)',
   onPrimary: '#FFFFFF',
-  badgeBg: 'rgba(34,197,94,0.10)',
-  badgeText: '#16A34A',
-  sidebarBg: '#F0FDF4',
-  sidebarBorder: '#DCFCE7',
-  roleLabel: 'Sales Representative',
+  badgeBg: 'rgba(217,119,6,0.10)',
+  badgeText: '#B45309',
+  sidebarBg: '#FFFBEB',
+  sidebarBorder: '#FEF3C7',
+  roleLabel: 'Procurement & Sourcing',
   roleEmoji: '',
   heroSubtitle:
-    'Welcome to your sales workspace. Initiate site survey requests, review completed specifications, and generate accurate pricing sheets for client proposals.',
+    'Welcome to your procurement & inventory workspace. Review Bill of Materials (BOM/BOQ), cross-reference hardware item specifications, track brand pricelists, and verify equipment quantities.',
   quickActions: [
-    { label: 'New Survey', icon: '' },
-    { label: 'View Pipeline', icon: '' },
-    { label: 'Generate Quote', icon: '' },
-    { label: 'Follow Up', icon: '' },
+    { label: 'View BOQ Lists', icon: '' },
+    { label: 'Check Pricelist', icon: '' },
+    { label: 'Material Audit', icon: '' },
+    { label: 'Export BOM', icon: '' },
   ],
 };
 
@@ -129,19 +129,18 @@ const ADMIN_THEME: RoleTheme = {
   ],
 };
 
-
 export function getRoleTheme(role?: string, isDark?: boolean): RoleTheme {
   let baseTheme: RoleTheme;
   switch (role) {
-    case 'SALES':
-      baseTheme = SALES_THEME;
-      break;
     case 'ADMIN':
       baseTheme = ADMIN_THEME;
       break;
-    case 'TECHNICIAN':
+    case 'PROCUREMENT':
+      baseTheme = PROCUREMENT_THEME;
+      break;
+    case 'ACCOUNTING':
     default:
-      baseTheme = TECHNICIAN_THEME;
+      baseTheme = ACCOUNTING_THEME;
       break;
   }
 

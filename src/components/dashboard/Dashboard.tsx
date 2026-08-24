@@ -671,9 +671,11 @@ export default function Dashboard({
     return 'Good Evening';
   }, []);
 
+  const isAdmin = user.role === 'ADMIN';
   const userGreetingName =
     user.fullName?.split(' ')[0] ||
-    (user.role === 'ADMIN' ? 'Admin' : user.role === 'SALES' ? 'Sales' : user.role === 'TECHNICIAN' ? 'Technician' : 'User');
+    (user.role === 'ADMIN' ? 'Admin' :
+     user.role === 'PROCUREMENT' ? 'Procurement' : 'Accounting');
 
   // Derive display status for each company folder (matching Home.tsx logic)
   const folderStatusMap: Record<string, string> = {};
@@ -995,6 +997,7 @@ export default function Dashboard({
               </div>
               <div style={{ display: view === 'estimation-hub' ? undefined : 'none', height: view === 'estimation-hub' ? '100%' : undefined }}>
                 <EstimationHub
+                  user={user}
                   projects={projects}
                   onCreateProject={onCreateProject}
                   onSelectProject={onSelectProject}
@@ -1053,7 +1056,7 @@ export default function Dashboard({
             <CalendarView
               projects={projectList}
               onSelectProject={onSelectProject}
-              userRole={user.role || 'TECHNICIAN'}
+              userRole={user.role || 'ACCOUNTING'}
             />
           ) : view === 'saved-folders' ? (
             <SavedFoldersView
@@ -1282,13 +1285,17 @@ export default function Dashboard({
                             <StatClipboard className="w-6 h-6" />
                           </div>
                           <h4 className="text-sm font-black text-slate-800 mb-1">No site surveys created yet</h4>
-                          <p className="text-xs text-slate-500 max-w-sm mb-4">Click below to start your first survey and build low-voltage estimations.</p>
-                          <button
-                            onClick={onNavigateToCreate}
-                            className="px-5 py-2.5 rounded-xl font-black text-xs text-white bg-blue-700 hover:bg-blue-800 shadow-md transition-all"
-                          >
-                            Start New Survey
-                          </button>
+                          <p className="text-xs text-slate-500 max-w-sm mb-4">
+                            {isAdmin ? 'Click below to start your first survey and build low-voltage estimations.' : 'No active site surveys have been assigned or submitted yet.'}
+                          </p>
+                          {isAdmin && (
+                            <button
+                              onClick={onNavigateToCreate}
+                              className="px-5 py-2.5 rounded-xl font-black text-xs text-white bg-blue-700 hover:bg-blue-800 shadow-md transition-all cursor-pointer"
+                            >
+                              Start New Survey
+                            </button>
+                          )}
                         </div>
                       )}
                     </div>
@@ -1298,8 +1305,8 @@ export default function Dashboard({
 
               {/* Project Table (non-dashboard, non-notifications, non-category views) */}
               {view !== 'dashboard' && view !== 'notifications' && !isCategoryView && (
-                <div className="px-6 pt-6">
-                  <div className="bg-white dark:bg-[#131B2E] rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm animate-fade-in-up">
+                <div className="px-6 pt-6 pb-6 flex-1 flex flex-col min-h-0">
+                  <div className="bg-white dark:bg-[#131B2E] rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm animate-fade-in-up flex-1 flex flex-col min-h-[calc(100vh-120px)]">
                     {/* Table header */}
                     <div
                       className="flex flex-col sm:flex-row items-center justify-between gap-3 px-6 py-4 border-b border-slate-100 dark:border-slate-800"
@@ -1343,11 +1350,11 @@ export default function Dashboard({
                     </div>
 
                     {/* Table body */}
-                    <div className="overflow-x-auto">
+                    <div className="overflow-x-auto flex-1 pb-16">
                       {isLoading ? (
                         <SkeletonTable columns={4} rows={5} />
                       ) : ordered.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center py-16 gap-3">
+                        <div className="flex flex-col items-center justify-center py-16 gap-3 flex-1">
                           <div
                             className="w-14 h-14 rounded-2xl flex items-center justify-center text-2xl animate-float-a"
                             style={{ background: theme.primaryAlpha08 }}
@@ -1375,7 +1382,7 @@ export default function Dashboard({
                             {ordered.map((project, i) => {
                               const isPinned = pinned.has(project.id);
                               const isOpen = menuOpen === project.id;
-                              const isNearBottom = i >= ordered.length - 2 && ordered.length >= 2;
+                              const isNearBottom = ordered.length > 2 && i >= ordered.length - 2;
                               const statusBar =
                                 Object.entries(statusConfig).find(([key]) => project.status?.includes(key))?.[1]?.bar || '#64748B';
 
@@ -1496,8 +1503,8 @@ export default function Dashboard({
 
               {/* Notification View */}
               {view === 'notifications' && (
-                <div className="px-6 pt-6">
-                  <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden animate-fade-in-up">
+                <div className="px-6 pt-6 pb-6 flex-1 flex flex-col min-h-0">
+                  <div className="bg-white dark:bg-[#131B2E] rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden animate-fade-in-up flex-1 flex flex-col min-h-[calc(100vh-120px)]">
                     {/* Tabs */}
                     <div className="px-6 pt-4 pb-0 border-b border-slate-100">
                       <div className="flex flex-wrap gap-1">
@@ -1505,7 +1512,7 @@ export default function Dashboard({
                           { key: 'ongoing', label: 'Ongoing', count: countOngoing, color: '#2563EB' },
                           { key: 'upcoming', label: 'Upcoming', count: countUpcoming, color: '#059669' },
                           { key: 'missing', label: 'Missing', count: countMissing, color: '#D97706' },
-                          ...(user.role === 'ADMIN' || user.role === 'TECHNICIAN' || user.role === 'SALES'
+                          ...(user.role === 'ADMIN' || user.role === 'ACCOUNTING'
                             ? [
                               { key: 'approval', label: 'Approval', count: countApproval, color: '#7C3AED' },
                               { key: 'finalize', label: 'Finalize', count: countFinalize, color: '#059669' },

@@ -3,7 +3,7 @@ import type { User, Project, AIScanGroup } from '../../App';
 import AIScanGroupDetail from '../ai-sidebar/AIScanGroupDetail';
 import { getRoleTheme } from '../../utils/RoleTheme';
 import { SkeletonCompanyRow } from '../utils/Skeleton';
-import { StatBuilding, StatBolt, StatCalendar, StatCheckCircle, StatPin, RoleWrench, RoleChart, RoleComputer, Folder, ExclamationTriangle, ArrowUpTray, Plus, ChartBar, Document, ChartBar as ViewPipeline, Document as GenerateQuote, SysPhone, User as UserIcon, Check, Users, StatClipboard } from '../../utils/Icons';
+import { StatBuilding, StatBolt, StatCalendar, StatCheckCircle, StatPin, RoleWrench, RoleChart, RoleComputer, RoleCalculator, RoleBox, Folder, ExclamationTriangle, ArrowUpTray, Plus, ChartBar, Document, ChartBar as ViewPipeline, Document as GenerateQuote, SysPhone, User as UserIcon, Check, Users, StatClipboard } from '../../utils/Icons';
 
 // Status Overview Banner matching exact layout from user with Minimalistic Donut / Pie Graph & Smooth Animations
 function StatusOverviewBanner({
@@ -495,8 +495,8 @@ export default function Home({
 }: HomeProps) {
   const [selectedScanGroup, setSelectedScanGroup] = useState<AIScanGroup | null>(null);
   const isAdmin = user.role === 'ADMIN';
-  const isSales = user.role === 'SALES';
-  const isTechnician = user.role === 'TECHNICIAN';
+  const isAccounting = user.role === 'ACCOUNTING';
+  const isProcurement = user.role === 'PROCUREMENT';
   const canManageCompanies = isAdmin;
   const theme = getRoleTheme(user.role, isDark);
 
@@ -535,11 +535,9 @@ export default function Home({
 
   const roleDisplayName = useMemo(() => {
     if (isAdmin) return 'System Administrator';
-    if (isSales) return 'Sales Representative';
-    if (user.role === 'MANAGER') return 'Project Manager';
-    if (isTechnician) return 'Field Technician';
-    return 'User';
-  }, [user.role]);
+    if (user.role === 'PROCUREMENT') return 'Procurement & Sourcing';
+    return 'Accounting & Finance';
+  }, [user.role, isAdmin]);
 
   const greeting = useMemo(() => {
     const hrs = new Date().getHours();
@@ -828,7 +826,9 @@ export default function Home({
           <div className="space-y-3 max-w-xl">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="px-2.5 py-0.5 rounded-full text-[9px] font-bold tracking-widest uppercase bg-white/20 inline-flex items-center gap-1.5">
-                {user.role === 'ADMIN' ? <RoleComputer className="w-3.5 h-3.5" /> : user.role === 'SALES' ? <RoleChart className="w-3.5 h-3.5" /> : <RoleWrench className="w-3.5 h-3.5" />}
+                {user.role === 'ADMIN' ? <RoleComputer className="w-3.5 h-3.5" /> :
+                 user.role === 'PROCUREMENT' ? <RoleBox className="w-3.5 h-3.5" /> :
+                 <RoleCalculator className="w-3.5 h-3.5" />}
                 <span>{roleDisplayName}</span>
               </span>
               <span className="text-[10px] text-white/60 font-medium">• {todayLabel}</span>
@@ -940,7 +940,7 @@ export default function Home({
           COMPANY LIST CARD
       ══════════════════════════════════════════ */}
       <div
-        className="bg-white rounded-3xl shadow-sm animate-fade-in-up delay-150"
+        className="bg-white rounded-3xl shadow-sm animate-fade-in-up delay-150 min-h-[calc(100vh-220px)] flex flex-col mb-8"
         style={{ border: '1px solid #E2E8F0' }}
       >
         {/* Controls row */}
@@ -1064,10 +1064,11 @@ export default function Home({
               ) : null}
             </div>
           ) : (
-            <div className="space-y-1.5">
+            <div className="space-y-1.5 min-h-[240px] pb-12">
               {ordered.map((project, i) => {
                 const isPinned = pinned.has(project.id);
                 const isOpen = menuOpen === project.id;
+                const isNearBottom = ordered.length > 2 && i >= ordered.length - 2;
                 const avatarColor = avatarColors[i % avatarColors.length];
                 const clean = (s?: string) => (s || '').trim().toLowerCase();
                 const folderName = clean(project.name);
@@ -1157,18 +1158,20 @@ export default function Home({
                             <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(null)} />
                             <div
                               className={`absolute right-0 z-50 w-48 rounded-xl bg-white border border-slate-200 py-1.5 shadow-2xl text-left animate-scale-in ${
-                                i >= ordered.length - 2 && ordered.length >= 2 ? 'bottom-8' : 'top-8'
+                                isNearBottom ? 'bottom-8' : 'top-8'
                               }`}
                             >
-                              <button
-                                onClick={() => { setEditProject(project); setMenuOpen(null); }}
-                                className="w-full px-3.5 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 hover:text-slate-800 flex items-center gap-2 cursor-pointer transition-colors"
-                              >
-                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                  <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                                </svg>
-                                Edit Project
-                              </button>
+                              {isAdmin && (
+                                <button
+                                  onClick={() => { setEditProject(project); setMenuOpen(null); }}
+                                  className="w-full px-3.5 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 hover:text-slate-800 flex items-center gap-2 cursor-pointer transition-colors"
+                                >
+                                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                  </svg>
+                                  Edit Project
+                                </button>
+                              )}
                               <button
                                 onClick={() => handlePin(project.id)}
                                 className="w-full px-3.5 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 hover:text-slate-800 flex items-center gap-2 cursor-pointer transition-colors"
@@ -1188,16 +1191,20 @@ export default function Home({
                                 </svg>
                                 View Details
                               </button>
-                              <div className="border-t border-slate-100 my-1" />
-                              <button
-                                onClick={() => { setDeleteConfirm(project.id); setMenuOpen(null); }}
-                                className="w-full px-3.5 py-2 text-xs font-bold text-red-600 hover:bg-red-50 hover:text-red-700 flex items-center gap-2 cursor-pointer transition-colors"
-                              >
-                                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                </svg>
-                                Delete
-                              </button>
+                              {isAdmin && (
+                                <>
+                                  <div className="border-t border-slate-100 my-1" />
+                                  <button
+                                    onClick={() => { setDeleteConfirm(project.id); setMenuOpen(null); }}
+                                    className="w-full px-3.5 py-2 text-xs font-bold text-red-600 hover:bg-red-50 hover:text-red-700 flex items-center gap-2 cursor-pointer transition-colors"
+                                  >
+                                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                      <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                    </svg>
+                                    Delete
+                                  </button>
+                                </>
+                              )}
                             </div>
                           </>
                         )}

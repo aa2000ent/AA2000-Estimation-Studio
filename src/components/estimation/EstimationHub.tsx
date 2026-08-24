@@ -1,13 +1,9 @@
-import { useState } from 'react';
-import type { AIScanGroup } from '../../App';
-import type { Project } from '../../App';
-import type { FloorPlanEstimation } from '../../services/geminiFloorPlanService';
-import type { EstimationManpowerEntry, EstimationConsumableEntry, EstimationAdditionalFeeEntry } from '../../types';
-import FloorPlanView from '../floor-plan/FloorPlanView';
+import { useState, useEffect } from 'react';
+import type { User, AIScanGroup, Project } from '../../App';
 import TORComparisonView from '../ai-sidebar/TORComparisonView';
-import AISidebar from '../ai-sidebar/AISidebar';
 
 interface Props {
+  user?: User;
   projects?: Project[];
   onCreateProject?: (project: Project, keepOnHome?: boolean) => void;
   onSelectProject?: (project: Project) => void;
@@ -15,7 +11,7 @@ interface Props {
   onNavigateToCreate?: () => void;
 }
 
-const TABS = [
+const ALL_TABS = [
   {
     key: 'manual',
     label: 'Manual Estimation',
@@ -30,19 +26,6 @@ const TABS = [
     description: 'Step-by-step wizard to build a detailed BOQ manually by entering room counts, system types, and project specs.',
   },
   {
-    key: 'floor-plan',
-    label: 'Floor Plan AI',
-    shortLabel: 'Floor Plan AI',
-    icon: (active: boolean) => (
-      <svg className="w-4 h-4" fill={active ? 'currentColor' : 'none'} viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A2.25 2.25 0 0 1 6 3.75h12A2.25 2.25 0 0 1 20.25 6v12A2.25 2.25 0 0 1 18 20.25H6A2.25 2.25 0 0 1 3.75 18V6ZM13.5 3.75v16.5M3.75 10.5h9.75" />
-      </svg>
-    ),
-    color: '#2563EB',
-    bg: '#EFF6FF',
-    description: 'Upload floor plan images or PDFs (and optionally a TOR document). AI reads the layout and generates a complete BOQ.',
-  },
-  {
     key: 'document',
     label: 'Document AI Reader',
     shortLabel: 'Doc Reader',
@@ -53,89 +36,29 @@ const TABS = [
     ),
     color: '#059669',
     bg: '#ECFDF5',
-    description: 'Upload TOR and Technician Proposal documents. AI compares them and identifies gaps, omissions, and provides cost audit with recommendations.',
+    description: 'Upload TOR, RFP, and Proposal documents. AI compares specifications, highlights missing requirements, and audits equipment quantities.',
   },
 ];
 
-export default function EstimationHub({ projects, onCreateProject, onSelectProject, onSaveAIScan, onNavigateToCreate }: Props) {
-  const [activeTab, setActiveTab] = useState<'manual' | 'floor-plan' | 'document'>('manual');
-  const [isFloorPlanScanning, setIsFloorPlanScanning] = useState(false);
-  const [isDocScanning, setIsDocScanning] = useState(false);
-  const [floorPlanStep, setFloorPlanStep] = useState<string>('');
+export default function EstimationHub({ user, onNavigateToCreate, onSaveAIScan }: Props) {
+  const isAdmin = user?.role === 'ADMIN';
+  const availableTabs = isAdmin
+    ? ALL_TABS
+    : ALL_TABS.filter(t => t.key === 'document');
 
-  const isAnyScanning = isFloorPlanScanning || isDocScanning;
-  const scanningLabel = isFloorPlanScanning
-    ? 'Floor Plan AI'
-    : isDocScanning
-    ? 'Doc Reader AI'
-    : '';
-  const scanningDetail = isFloorPlanScanning
-    ? floorPlanStep || 'Analyzing floor plan...'
-    : isDocScanning
-    ? 'Auditing documents and generating recommendations...'
-    : '';
+  const [activeTab, setActiveTab] = useState<'manual' | 'document'>(
+    isAdmin ? 'manual' : 'document'
+  );
+  const [, setIsDocScanning] = useState(false);
 
-  const handleAddToProjectEstimation = (projectId: string, result: FloorPlanEstimation) => {
-    const existing = localStorage.getItem(`aa2000_estimation_${projectId}`);
-    const prev = existing ? JSON.parse(existing) : { manpower: [], consumables: [], fees: [], constraints: { physical: '', electrical: '', installation: '' } };
+  // Safeguard: non-admins are restricted exclusively to 'document' (Doc Reader)
+  useEffect(() => {
+    if (!isAdmin && activeTab !== 'document') {
+      setActiveTab('document');
+    }
+  }, [isAdmin, activeTab]);
 
-    const manpower: EstimationManpowerEntry[] = result.manpower.map(m => ({
-      id: crypto.randomUUID(),
-      role: m.role,
-      headcount: m.headcount,
-      hours: m.hours,
-      manDays: m.manDays,
-      dayRate: m.ratePerDay || 0,
-      totalCost: m.totalCost || (m.ratePerDay ? m.ratePerDay * m.manDays : 0),
-    }));
-
-    const consumables: EstimationConsumableEntry[] = result.consumables.map(c => ({
-      id: crypto.randomUUID(),
-      name: c.name,
-      brand: '',
-      category: c.category,
-      quantity: c.quantity,
-      unit: c.unit || 'pcs',
-      unitPrice: c.unitPrice || 0,
-      totalPrice: (c.unitPrice || 0) * c.quantity,
-      srp: c.srp,
-      contractorPrice: c.contractorPrice,
-      dealerPrice: c.dealerPrice,
-    }));
-
-    const fees: EstimationAdditionalFeeEntry[] = result.fees.map(f => ({
-      id: crypto.randomUUID(),
-      type: f.type as EstimationAdditionalFeeEntry['type'],
-      amount: f.amount || 0,
-      description: f.description,
-    }));
-
-    const aiBaseline = prev.aiBaseline || {
-      manpower: [...manpower],
-      consumables: [...consumables],
-      fees: [...fees],
-      constraints: result.constraints || { physical: '', electrical: '', installation: '' },
-      createdAt: new Date().toISOString(),
-    };
-
-    const merged = {
-      manpower: [...(prev.manpower || []), ...manpower],
-      consumables: [...(prev.consumables || []), ...consumables],
-      fees: [...(prev.fees || []), ...fees],
-      constraints: result.constraints || prev.constraints || { physical: '', electrical: '', installation: '' },
-      priceTier: prev.priceTier || 'srp',
-      aiBaseline,
-    };
-
-    localStorage.setItem(`aa2000_estimation_${projectId}`, JSON.stringify(merged));
-    localStorage.setItem(`aa2000_ai_baseline_${projectId}`, JSON.stringify(aiBaseline));
-    const toastEvent = new CustomEvent('toast', {
-      detail: { type: 'success', message: 'BOQ added to project estimation!' },
-    });
-    window.dispatchEvent(toastEvent);
-  };
-
-  const activeTabDef = TABS.find(t => t.key === activeTab)!;
+  const activeTabDef = availableTabs.find(t => t.key === activeTab) || availableTabs[0];
 
   return (
     <div className="flex flex-col h-full bg-white">
@@ -151,7 +74,11 @@ export default function EstimationHub({ projects, onCreateProject, onSelectProje
               </div>
               <div>
                 <h1 className="text-base font-black text-slate-900">Estimation Hub</h1>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">3 Methods · Manual · AI Floor Plan · AI Document</p>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                  {isAdmin
+                    ? '2 Methods · Manual Estimation · AI Document Reader'
+                    : 'Document AI Reader & Specifications Auditor'}
+                </p>
               </div>
             </div>
           </div>
@@ -163,13 +90,13 @@ export default function EstimationHub({ projects, onCreateProject, onSelectProje
 
         {/* Tabs */}
         <div className="flex gap-1">
-          {TABS.map(tab => {
+          {availableTabs.map(tab => {
             const active = activeTab === tab.key;
             return (
               <button
                 key={tab.key}
                 onClick={() => setActiveTab(tab.key as any)}
-                className="flex items-center gap-2 px-4 py-2.5 text-xs font-bold transition-all border-b-2 -mb-px"
+                className="flex items-center gap-2 px-4 py-2.5 text-xs font-bold transition-all border-b-2 -mb-px cursor-pointer"
                 style={active
                   ? { color: tab.color, borderColor: tab.color }
                   : { color: '#94A3B8', borderColor: 'transparent' }
@@ -190,10 +117,10 @@ export default function EstimationHub({ projects, onCreateProject, onSelectProje
       >
         <span style={{ color: activeTabDef.color }}>{activeTabDef.icon(true)}</span>
         <p className="font-medium" style={{ color: activeTabDef.color }}>{activeTabDef.description}</p>
-        {activeTab === 'manual' && onNavigateToCreate && (
+        {isAdmin && activeTab === 'manual' && onNavigateToCreate && (
           <button
             onClick={onNavigateToCreate}
-            className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold text-white transition-all shrink-0"
+            className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold text-white transition-all shrink-0 cursor-pointer"
             style={{ background: activeTabDef.color }}
           >
             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
@@ -206,8 +133,8 @@ export default function EstimationHub({ projects, onCreateProject, onSelectProje
 
       {/* Tab content */}
       <div className="flex-1 min-h-0 overflow-hidden">
-        {/* Manual tab — shows an informational landing + launch button */}
-        {activeTab === 'manual' && (
+        {/* Manual tab — Admin only */}
+        {isAdmin && activeTab === 'manual' && (
           <div className="h-full overflow-y-auto px-6 py-8">
             <div className="max-w-2xl mx-auto space-y-5">
               <div className="grid grid-cols-3 gap-4">
@@ -246,7 +173,7 @@ export default function EstimationHub({ projects, onCreateProject, onSelectProje
               {onNavigateToCreate && (
                 <button
                   onClick={onNavigateToCreate}
-                  className="w-full py-4 rounded-2xl text-sm font-bold text-white transition-all"
+                  className="w-full py-4 rounded-2xl text-sm font-bold text-white transition-all cursor-pointer"
                   style={{ background: 'linear-gradient(135deg, #2563EB, #1D4ED8)', boxShadow: '0 4px 16px rgba(37,99,235,0.3)' }}
                 >
                   <svg className="w-4 h-4 inline mr-2 -mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
@@ -259,22 +186,7 @@ export default function EstimationHub({ projects, onCreateProject, onSelectProje
           </div>
         )}
 
-        {/* Floor Plan AI tab */}
-        {activeTab === 'floor-plan' && (
-          <div className="h-full overflow-hidden">
-            <FloorPlanView
-              projects={projects}
-              onAddToProjectEstimation={handleAddToProjectEstimation}
-              onScanningChange={(scanning, step) => {
-                setIsFloorPlanScanning(scanning);
-                if (step) setFloorPlanStep(step);
-                else setFloorPlanStep('');
-              }}
-            />
-          </div>
-        )}
-
-        {/* Document AI tab - Use TORComparisonView for structured TOR vs Proposal comparison */}
+        {/* Document AI tab - Visible to Accounting, Procurement, and Admin */}
         {activeTab === 'document' && (
           <div className="h-full overflow-hidden">
             <TORComparisonView
@@ -284,8 +196,6 @@ export default function EstimationHub({ projects, onCreateProject, onSelectProje
           </div>
         )}
       </div>
-
-
     </div>
   );
 }

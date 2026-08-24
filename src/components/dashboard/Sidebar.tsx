@@ -354,6 +354,12 @@ export default function Sidebar({ user, currentView, onNavigate, notifications, 
     'notifications', 'ongoing', 'upcoming', 'missing-notif', 'approval-notif'
   ].includes(currentView);
 
+  const isAccounting = user.role === 'ACCOUNTING';
+  const isProcurement = user.role === 'PROCUREMENT';
+  const canApprove = isAdmin || isAccounting;
+  const canUseEstimationHub = isAdmin || isAccounting || isProcurement;
+  const canViewSavedBOQs = isAdmin || isAccounting || isProcurement;
+
   const navGroups: { label: string; items: { label: string; view: View; accent?: string; _count?: number }[] }[] = isNotificationView ? [
     {
       label: 'NOTIFICATION',
@@ -362,7 +368,7 @@ export default function Sidebar({ user, currentView, onNavigate, notifications, 
         { view: 'ongoing', label: 'Ongoing Surveys', accent: '#2563EB' },
         { view: 'upcoming', label: 'Upcoming Surveys', accent: '#10B981' },
         { view: 'missing-notif', label: 'Missing Alerts', accent: '#F59E0B' },
-        ...((isAdmin || user.role === 'TECHNICIAN' || user.role === 'SALES')
+        ...(canApprove
           ? [
             { view: 'approval-notif' as View, label: 'Approval Alerts', accent: '#2563EB' }
           ]
@@ -371,34 +377,38 @@ export default function Sidebar({ user, currentView, onNavigate, notifications, 
     },
   ] : [
     {
-      label: 'SURVEYS',
+      label: isAccounting ? 'FINANCE' : isProcurement ? 'SOURCING' : 'SURVEYS',
       items: [
         { view: 'dashboard', label: 'Dashboard' },
-        { view: 'calendar', label: 'Survey Calendar' },
+        { view: 'calendar', label: isAccounting ? 'Financial Calendar' : 'Survey Calendar' },
       ],
     },
     {
       label: 'WORKFLOW',
       items: [
-        ...((isAdmin || user.role === 'TECHNICIAN' || user.role === 'SALES')
-          ? [
-            { view: 'approval' as View, label: 'Approval Pipeline', accent: '#2563EB' }
-          ]
-          : [{ view: 'done' as View, label: 'Completed Surveys', accent: '#10B981' }]),
+        ...(canApprove
+          ? [{ view: 'approval' as View, label: isAccounting ? 'Financial Approvals' : 'Approval Pipeline', accent: '#2563EB' }]
+          : [{ view: 'done' as View, label: isProcurement ? 'Required Materials' : 'Completed Surveys', accent: '#10B981' }]),
         { view: 'history', label: 'History Archive', accent: '#64748B' },
       ],
     },
-    {
-      label: 'TOOLS',
-      items: [
-        { view: 'estimation-hub', label: 'Estimation Hub', accent: '#2563EB' },
-      ],
-    },
+    ...(canUseEstimationHub
+      ? [
+        {
+          label: 'TOOLS',
+          items: [
+            { view: 'estimation-hub' as View, label: 'Estimation Hub', accent: '#2563EB' },
+          ],
+        },
+      ]
+      : []),
     {
       label: 'SAVED',
       items: [
         { view: 'saved-folders', label: 'AI Scan Folders', accent: '#2563EB', _count: aiScans?.length ?? 0 },
-        { view: 'saved-boqs', label: 'Floor Plan BOQs', accent: '#2563EB', _count: savedBOQCount },
+        ...(canViewSavedBOQs
+          ? [{ view: 'saved-boqs' as View, label: 'Floor Plan BOQs', accent: '#2563EB', _count: savedBOQCount }]
+          : []),
       ],
     },
   ];
@@ -494,38 +504,40 @@ export default function Sidebar({ user, currentView, onNavigate, notifications, 
         )}
       </div>
 
-      {/* ── "+ New Survey" Action Button (Below AA2000 Branding) ── */}
-      <div className={`px-3 pt-3 pb-1 shrink-0 ${collapsed ? 'flex justify-center px-2' : ''}`}>
-        <button
-          onClick={() => {
-            if (onNewSurvey) {
-              onNewSurvey();
-            } else {
-              onNavigate('create-survey');
-            }
-          }}
-          title="Create New Site Survey"
-          className={`w-full flex items-center justify-center gap-2 font-bold text-white shadow-md shadow-blue-500/20 hover:shadow-lg hover:shadow-blue-500/30 hover:brightness-105 active:scale-95 transition-all duration-200 cursor-pointer group ${
-            collapsed
-              ? 'w-10 h-10 rounded-xl p-0'
-              : 'py-2.5 px-4 rounded-2xl text-xs sm:text-[13px] tracking-wide'
-          }`}
-          style={{
-            background: 'linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%)',
-          }}
-        >
-          <svg
-            className={`${collapsed ? 'w-5 h-5' : 'w-4 h-4'} text-white shrink-0 transition-transform duration-200 group-hover:rotate-90`}
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth={3}
+      {/* ── "+ New Survey" Action Button (Below AA2000 Branding) — Admin only ── */}
+      {isAdmin && (
+        <div className={`px-3 pt-3 pb-1 shrink-0 ${collapsed ? 'flex justify-center px-2' : ''}`}>
+          <button
+            onClick={() => {
+              if (onNewSurvey) {
+                onNewSurvey();
+              } else {
+                onNavigate('create-survey');
+              }
+            }}
+            title="Create New Site Survey"
+            className={`w-full flex items-center justify-center gap-2 font-bold text-white shadow-md shadow-blue-500/20 hover:shadow-lg hover:shadow-blue-500/30 hover:brightness-105 active:scale-95 transition-all duration-200 cursor-pointer group ${
+              collapsed
+                ? 'w-10 h-10 rounded-xl p-0'
+                : 'py-2.5 px-4 rounded-2xl text-xs sm:text-[13px] tracking-wide'
+            }`}
+            style={{
+              background: 'linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%)',
+            }}
           >
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-          </svg>
-          {!collapsed && <span>New Survey</span>}
-        </button>
-      </div>
+            <svg
+              className={`${collapsed ? 'w-5 h-5' : 'w-4 h-4'} text-white shrink-0 transition-transform duration-200 group-hover:rotate-90`}
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={3}
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+            </svg>
+            {!collapsed && <span>New Survey</span>}
+          </button>
+        </div>
+      )}
 
       {/* ── Navigation ── */}
       <nav className="flex-1 overflow-y-auto no-scrollbar px-2 py-3 space-y-5">
@@ -669,8 +681,7 @@ export default function Sidebar({ user, currentView, onNavigate, notifications, 
                     }}
                   >
                     {user.role === 'ADMIN' ? 'Admin' :
-                     user.role === 'SALES' ? 'Sales' :
-                     user.role === 'MANAGER' ? 'Manager' : 'Tech'}
+                     user.role === 'PROCUREMENT' ? 'Procurement' : 'Accounting'}
                   </span>
                   {totalUnread > 0 && (
                     <span

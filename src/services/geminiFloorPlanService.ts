@@ -1019,62 +1019,63 @@ function isMetricUnit(unit: string): boolean {
   boq = sanitizeBoqResult(boq);
 
   if (boq.consumables && Array.isArray(boq.consumables)) {
-    const resolvedConsumables = [];
-    for (const c of boq.consumables) {
-      try {
-        const est = await getEstimatedItemPricing(c.name, 'contractor');
-        const srpPerUnit = est.price;       // price per roll/unit as listed in pricelist
-        const contractorPrice = est.contractorPrice;
-        const dealerPrice = est.dealerPrice;
-        const name = est.isAlternative
-          ? `${est.brand} ${est.model} (Rec. Alt for ${c.name})`
-          : (est.model && est.model !== c.name ? `${est.brand} ${est.model}` : c.name);
+    const resolvedConsumables = await Promise.all(
+      boq.consumables.map(async (c: any) => {
+        try {
+          const est = await getEstimatedItemPricing(c.name, 'contractor');
+          const srpPerUnit = est.price;       // price per roll/unit as listed in pricelist
+          const contractorPrice = est.contractorPrice;
+          const dealerPrice = est.dealerPrice;
+          const name = est.isAlternative
+            ? `${est.brand} ${est.model} (Rec. Alt for ${c.name})`
+            : (est.model && est.model !== c.name ? `${est.brand} ${est.model}` : c.name);
 
-        // --- Unit Conversion: meters → rolls ---
-        // If the BOQ says "300 meters" but the pricelist item is priced per roll (e.g. 305m roll),
-        // we must divide to get how many rolls are needed, then price by the roll.
-        let displayQty = c.quantity;
-        let displayUnit = c.unit;
-        let computedSrp = srpPerUnit;
-        let totalPrice: number;
+          // --- Unit Conversion: meters → rolls ---
+          // If the BOQ says "300 meters" but the pricelist item is priced per roll (e.g. 305m roll),
+          // we must divide to get how many rolls are needed, then price by the roll.
+          let displayQty = c.quantity;
+          let displayUnit = c.unit;
+          let computedSrp = srpPerUnit;
+          let totalPrice: number;
 
-        if (isMetricUnit(c.unit) && est.foundInPricelist) {
-          const rollLength = extractRollLengthFromDescription(est.description || '');
-          if (rollLength) {
-            const rollsNeeded = Math.ceil(c.quantity / rollLength);
-            totalPrice = srpPerUnit * rollsNeeded;
-            // Show qty as rolls, annotate with total meters for transparency
-            displayQty = rollsNeeded;
-            displayUnit = `roll(s) (${c.quantity}m @ ${rollLength}m/roll)`;
-            computedSrp = srpPerUnit; // unit price stays per-roll
+          if (isMetricUnit(c.unit) && est.foundInPricelist) {
+            const rollLength = extractRollLengthFromDescription(est.description || '');
+            if (rollLength) {
+              const rollsNeeded = Math.ceil(c.quantity / rollLength);
+              totalPrice = srpPerUnit * rollsNeeded;
+              // Show qty as rolls, annotate with total meters for transparency
+              displayQty = rollsNeeded;
+              displayUnit = `roll(s) (${c.quantity}m @ ${rollLength}m/roll)`;
+              computedSrp = srpPerUnit; // unit price stays per-roll
+            } else {
+              // No roll length found — price is likely already per-meter
+              totalPrice = srpPerUnit * c.quantity;
+            }
           } else {
-            // No roll length found — price is likely already per-meter
             totalPrice = srpPerUnit * c.quantity;
           }
-        } else {
-          totalPrice = srpPerUnit * c.quantity;
-        }
 
-        resolvedConsumables.push({
-          ...c,
-          name,
-          brand: est.brand || (c as any).brand || '',
-          srp: computedSrp,
-          contractorPrice,
-          dealerPrice,
-          unitPrice: computedSrp,
-          quantity: displayQty,
-          unit: displayUnit,
-          totalPrice
-        });
-      } catch {
-        const srp = c.srp || c.unitPrice || 0;
-        const contractorPrice = c.contractorPrice || Math.round(srp * 0.85);
-        const dealerPrice = c.dealerPrice || Math.round(srp * 0.75);
-        const totalPrice = c.totalPrice || (srp * c.quantity);
-        resolvedConsumables.push({ ...c, srp, contractorPrice, dealerPrice, unitPrice: srp, totalPrice });
-      }
-    }
+          return {
+            ...c,
+            name,
+            brand: est.brand || (c as any).brand || '',
+            srp: computedSrp,
+            contractorPrice,
+            dealerPrice,
+            unitPrice: computedSrp,
+            quantity: displayQty,
+            unit: displayUnit,
+            totalPrice
+          };
+        } catch {
+          const srp = c.srp || c.unitPrice || 0;
+          const contractorPrice = c.contractorPrice || Math.round(srp * 0.85);
+          const dealerPrice = c.dealerPrice || Math.round(srp * 0.75);
+          const totalPrice = c.totalPrice || (srp * c.quantity);
+          return { ...c, srp, contractorPrice, dealerPrice, unitPrice: srp, totalPrice };
+        }
+      })
+    );
     boq.consumables = resolvedConsumables;
   }
 

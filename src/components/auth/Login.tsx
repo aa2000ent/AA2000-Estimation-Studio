@@ -41,10 +41,9 @@ const features = [
 
 // Role display labels
 const ROLE_LABELS: Record<string, string> = {
-  TECHNICIAN: 'Technician',
-  SALES: 'Sales',
+  ACCOUNTING: 'Accounting & Finance',
+  PROCUREMENT: 'Procurement & Sourcing',
   ADMIN: 'Admin',
-
 };
 
 export default function Login({ onLogin }: Props) {
@@ -66,7 +65,7 @@ export default function Login({ onLogin }: Props) {
     setMatchedUser(found || null);
   };
 
-  const theme = getRoleTheme(matchedUser?.role || 'TECHNICIAN');
+  const theme = getRoleTheme(matchedUser?.role || 'ACCOUNTING');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -255,7 +254,7 @@ export default function Login({ onLogin }: Props) {
                   type="text"
                   value={employeeId}
                   onChange={e => handleEmployeeIdChange(e.target.value)}
-                  placeholder="e.g. admin, sales, technician"
+                  placeholder="e.g. accounting, procurement, admin"
                   className="search-input w-full pl-9 pr-4 py-3 rounded-xl text-xs font-medium bg-slate-50 border outline-none text-slate-700 focus:bg-white transition-all"
                   style={{ borderColor: fieldErrors.employeeId ? '#EF4444' : '#E2E8F0' }}
                   autoComplete="off"
@@ -341,9 +340,39 @@ export default function Login({ onLogin }: Props) {
             </button>
           </form>
 
-          <p className="text-center text-[10px] font-bold text-slate-400 mt-5">
-            Default PIN: 111111
-          </p>
+          {/* Quick role selection chips */}
+          <div className="mt-5 pt-4 border-t border-slate-100">
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider text-center mb-2.5">
+              Select Role Account
+            </p>
+            <div className="flex flex-wrap items-center justify-center gap-1.5">
+              {USER_CREDENTIALS.map(u => {
+                const isCurrent = employeeId.toUpperCase() === u.employeeId;
+                const rTheme = getRoleTheme(u.role);
+                return (
+                  <button
+                    key={u.employeeId}
+                    type="button"
+                    onClick={() => {
+                      handleEmployeeIdChange(u.employeeId);
+                      setPin(u.pin);
+                    }}
+                    className="px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all border cursor-pointer"
+                    style={
+                      isCurrent
+                        ? { background: rTheme.primary, color: '#fff', borderColor: rTheme.primary }
+                        : { background: '#F8FAFC', color: '#64748B', borderColor: '#E2E8F0' }
+                    }
+                  >
+                    {u.fullName}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-center text-[10px] font-medium text-slate-400 mt-3">
+              Default PIN: <span className="font-mono font-bold text-slate-600">111111</span>
+            </p>
+          </div>
         </div>
       </div>
     </div>
