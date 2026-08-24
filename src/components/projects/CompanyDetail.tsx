@@ -307,7 +307,17 @@ export default function CompanyDetail({
                           {project.location} {project.buildingType ? `· ${project.buildingType}` : ''}
                         </p>
                         <p className="text-[10px] text-slate-400 mt-0.5">
-                          Created: {project.startDate || '—'}
+                          Created: {project.startDate || (project.createdAt ? project.createdAt.split('T')[0] : '—')}
+                          {(() => {
+                            if (!project.createdAt) return null;
+                            try {
+                              const d = new Date(project.createdAt);
+                              if (!isNaN(d.getTime())) {
+                                return ` · ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}`;
+                              }
+                            } catch {}
+                            return null;
+                          })()}
                         </p>
                       </div>
                     </div>

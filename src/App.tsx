@@ -143,6 +143,16 @@ function saveToStorage<T>(key: string, data: T) {
   } catch { }
 }
 
+function mapSystemToSurveyType(sys?: string): SurveyType | null {
+  if (!sys) return null;
+  if (sys === 'CCTV') return 'CCTV';
+  if (sys === 'FDAS') return 'FIRE_ALARM';
+  if (sys === 'ACCESS_CONTROL') return 'ACCESS_CONTROL';
+  if (sys === 'BURGLAR_ALARM') return 'BURGLAR_ALARM';
+  if (sys === 'FIRE_PROTECTION') return 'FIRE_PROTECTION';
+  return 'OTHER';
+}
+
 // Error Boundary to catch any component crashes
 class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean; error: string }> {
   constructor(props: { children: ReactNode }) {
@@ -474,7 +484,6 @@ export default function App() {
       createdAt: now,
     };
 
-    const compName = prefilledCompanyName;
     setPrefilledCompanyName('');
 
     setProjects(prev => {
@@ -501,25 +510,23 @@ export default function App() {
         additionalProjects.push(newCompanyFolder);
       }
 
-      const nextProjects = [...prev, ...additionalProjects, newProject];
-      if (compName) {
-        const compProj = nextProjects.find(p => p.buildingType === 'Other' && (clean(p.name) === clean(compName) || clean(p.clientName) === clean(compName)));
-        if (compProj) {
-          setCurrentCompanyProject(compProj);
-        }
-        handleGoBack();
-      } else {
-        if (user?.role === 'ADMIN' || user?.role === 'SALES' || user?.role === 'MANAGER') {
-          setCurrentProject(null);
-          navigateToScreen('dashboard');
-        } else {
-          setCurrentProject(newProject);
-          navigateToScreen('project-detail');
-        }
-      }
-      return nextProjects;
+      return [...prev, ...additionalProjects, newProject];
     });
-  }, [prefilledCompanyName, handleGoBack, navigateToScreen, user]);
+
+    setCurrentProject(newProject);
+
+    const targetSurveyType = data.systemTypes && data.systemTypes.length > 0
+      ? mapSystemToSurveyType(data.systemTypes[0])
+      : null;
+
+    if (targetSurveyType) {
+      setCurrentSurveyType(targetSurveyType);
+      navigateToScreen('survey');
+    } else {
+      setCurrentSurveyType(null);
+      navigateToScreen('project-detail');
+    }
+  }, [navigateToScreen]);
 
   const handleExitCreateSurvey = useCallback(() => {
     setPrefilledCompanyName('');
@@ -632,6 +639,7 @@ export default function App() {
                 onViewEstimation={handleViewEstimation}
                 onViewSurveySummary={() => navigateToScreen('survey-summary')}
                 onUpdateStatus={handleUpdateProjectStatus}
+                onUpdateProject={handleUpdateProject}
               />
             }
           />
@@ -640,7 +648,32 @@ export default function App() {
     );
   }
 
-  if (screen === 'survey' && currentProject && currentSurveyType) {
+  if (screen === 'survey') {
+    const derivedSurveyType = currentSurveyType
+      ?? (currentProject ? mapSystemToSurveyType(currentProject.systemTypes?.[0]) : null);
+
+    if (!currentProject || !derivedSurveyType) {
+      return (
+        <ErrorBoundary>
+          <Dashboard
+            user={user}
+            onLogout={handleLogout}
+            projects={projects}
+            notifications={notifications}
+            onSelectProject={handleSelectProject}
+            onCreateProject={handleCreateProject}
+            onSettings={handleSettings}
+            onNavigateToCreate={handleNavigateToCreate}
+            selectedCompanyProject={currentCompanyProject}
+            setSelectedCompanyProject={setCurrentCompanyProject}
+            onMarkNotificationsAsRead={handleMarkNotificationsAsRead}
+            onDeleteProject={handleDeleteProject}
+            onUpdateProject={handleUpdateProject}
+          />
+        </ErrorBoundary>
+      );
+    }
+
     return (
       <ErrorBoundary>
         <div className="min-h-screen flex" style={{ background: '#F8FAFC' }}>
@@ -662,7 +695,7 @@ export default function App() {
             contentOverride={
               <SurveyWizard
                 projectId={currentProject.id}
-                surveyType={currentSurveyType}
+                surveyType={derivedSurveyType}
                 onComplete={handleSurveyComplete}
                 onBack={() => navigateToScreen('project-detail')}
               />

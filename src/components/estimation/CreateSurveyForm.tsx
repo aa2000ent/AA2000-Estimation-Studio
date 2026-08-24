@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, Check, SysCamera, SysBell, SysFire, SysLock, SysShield, SysKey, SysTag, SysDroplet, SysElevator, SysPhone, SysSpeaker, SysCar, SysComputer, SysThermometer, SysMicroscope, StatBuilding, SectionBuilding, Folder, systemBadgeIcons } from '../../utils/Icons';
+import { Plus, Check, SysCamera, SysBell, SysFire, SysLock, SysShield, SysKey, SysTag, SysDroplet, SysElevator, SysPhone, SysSpeaker, SysCar, SysComputer, SysThermometer, SysMicroscope, StatBuilding, Folder, systemBadgeIcons } from '../../utils/Icons';
 
 interface Props {
   userRole?: string;
@@ -65,12 +65,6 @@ const SYSTEM_OPTIONS: { type: SystemType; label: string; icon: string; color: st
   { type: 'POS_SYSTEM',          label: 'POS System',                         icon: '', color: '#1D4ED8', bg: '#EFF6FF' },
   { type: 'ROOM_ALERT',          label: 'Room Alert System',                  icon: '', color: '#1D4ED8', bg: '#EFF6FF' },
   { type: 'XRAY_SECURITY',       label: 'X-Ray, Turnstile & Walk-Through',   icon: '', color: '#1D4ED8', bg: '#EFF6FF' },
-];
-
-const BUILDING_TYPES = [
-  'Office Building', 'Mall / Retail', 'Warehouse / Logistics', 'School / University',
-  'Hospital / Medical', 'Hotel / Hospitality', 'Residential / Condo', 'Government / BPO',
-  'Industrial / Factory', 'Parking Structure', 'Data Center', 'Other',
 ];
 
 const STEPS = [
@@ -155,14 +149,6 @@ export default function CreateSurveyForm({
       }
       if (!form.startDate) {
         setErrorMsg('Please select the Survey Schedule Date.');
-        return;
-      }
-      if (!form.buildingType) {
-        setErrorMsg('Please select the Building Type.');
-        return;
-      }
-      if (!form.floors || form.floors < 1) {
-        setErrorMsg('Please enter a valid number of floors.');
         return;
       }
       setStep(1);
@@ -336,65 +322,6 @@ export default function CreateSurveyForm({
                     />
                   </div>
                 </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label style={labelStyle}>Building Type</label>
-                    <select value={form.buildingType} onChange={e => update('buildingType', e.target.value)} style={{ ...inputStyle, cursor: 'pointer' }}>
-                      <option value="">Select building type...</option>
-                      {BUILDING_TYPES.map(bt => <option key={bt}>{bt}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label style={labelStyle}>Number of Floors</label>
-                    <input
-                      type="number" min={1} max={100}
-                      value={form.floors && form.floors !== 0 ? form.floors : ''}
-                      onChange={e => setForm(prev => ({ ...prev, floors: e.target.value === '' ? '' : Number(e.target.value) }))}
-                      placeholder="e.g. 3"
-                      style={inputStyle}
-                      required
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <p className="text-[10px] font-bold uppercase tracking-wider mb-3 text-[#1D4ED8]">
-                    <SectionBuilding className="w-4 h-4 inline mr-1.5" /> BUILDING DIMENSIONS
-                  </p>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div>
-                      <label style={labelStyle}>Building Length (m)</label>
-                      <input
-                        type="number" min={1} step={0.1}
-                        value={form.buildingLength}
-                        onChange={e => setForm(prev => ({ ...prev, buildingLength: Number(e.target.value) }))}
-                        style={{ ...inputStyle }}
-                        placeholder="e.g. 50"
-                      />
-                    </div>
-                    <div>
-                      <label style={labelStyle}>Building Width (m)</label>
-                      <input
-                        type="number" min={1} step={0.1}
-                        value={form.buildingWidth}
-                        onChange={e => setForm(prev => ({ ...prev, buildingWidth: Number(e.target.value) }))}
-                        style={{ ...inputStyle }}
-                        placeholder="e.g. 30"
-                      />
-                    </div>
-                    <div>
-                      <label style={labelStyle}>Floor Height (m)</label>
-                      <input
-                        type="number" min={1} step={0.1}
-                        value={form.floorHeight}
-                        onChange={e => setForm(prev => ({ ...prev, floorHeight: Number(e.target.value) }))}
-                        style={{ ...inputStyle }}
-                        placeholder="e.g. 4"
-                      />
-                    </div>
-                  </div>
-                </div>
               </div>
             </div>
           )}
@@ -501,14 +428,6 @@ export default function CreateSurveyForm({
                     }
                     if (!form.startDate) {
                       setErrorMsg('Please select the Survey Schedule Date.');
-                      return;
-                    }
-                    if (!form.buildingType) {
-                      setErrorMsg('Please select the Building Type.');
-                      return;
-                    }
-                    if (!form.floors || form.floors < 1) {
-                      setErrorMsg('Please enter a valid number of floors.');
                       return;
                     }
                   }

@@ -78,7 +78,6 @@ export default function SurveyWizard({ projectId, surveyType, onComplete, onBack
   const [currentStep, setCurrentStep] = useState(0);
   const [formData, setFormData] = useState<Record<string, any>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [mode, setMode] = useState<'ai' | 'manual' | null>(null);
   const [aiBaseline, setAiBaseline] = useState<any>(null);
 
   useEffect(() => {
@@ -156,23 +155,7 @@ export default function SurveyWizard({ projectId, surveyType, onComplete, onBack
     { key: 'review', label: 'Review' },
   ];
 
-  const adjustedSteps = mode === 'ai'
-    ? [
-        stepsList[0],
-        { key: 'mode', label: 'Survey Method' },
-        { key: 'ai-upload', label: 'AI Analysis' },
-        stepsList[stepsList.length - 1],
-      ]
-    : mode === 'manual'
-      ? [
-          stepsList[0],
-          { key: 'mode', label: 'Survey Method' },
-          ...stepsList.slice(1),
-        ]
-      : [
-          stepsList[0],
-          { key: 'mode', label: 'Survey Method' },
-        ];
+  const adjustedSteps = stepsList;
 
   const step = adjustedSteps[currentStep] || adjustedSteps[adjustedSteps.length - 1];
   const SurveyIconCmp = systemOptionIcons[surveyType] || systemOptionIcons['CCTV'];
@@ -213,21 +196,9 @@ export default function SurveyWizard({ projectId, surveyType, onComplete, onBack
     return Object.keys(newErrors).length === 0;
   };
 
-  // Auto-advance when mode is selected on the mode step
-  useEffect(() => {
-    if (currentStep === 1 && mode) {
-      setErrors({});
-      setCurrentStep(prev => prev + 1);
-    }
-  }, [mode]);
-
   const handleNext = async () => {
     // Validate Building Info step before advancing
     if (step.key === 'building' && !validateBuildingStep()) {
-      return;
-    }
-    // If on mode step, require mode selection
-    if (step.key === 'mode' && !mode) {
       return;
     }
     if (isLast) {
@@ -235,7 +206,7 @@ export default function SurveyWizard({ projectId, surveyType, onComplete, onBack
       await svc.createSurvey({
         projectId,
         type: surveyType,
-        data: { ...formData, surveyMode: mode },
+        data: { ...formData, surveyMode: 'manual' },
         status: 'Draft',
       });
       onComplete();
@@ -365,9 +336,9 @@ export default function SurveyWizard({ projectId, surveyType, onComplete, onBack
         </aside>
 
         {/* ── Main Content ── */}
-        <main style={{ flex: 1, overflowY: 'auto', padding: '32px 40px' }}>
+        <main style={{ flex: 1, overflowY: 'auto', padding: '32px 40px 100px 40px' }}>
           {/* AI Pre-Estimation Helper Banner */}
-          {aiBaseline && mode !== 'ai' && (
+          {aiBaseline && (
             <div className="mb-6 p-4 rounded-xl border border-indigo-200 bg-gradient-to-r from-indigo-50/80 to-blue-50/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center text-sm font-black shrink-0">
@@ -402,12 +373,6 @@ export default function SurveyWizard({ projectId, surveyType, onComplete, onBack
           }}>
             {step.key === 'building' && (
               <BuildingForm data={formData} onChange={updateField} errors={errors} />
-            )}
-            {step.key === 'mode' && (
-              <ModeSelector mode={mode} onSelect={setMode} />
-            )}
-            {step.key === 'ai-upload' && (
-              <AiUploadForm data={formData} onChange={updateField} />
             )}
             {step.key === 'cameras' && (
               <CameraForm data={formData} onChange={updateField} />
@@ -446,6 +411,7 @@ export default function SurveyWizard({ projectId, surveyType, onComplete, onBack
             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
             marginTop: 24,
             padding: '16px 0',
+            paddingRight: '150px',
             borderTop: '1px solid #e5e7eb',
           }}>
             <button
@@ -502,13 +468,26 @@ export default function SurveyWizard({ projectId, surveyType, onComplete, onBack
 // ─── Sub-forms ─────────────────────────────────────────────
 
 function BuildingForm({ data, onChange, errors = {} }: { data: any; onChange: any; errors?: Record<string, string> }) {
-  const handleDimensionChange = (key: string, val: number) => {
-    onChange(key, val);
-    const length = key === 'buildingLength' ? val : (data.buildingLength || 0);
-    const width = key === 'buildingWidth' ? val : (data.buildingWidth || 0);
-    const floors = key === 'floors' ? val : (data.floors || 1);
+  React.useEffect(() => {
+    const length = Number(data.buildingLength) || 0;
+    const width = Number(data.buildingWidth) || 0;
+    const floors = Number(data.floors) || 0;
     if (length > 0 && width > 0) {
-      onChange('totalFloorArea', length * width * floors);
+      const calculated = length * width * (floors > 0 ? floors : 1);
+      if (data.totalFloorArea !== calculated) {
+        onChange('totalFloorArea', calculated);
+      }
+    }
+  }, [data.buildingLength, data.buildingWidth, data.floors]);
+
+  const handleDimensionChange = (key: string, val: any) => {
+    onChange(key, val);
+    const numVal = typeof val === 'number' ? val : Number(val) || 0;
+    const length = key === 'buildingLength' ? numVal : (Number(data.buildingLength) || 0);
+    const width = key === 'buildingWidth' ? numVal : (Number(data.buildingWidth) || 0);
+    const floors = key === 'floors' ? numVal : (Number(data.floors) || 0);
+    if (length > 0 && width > 0) {
+      onChange('totalFloorArea', length * width * (floors > 0 ? floors : 1));
     }
   };
 
@@ -646,11 +625,20 @@ function BuildingForm({ data, onChange, errors = {} }: { data: any; onChange: an
             Total Floor Area (m²)
           </label>
           <input
-            type="number" min={0} step="any"
-            value={data.totalFloorArea || ''}
-            onChange={e => onChange('totalFloorArea', Number(e.target.value))}
+            type="text"
+            readOnly
+            disabled
+            value={data.totalFloorArea ? `${data.totalFloorArea} m²` : ''}
             placeholder="Auto-calculated"
-            style={{ ...inputStyle('totalFloorArea'), background: '#f9fafb', color: '#6b7280' }}
+            style={{
+              ...inputStyle('totalFloorArea'),
+              background: '#f8fafc',
+              color: data.totalFloorArea ? '#1e293b' : '#94a3b8',
+              fontWeight: 700,
+              cursor: 'not-allowed',
+              userSelect: 'none',
+              border: '1px solid #e2e8f0',
+            }}
           />
         </div>
         <div>

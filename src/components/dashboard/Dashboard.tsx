@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import type { User, Project, AIScanGroup } from '../../App';
 import CreateProjectModal from '../projects/CreateProjectModal';
+import EditProjectModal from '../projects/EditProjectModal';
 import Sidebar from './Sidebar';
 import type { View } from './Sidebar';
 import NotificationBell from '../notifications/NotificationBell';
@@ -1366,7 +1367,7 @@ export default function Dashboard({
                             <tr className="text-[9px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100 dark:border-slate-800">
                               <th className="py-3 pl-6">Project / Client</th>
                               <th className="py-3 text-center">Status</th>
-                              <th className="py-3 text-center">Date</th>
+                              <th className="py-3 text-center">Date & Time</th>
                               <th className="py-3 pr-6 text-right" />
                             </tr>
                           </thead>
@@ -1377,6 +1378,17 @@ export default function Dashboard({
                               const isNearBottom = i >= ordered.length - 2 && ordered.length >= 2;
                               const statusBar =
                                 Object.entries(statusConfig).find(([key]) => project.status?.includes(key))?.[1]?.bar || '#64748B';
+
+                              const formattedTime = (() => {
+                                if (!project.createdAt) return '';
+                                try {
+                                  const d = new Date(project.createdAt);
+                                  if (!isNaN(d.getTime())) {
+                                    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+                                  }
+                                } catch {}
+                                return '';
+                              })();
 
                               return (
                                 <tr
@@ -1411,8 +1423,15 @@ export default function Dashboard({
                                   <td className="py-3.5 text-center">
                                     <StatusBadge status={project.status} />
                                   </td>
-                                  <td className="py-3.5 text-center text-[11px] font-medium text-slate-500 dark:text-slate-400">
-                                    {project.startDate || '—'}
+                                  <td className="py-3.5 text-center text-[11px] font-medium text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                                    <div className="flex items-center justify-center gap-1.5">
+                                      <span>{project.startDate || (project.createdAt ? project.createdAt.split('T')[0] : '—')}</span>
+                                      {formattedTime && (
+                                        <span className="text-[10px] text-slate-400 dark:text-slate-500 font-semibold">
+                                          · {formattedTime}
+                                        </span>
+                                      )}
+                                    </div>
                                   </td>
                                   <td className={`py-3.5 pr-6 text-right relative ${isOpen ? 'z-50' : ''}`} onClick={e => e.stopPropagation()}>
                                     <button
@@ -1616,94 +1635,6 @@ export default function Dashboard({
         <AIChatbotFloating userRole={user?.role} activeProjectName={selectedCompanyProject?.name} />
       </main>
 
-    </div>
-  );
-}
-
-// ── Edit Project Modal (unchanged logic) ──
-function EditProjectModal({
-  project,
-  onClose,
-  onSave,
-}: {
-  project: Project;
-  onClose: () => void;
-  onSave: (p: Project) => void;
-}) {
-  const [name, setName] = useState(project.name);
-  const [clientName, setClientName] = useState(project.clientName);
-  const [location, setLocation] = useState(project.location);
-  const [status, setStatus] = useState(project.status);
-  const [buildingType, setBuildingType] = useState(project.buildingType || '');
-  const [floors, setFloors] = useState<number | string>(project.floors ?? '');
-
-  const inputCls =
-    'w-full px-3.5 py-2.5 rounded-xl bg-white border border-slate-200 text-xs text-slate-700 outline-none focus:border-blue-400 transition-colors font-medium';
-  const labelCls = 'block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5';
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop">
-      <div className="w-full max-w-lg bg-white rounded-3xl border border-slate-100 shadow-2xl overflow-hidden animate-scale-in">
-        <div className="flex items-center justify-between p-5 border-b border-slate-100">
-          <h2 className="text-sm font-black text-slate-800">Edit Project</h2>
-          <button onClick={onClose} className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors">
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-          </button>
-        </div>
-        <form
-          onSubmit={e => {
-            e.preventDefault();
-            onSave({ ...project, name, clientName, location, status, buildingType, floors: floors !== '' && !isNaN(Number(floors)) ? Number(floors) : undefined });
-            onClose();
-          }}
-          className="p-5 space-y-4"
-        >
-          <div>
-            <label className={labelCls}>Project Name</label>
-            <input value={name} onChange={e => setName(e.target.value)} className={inputCls} required />
-          </div>
-          <div>
-            <label className={labelCls}>Company Name</label>
-            <input value={clientName} onChange={e => setClientName(e.target.value)} className={inputCls} required />
-          </div>
-          <div>
-            <label className={labelCls}>Location</label>
-            <input value={location} onChange={e => setLocation(e.target.value)} className={inputCls} required />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={labelCls}>Status</label>
-              <select value={status} onChange={e => setStatus(e.target.value)} className={`${inputCls} cursor-pointer`}>
-                <option>Pending</option><option>In Progress</option><option>Completed</option>
-              </select>
-            </div>
-            <div>
-              <label className={labelCls}>Building Type</label>
-              <select value={buildingType} onChange={e => setBuildingType(e.target.value)} className={`${inputCls} cursor-pointer`}>
-                <option value="">Select...</option>
-                <option>Office</option><option>Retail</option><option>Warehouse</option>
-                <option>School</option><option>Hospital</option><option>Residential</option>
-              </select>
-            </div>
-          </div>
-          <div>
-            <label className={labelCls}>Floors</label>
-            <input type="number" min={1} placeholder="e.g. 3" value={floors === 0 ? '' : floors} onChange={e => setFloors(e.target.value === '' ? '' : e.target.value)} className={inputCls} />
-          </div>
-          <div className="flex gap-2 pt-1">
-            <button type="button" onClick={onClose} className="flex-1 py-2.5 rounded-xl text-xs font-bold bg-slate-50 text-slate-600 border border-slate-200 btn-press">
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="flex-1 py-2.5 rounded-xl text-xs font-bold text-white btn-press"
-              style={{ background: 'linear-gradient(135deg, #2563EB, #1D4ED8)', boxShadow: '0 4px 12px rgba(37,99,235,0.25)' }}
-            >
-              Save Changes
-            </button>
-          </div>
-        </form>
-      </div>
     </div>
   );
 }

@@ -2,6 +2,7 @@ import React from 'react';
 import type { User, Project, SurveyType } from '../../App';
 import { StatCalendar, StatBolt, StatClipboard, Check } from '../../utils/Icons';
 import { useToast } from '../utils/Toast';
+import EditProjectModal from './EditProjectModal';
 
 const SURVEY_TYPES: {
   key: SurveyType;
@@ -118,10 +119,12 @@ interface Props {
   onViewEstimation: () => void;
   onViewSurveySummary: () => void;
   onUpdateStatus: (projectId: string, status: string) => void;
+  onUpdateProject?: (project: Project) => void;
 }
 
-export default function ProjectDetail({ user, project, onBack, onStartSurvey, onViewEstimation, onViewSurveySummary, onUpdateStatus }: Props) {
+export default function ProjectDetail({ user, project, onBack, onStartSurvey, onViewEstimation, onViewSurveySummary, onUpdateStatus, onUpdateProject }: Props) {
   const { confirm } = useToast();
+  const [isEditing, setIsEditing] = React.useState(false);
   const activeSurveyTypes = React.useMemo(() => {
     if (!project.systemTypes || project.systemTypes.length === 0) {
       return SURVEY_TYPES;
@@ -196,11 +199,32 @@ export default function ProjectDetail({ user, project, onBack, onStartSurvey, on
             Back to Dashboard
           </button>
           <div className="flex items-center gap-3">
+            <button
+              onClick={() => setIsEditing(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-blue-700 bg-blue-50 border border-blue-200 hover:bg-blue-100 transition-colors cursor-pointer"
+              title="Edit all project details"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+              </svg>
+              Edit Project
+            </button>
             <StatusBadge status={project.status} />
             <span className="text-[10px] font-bold text-slate-400 font-mono">ID: {project.id}</span>
           </div>
         </div>
       </header>
+
+      {isEditing && (
+        <EditProjectModal
+          project={project}
+          onClose={() => setIsEditing(false)}
+          onSave={(updated) => {
+            onUpdateProject?.(updated);
+            setIsEditing(false);
+          }}
+        />
+      )}
 
       <main className="max-w-7xl mx-auto px-6 py-8">
         {/* Management / Sales Approval Banner */}
