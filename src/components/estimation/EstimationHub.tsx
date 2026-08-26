@@ -190,6 +190,7 @@ export default function EstimationHub({ user, onNavigateToCreate, onSaveAIScan }
         {activeTab === 'document' && (
           <div className="h-full overflow-hidden">
             <TORComparisonView
+              userRole={user?.role}
               onSaveAIScan={onSaveAIScan}
               onScanningChange={setIsDocScanning}
             />

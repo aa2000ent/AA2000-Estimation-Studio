@@ -566,12 +566,16 @@ export default function Sidebar({ user, currentView, onNavigate, notifications, 
                 const displayCount = savedCount > 0 ? savedCount : count;
                 const accentColor = item.accent || '#2563EB';
 
+                const inactiveColor = isDark ? '#CBD5E1' : '#64748B';
+                const hoverBg = isDark ? 'rgba(255,255,255,0.07)' : 'rgba(37,99,235,0.07)';
+                const hoverColor = isDark ? '#FFFFFF' : '#2563EB';
+
                 return (
                   <div key={item.view} className="space-y-0.5">
                     <button
                       onClick={() => onNavigate(item.view)}
                       title={collapsed ? item.label : undefined}
-                      className={`w-full flex items-center gap-2.5 px-3 py-2.5 text-[15px] font-bold text-left transition-all relative group ${collapsed ? 'justify-center' : ''} ${!active ? 'hover:bg-blue-100/60 hover:text-blue-700' : ''}`}
+                      className={`w-full flex items-center gap-2.5 px-3 py-2.5 text-[15px] font-bold text-left transition-all relative group ${collapsed ? 'justify-center' : ''}`}
                       style={
                         active
                           ? {
@@ -581,10 +585,22 @@ export default function Sidebar({ user, currentView, onNavigate, notifications, 
                             boxShadow: '0 4px 14px rgba(37, 99, 235, 0.4), 0 1px 3px rgba(0,0,0,0.1)',
                           }
                           : {
-                            color: '#64748B',
+                            color: inactiveColor,
                             borderRadius: '10px',
                           }
                       }
+                      onMouseEnter={e => {
+                        if (!active) {
+                          (e.currentTarget as HTMLButtonElement).style.background = hoverBg;
+                          (e.currentTarget as HTMLButtonElement).style.color = hoverColor;
+                        }
+                      }}
+                      onMouseLeave={e => {
+                        if (!active) {
+                          (e.currentTarget as HTMLButtonElement).style.background = 'transparent';
+                          (e.currentTarget as HTMLButtonElement).style.color = inactiveColor;
+                        }
+                      }}
                     >
                       {/* Active Glowing Blue Selector Bar */}
                       {active && (
@@ -594,10 +610,10 @@ export default function Sidebar({ user, currentView, onNavigate, notifications, 
                       )}
 
                       <span
-                        className={`shrink-0 transition-transform group-hover:scale-110 ${!active ? 'group-hover:text-blue-600' : ''}`}
-                        style={{ color: active ? '#FFFFFF' : '#94A3B8' }}
+                        className="shrink-0 transition-transform transition-colors duration-150 group-hover:scale-110"
+                        style={{ color: active ? '#FFFFFF' : isDark ? '#B8C5D9' : '#64748B' }}
                       >
-                        {navIcons[item.view](active)}
+                        {navIcons[item.view](false)}
                       </span>
 
                       {!collapsed && (
@@ -616,8 +632,8 @@ export default function Sidebar({ user, currentView, onNavigate, notifications, 
                                     backdropFilter: 'blur(4px)',
                                   }
                                   : {
-                                    background: `${accentColor}15`,
-                                    color: accentColor,
+                                    background: isDark ? `${accentColor}30` : `${accentColor}15`,
+                                    color: isDark ? '#93C5FD' : accentColor,
                                   }
                               }
                             >

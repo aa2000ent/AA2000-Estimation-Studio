@@ -993,7 +993,7 @@ export default function Dashboard({
                 />
               </div>
               <div style={{ display: view === 'floor-plan' ? undefined : 'none' }}>
-                <FloorPlanView />
+                <FloorPlanView userRole={user.role} />
               </div>
               <div style={{ display: view === 'estimation-hub' ? undefined : 'none', height: view === 'estimation-hub' ? '100%' : undefined }}>
                 <EstimationHub
@@ -1066,7 +1066,7 @@ export default function Dashboard({
               onUpdateAIScan={onUpdateAIScan}
             />
           ) : view === 'saved-boqs' ? (
-            <SavedBOQsView />
+            <SavedBOQsView userRole={user.role} />
           ) : view === 'history' ? (
             <SavedEstimationsView
               projects={projectList}

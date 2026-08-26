@@ -3,6 +3,7 @@ export const ROLES = {
   ACCOUNTING: 'ACCOUNTING',
   PROCUREMENT: 'PROCUREMENT',
   ADMIN: 'ADMIN',
+  TECHNICIAN: 'TECHNICIAN',
 } as const;
 
 export type Role = typeof ROLES[keyof typeof ROLES];
@@ -19,6 +20,7 @@ export const USER_CREDENTIALS: UserCredential[] = [
   { employeeId: 'ACCOUNTING',  pin: '111111', fullName: 'Accounting',  role: 'ACCOUNTING' },
   { employeeId: 'PROCUREMENT', pin: '111111', fullName: 'Procurement', role: 'PROCUREMENT' },
   { employeeId: 'ADMIN',       pin: '111111', fullName: 'Admin',       role: 'ADMIN' },
+  { employeeId: 'TECHNICIAN',  pin: '111111', fullName: 'Technician',  role: 'TECHNICIAN' },
 ];
 
 // User roles and their permissions
@@ -50,7 +52,20 @@ export const ROLE_PERMISSIONS: Record<Role, string[]> = {
     'manage_surveys',
     'manage_settings',
   ],
+  [ROLES.TECHNICIAN]: [
+    'view_all_projects',
+    'view_estimates',
+    'view_materials',
+    'manage_surveys',
+  ],
 };
+
+export function canViewPrices(userRole?: string | null, user?: { id?: string; role?: string; email?: string } | null): boolean {
+  const role = (userRole || user?.role || '').toUpperCase();
+  if (role === 'TECHNICIAN') return false;
+  if (user?.id?.toLowerCase().includes('tech') || user?.email?.toLowerCase().includes('tech')) return false;
+  return true;
+}
 
 // Survey status states
 export const SURVEY_STATUS = {

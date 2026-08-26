@@ -220,19 +220,11 @@ const AI_STEPS = [
   'Compiling materials bill-of-quantities & unit counts...',
 ];
 
+import { canViewPrices } from '../../constants/roles';
+
 export default function EstimationSummary({ project, user, onBack, onUpdateStatus }: Props) {
   const { toast } = useToast();
-  const showPrices = !!(user && (
-    user.role === 'ADMIN' || 
-    user.role === 'ACCOUNTING' ||
-    user.role === 'PROCUREMENT' ||
-    user.id.toLowerCase().includes('admin') || 
-    user.id.toLowerCase().includes('accounting') ||
-    user.id.toLowerCase().includes('procurement') ||
-    user.email?.toLowerCase().includes('admin') ||
-    user.email?.toLowerCase().includes('accounting') ||
-    user.email?.toLowerCase().includes('procurement')
-  ));
+  const showPrices = canViewPrices(user?.role, user);
 
   const [priceTier, setPriceTier] = useState<'srp' | 'contractorPrice' | 'dealerPrice'>('srp');
   const [showQuotationModal, setShowQuotationModal] = useState(false);
@@ -2004,8 +1996,8 @@ CCTV:                { bg: '#EFF6FF', color: '#1E3A8A', label: 'CCTV System',   
           </div>
         </div>
 
-        {/* ── Overall BOQ Estimation Summary (Matches Reference Screenshot) ── */}
-        {(() => {
+        {/* ── Overall BOQ Estimation Summary ── */}
+        {showPrices && (() => {
           const totalLabor = manpower.reduce((sum, m) => sum + (m.totalCost || ((m.dayRate || 1000) * m.manDays)), 0);
           const totalMaterials = consumables.reduce((sum, c) => sum + (c.totalPrice || 0), 0);
           const totalFees = fees.reduce((sum, f) => sum + (f.amount || 0), 0);
@@ -2232,15 +2224,17 @@ CCTV:                { bg: '#EFF6FF', color: '#1E3A8A', label: 'CCTV System',   
           </button>
           
           <div className="flex items-center gap-3">
-            <button
-              onClick={() => setShowQuotationModal(true)}
-              className="px-6 py-3 rounded-xl text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 transition-all flex items-center gap-2 shadow-sm"
-            >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-              View AA2000 Commercial Quotation
-            </button>
+            {showPrices && (
+              <button
+                onClick={() => setShowQuotationModal(true)}
+                className="px-6 py-3 rounded-xl text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 transition-all flex items-center gap-2 shadow-sm"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                View AA2000 Commercial Quotation
+              </button>
+            )}
 
             <button
               onClick={() => {
@@ -2274,8 +2268,9 @@ CCTV:                { bg: '#EFF6FF', color: '#1E3A8A', label: 'CCTV System',   
         </div>
 
         {/* ── AA2000 OFFICIAL COMMERCIAL SALES QUOTATION MODAL ── */}
-        {showQuotationModal && (
+        {showPrices && showQuotationModal && (
           <QuotationModal
+            userRole={user?.role}
             project={project}
             aiQuotation={aiQuotation}
             consumables={consumables}

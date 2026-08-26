@@ -25,7 +25,10 @@ export interface QuotationHeaderState {
   validityPeriod: string;
 }
 
+import { canViewPrices } from '../../constants/roles';
+
 interface QuotationModalProps {
+  userRole?: string;
   project: Project;
   aiQuotation: FloorPlanEstimation | null;
   consumables: EstimationConsumableEntry[];
@@ -319,6 +322,7 @@ export function generateSystemScopeOfWorks(
 }
 
 export default function QuotationModal({
+  userRole,
   project,
   aiQuotation,
   consumables,
@@ -333,6 +337,7 @@ export default function QuotationModal({
   setShowEditQuotation,
   onClose,
 }: QuotationModalProps) {
+  if (!canViewPrices(userRole)) return null;
   // ── Compute dynamic values for the quotation document ─────────────────────
   const primarySys = (project.systemTypes?.[0] || 'CCTV').toUpperCase();
   const sysLabel = (project.systemTypes && project.systemTypes.length > 0)

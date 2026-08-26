@@ -44,6 +44,7 @@ const ROLE_LABELS: Record<string, string> = {
   ACCOUNTING: 'Accounting & Finance',
   PROCUREMENT: 'Procurement & Sourcing',
   ADMIN: 'Admin',
+  TECHNICIAN: 'Field Technician',
 };
 
 export default function Login({ onLogin }: Props) {

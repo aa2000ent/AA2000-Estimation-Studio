@@ -129,6 +129,37 @@ const ADMIN_THEME: RoleTheme = {
   ],
 };
 
+const TECHNICIAN_THEME: RoleTheme = {
+  role: 'TECHNICIAN' as any,
+  primary: '#4F46E5',
+  primaryDark: '#4338CA',
+  primaryLight: '#6366F1',
+  secondary: '#0284C7',
+  accent: '#38BDF8',
+  heroGradient: 'linear-gradient(135deg, #1E1B4B 0%, #312E81 45%, #4F46E5 100%)',
+  sidebarGradient: 'linear-gradient(180deg, #EEF2FF 0%, #E0E7FF 100%)',
+  buttonGradient: 'linear-gradient(135deg, #4F46E5 0%, #4338CA 100%)',
+  primaryAlpha08: 'rgba(79,70,229,0.08)',
+  primaryAlpha12: 'rgba(79,70,229,0.12)',
+  primaryAlpha20: 'rgba(79,70,229,0.20)',
+  primaryAlpha30: 'rgba(79,70,229,0.30)',
+  onPrimary: '#FFFFFF',
+  badgeBg: 'rgba(79,70,229,0.10)',
+  badgeText: '#4338CA',
+  sidebarBg: '#EEF2FF',
+  sidebarBorder: '#E0E7FF',
+  roleLabel: 'Field Technician & Surveyor',
+  roleEmoji: '🛠️',
+  heroSubtitle:
+    'Welcome to your technician survey workspace. Conduct site surveys, map room layouts & equipment counts, and submit technical specifications for engineering review.',
+  quickActions: [
+    { label: 'Start Survey', icon: '📝' },
+    { label: 'View Floor Plan', icon: '📐' },
+    { label: 'My Projects', icon: '📂' },
+    { label: 'Survey Reports', icon: '📊' },
+  ],
+};
+
 export function getRoleTheme(role?: string, isDark?: boolean): RoleTheme {
   let baseTheme: RoleTheme;
   switch (role) {
@@ -137,6 +168,9 @@ export function getRoleTheme(role?: string, isDark?: boolean): RoleTheme {
       break;
     case 'PROCUREMENT':
       baseTheme = PROCUREMENT_THEME;
+      break;
+    case 'TECHNICIAN':
+      baseTheme = TECHNICIAN_THEME;
       break;
     case 'ACCOUNTING':
     default:

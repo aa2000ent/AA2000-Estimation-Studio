@@ -120,9 +120,10 @@ interface Props {
   onViewSurveySummary: () => void;
   onUpdateStatus: (projectId: string, status: string) => void;
   onUpdateProject?: (project: Project) => void;
+  isDark?: boolean;
 }
 
-export default function ProjectDetail({ user, project, onBack, onStartSurvey, onViewEstimation, onViewSurveySummary, onUpdateStatus, onUpdateProject }: Props) {
+export default function ProjectDetail({ user, project, onBack, onStartSurvey, onViewEstimation, onViewSurveySummary, onUpdateStatus, onUpdateProject, isDark }: Props) {
   const { confirm } = useToast();
   const [isEditing, setIsEditing] = React.useState(false);
   const activeSurveyTypes = React.useMemo(() => {
@@ -183,15 +184,22 @@ export default function ProjectDetail({ user, project, onBack, onStartSurvey, on
   };
 
   return (
-    <div className="flex-1 overflow-y-auto pb-12" style={{ background: '#F8FAFC' }}>
+    <div className="flex-1 overflow-y-auto pb-12" style={{ background: isDark ? '#0B0F19' : '#F8FAFC' }}>
       {/* Header */}
       <header
-        className="sticky top-0 z-40 px-6 py-4 bg-gradient-to-r from-white to-blue-50 border-b border-slate-200 shadow-sm"
+        className="sticky top-0 z-40 px-6 py-4 border-b shadow-sm"
+        style={{
+          background: isDark ? '#0D1527' : 'linear-gradient(to right, #ffffff, #eff6ff)',
+          borderColor: isDark ? '#1E293B' : '#e2e8f0',
+        }}
       >
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <button
             onClick={onBack}
-            className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-bold text-slate-500 hover:text-slate-800 hover:bg-slate-50 transition-colors"
+            className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-bold transition-colors"
+            style={{ color: isDark ? '#94A3B8' : '#64748B' }}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = isDark ? '#E2E8F0' : '#1e293b'; (e.currentTarget as HTMLElement).style.background = isDark ? 'rgba(255,255,255,0.06)' : '#f1f5f9'; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = isDark ? '#94A3B8' : '#64748B'; (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
@@ -202,7 +210,12 @@ export default function ProjectDetail({ user, project, onBack, onStartSurvey, on
             {user.role === 'ADMIN' && (
               <button
                 onClick={() => setIsEditing(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-blue-700 bg-blue-50 border border-blue-200 hover:bg-blue-100 transition-colors cursor-pointer"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-colors cursor-pointer border"
+                style={{
+                  color: isDark ? '#93C5FD' : '#1d4ed8',
+                  background: isDark ? 'rgba(37,99,235,0.15)' : '#eff6ff',
+                  borderColor: isDark ? 'rgba(37,99,235,0.35)' : '#bfdbfe',
+                }}
                 title="Edit all project details"
               >
                 <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -212,7 +225,7 @@ export default function ProjectDetail({ user, project, onBack, onStartSurvey, on
               </button>
             )}
             <StatusBadge status={project.status} />
-            <span className="text-[10px] font-bold text-slate-400 font-mono">ID: {project.id}</span>
+            <span className="text-[10px] font-bold font-mono" style={{ color: isDark ? '#475569' : '#94a3b8' }}>ID: {project.id}</span>
           </div>
         </div>
       </header>
@@ -231,20 +244,27 @@ export default function ProjectDetail({ user, project, onBack, onStartSurvey, on
       <main className="max-w-7xl mx-auto px-6 py-8">
         {/* Financial & Admin Approval Banner */}
         {(user.role === 'ADMIN' || user.role === 'ACCOUNTING') && project.status === 'Finalized' && (
-          <div className="bg-white border border-slate-200 rounded-3xl p-6 mb-8 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm animate-fade-in-up">
+          <div
+            className="rounded-3xl p-6 mb-8 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm animate-fade-in-up border"
+            style={{
+              background: isDark ? '#131B2E' : '#ffffff',
+              borderColor: isDark ? '#1E293B' : '#e2e8f0',
+            }}
+          >
             <div>
               <div className="flex items-center gap-2 mb-1">
                 <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-                <h3 className="text-xs font-black text-slate-800 uppercase tracking-wide">Awaiting Financial & Admin Approval</h3>
+                <h3 className="text-xs font-black uppercase tracking-wide" style={{ color: isDark ? '#F8FAFC' : '#1e293b' }}>Awaiting Financial & Admin Approval</h3>
               </div>
-              <p className="text-[11px] leading-relaxed text-slate-400 font-semibold">
+              <p className="text-[11px] leading-relaxed font-semibold" style={{ color: isDark ? '#94A3B8' : '#94a3b8' }}>
                 Please review the ground-validated survey and cost estimation, then approve or request adjustments.
               </p>
             </div>
             <div className="flex gap-2 w-full sm:w-auto shrink-0">
               <button
                 onClick={() => onUpdateStatus(project.id, 'Finalized - Rejected')}
-                className="flex-1 sm:flex-none px-5 py-2.5 rounded-xl font-bold text-xs text-red-600 bg-red-50 hover:bg-red-100 transition-all cursor-pointer"
+                className="flex-1 sm:flex-none px-5 py-2.5 rounded-xl font-bold text-xs transition-all cursor-pointer"
+                style={{ color: '#dc2626', background: isDark ? 'rgba(220,38,38,0.12)' : '#fef2f2' }}
               >
                 Reject / Request Edit
               </button>
@@ -260,18 +280,21 @@ export default function ProjectDetail({ user, project, onBack, onStartSurvey, on
 
         {/* Reopen banner — for approved/rejected surveys that need to be accessed/edited again */}
         {(user.role === 'ADMIN' || user.role === 'ACCOUNTING') && (project.status === 'Finalized - Approved' || project.status === 'Finalized - Rejected') && (
-          <div className="bg-white border border-slate-200 rounded-3xl p-6 mb-8 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm">
+          <div
+            className="rounded-3xl p-6 mb-8 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm border"
+            style={{ background: isDark ? '#131B2E' : '#ffffff', borderColor: isDark ? '#1E293B' : '#e2e8f0' }}
+          >
             <div>
-              <h3 className="text-xs font-black text-slate-800 uppercase tracking-wide">
+              <h3 className="text-xs font-black uppercase tracking-wide" style={{ color: isDark ? '#F8FAFC' : '#1e293b' }}>
                 {project.status === 'Finalized - Approved' ? 'Project Survey Approved & Locked' : 'Project Survey Rejected'}
               </h3>
-              <p className="text-[11px] leading-relaxed text-slate-400 font-semibold mt-0.5">
+              <p className="text-[11px] leading-relaxed font-semibold mt-0.5" style={{ color: isDark ? '#94A3B8' : '#94a3b8' }}>
                 Reopen this project to allow further adjustments.
               </p>
             </div>
             <button
               onClick={() => onUpdateStatus(project.id, 'Finalized')}
-              className="flex-1 sm:flex-none px-5 py-2.5 rounded-xl font-bold text-xs text-white bg-blue-600 hover:bg-blue-700 transition-all shadow-sm shadow-blue-100 cursor-pointer"
+              className="flex-1 sm:flex-none px-5 py-2.5 rounded-xl font-bold text-xs text-white bg-blue-600 hover:bg-blue-700 transition-all shadow-sm cursor-pointer"
             >
               Reopen Survey
             </button>
@@ -280,18 +303,28 @@ export default function ProjectDetail({ user, project, onBack, onStartSurvey, on
 
         {/* Hero card */}
         <div
-          className="rounded-3xl p-6 mb-8 bg-white border border-slate-100 shadow-sm relative overflow-hidden"
+          className="rounded-3xl p-6 mb-8 relative overflow-hidden border"
+          style={{
+            background: isDark ? '#131B2E' : '#ffffff',
+            borderColor: isDark ? '#1E293B' : '#f1f5f9',
+            boxShadow: isDark ? 'none' : '0 1px 4px rgba(0,0,0,0.06)',
+          }}
         >
           <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
             <div className="min-w-0 flex-1">
-              <h1 className="text-xl font-black text-[#0F172A]">{project.name}</h1>
-              <p className="text-xs font-bold text-slate-400 mt-1 uppercase tracking-wider">{project.clientName}</p>
+              <h1 className="text-xl font-black" style={{ color: isDark ? '#F8FAFC' : '#0F172A' }}>{project.name}</h1>
+              <p className="text-xs font-bold mt-1 uppercase tracking-wider" style={{ color: isDark ? '#475569' : '#94a3b8' }}>{project.clientName}</p>
 
               <div className="mt-6 space-y-4">
                 {/* Location */}
                 <div className="flex items-start gap-2.5 min-w-0">
                   <div
-                    className="w-8 h-8 rounded-lg flex items-center justify-center bg-slate-50 border border-slate-100 text-[#1E3A8A] shrink-0"
+                    className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                    style={{
+                      background: isDark ? 'rgba(30,58,138,0.20)' : '#f8fafc',
+                      border: `1px solid ${isDark ? 'rgba(37,99,235,0.25)' : '#f1f5f9'}`,
+                      color: isDark ? '#93C5FD' : '#1E3A8A',
+                    }}
                   >
                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -299,8 +332,8 @@ export default function ProjectDetail({ user, project, onBack, onStartSurvey, on
                     </svg>
                   </div>
                   <div className="min-w-0">
-                    <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Location</p>
-                    <p className="text-xs font-semibold text-slate-600 flex items-center gap-2 flex-wrap">
+                    <p className="text-[9px] font-bold uppercase tracking-wider" style={{ color: isDark ? '#475569' : '#94a3b8' }}>Location</p>
+                    <p className="text-xs font-semibold flex items-center gap-2 flex-wrap" style={{ color: isDark ? '#CBD5E1' : '#475569' }}>
                       <span>{project.location}</span>
                       {(project.location || (project.latitude && project.longitude)) && (
                         <a
@@ -325,32 +358,42 @@ export default function ProjectDetail({ user, project, onBack, onStartSurvey, on
                   {/* Client Contact Phone */}
                   <div className="flex items-center gap-2.5">
                     <div
-                      className="w-8 h-8 rounded-lg flex items-center justify-center bg-slate-50 border border-slate-100 text-[#1E3A8A]"
+                      className="w-8 h-8 rounded-lg flex items-center justify-center"
+                      style={{
+                        background: isDark ? 'rgba(30,58,138,0.20)' : '#f8fafc',
+                        border: `1px solid ${isDark ? 'rgba(37,99,235,0.25)' : '#f1f5f9'}`,
+                        color: isDark ? '#93C5FD' : '#1E3A8A',
+                      }}
                     >
                       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 6.75c0 8.284 6.716 15 15 15h2.25a2.25 2.25 0 002.25-2.25v-1.372c0-.516-.351-.966-.852-1.091l-4.423-1.106c-.44-.11-.902.055-1.173.417l-.97 1.293c-2.824-1.47-5.112-3.758-6.58-6.58l1.293-.97c.362-.271.527-.734.417-1.173L6.963 3.102a1.125 1.125 0 00-1.091-.852H3.562A2.25 2.25 0 001.312 4.5v2.25z" />
                       </svg>
                     </div>
                     <div>
-                      <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Client Contact</p>
-                      <p className="text-xs font-semibold text-slate-600">{project.clientPhone || 'Not set'}</p>
+                      <p className="text-[9px] font-bold uppercase tracking-wider" style={{ color: isDark ? '#475569' : '#94a3b8' }}>Client Contact</p>
+                      <p className="text-xs font-semibold" style={{ color: isDark ? '#CBD5E1' : '#475569' }}>{project.clientPhone || 'Not set'}</p>
                     </div>
                   </div>
 
                   {/* Client Email (Admin Only) */}
                   {user.role === 'ADMIN' && (
                     <div className="flex items-center gap-2.5">
-                      <div
-                        className="w-8 h-8 rounded-lg flex items-center justify-center bg-slate-50 border border-slate-100 text-[#1E3A8A]"
-                      >
-                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
-                        </svg>
-                      </div>
-                      <div>
-                        <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Client Email</p>
-                        <p className="text-xs font-semibold text-slate-600">{project.clientEmail || 'Not set'}</p>
-                      </div>
+                    <div
+                      className="w-8 h-8 rounded-lg flex items-center justify-center"
+                      style={{
+                        background: isDark ? 'rgba(30,58,138,0.20)' : '#f8fafc',
+                        border: `1px solid ${isDark ? 'rgba(37,99,235,0.25)' : '#f1f5f9'}`,
+                        color: isDark ? '#93C5FD' : '#1E3A8A',
+                      }}
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
+                      </svg>
+                    </div>
+                    <div>
+                      <p className="text-[9px] font-bold uppercase tracking-wider" style={{ color: isDark ? '#475569' : '#94a3b8' }}>Client Email</p>
+                      <p className="text-xs font-semibold" style={{ color: isDark ? '#CBD5E1' : '#475569' }}>{project.clientEmail || 'Not set'}</p>
+                    </div>
                     </div>
                   )}
 
@@ -358,15 +401,20 @@ export default function ProjectDetail({ user, project, onBack, onStartSurvey, on
                   {project.buildingType && (
                     <div className="flex items-center gap-2.5">
                       <div
-                        className="w-8 h-8 rounded-lg flex items-center justify-center bg-slate-50 border border-slate-100 text-[#1E3A8A]"
+                        className="w-8 h-8 rounded-lg flex items-center justify-center"
+                        style={{
+                          background: isDark ? 'rgba(30,58,138,0.20)' : '#f8fafc',
+                          border: `1px solid ${isDark ? 'rgba(37,99,235,0.25)' : '#f1f5f9'}`,
+                          color: isDark ? '#93C5FD' : '#1E3A8A',
+                        }}
                       >
                         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 21h19.5m-18-18v18m10.5-18v18m6-13.5V21M6.75 6.75h.75m-.75 3h.75m-.75 3h.75m3-6h.75m-.75 3h.75m-.75 3h.75M6.75 21v-3.375c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21M3 3h12m-.75 4.5H21m-3.75 3.75h.008v.008h-.008v-.008zm0 3h.008v.008h-.008v-.008zm0 3h.008v.008h-.008v-.008z" />
                         </svg>
                       </div>
                       <div>
-                        <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Building</p>
-                        <p className="text-xs font-semibold text-slate-600">{project.buildingType} · {project.floors} floor(s)</p>
+                        <p className="text-[9px] font-bold uppercase tracking-wider" style={{ color: isDark ? '#475569' : '#94a3b8' }}>Building</p>
+                        <p className="text-xs font-semibold" style={{ color: isDark ? '#CBD5E1' : '#475569' }}>{project.buildingType} · {project.floors} floor(s)</p>
                       </div>
                     </div>
                   )}
@@ -374,15 +422,20 @@ export default function ProjectDetail({ user, project, onBack, onStartSurvey, on
                   {/* Start date */}
                   <div className="flex items-center gap-2.5">
                     <div
-                      className="w-8 h-8 rounded-lg flex items-center justify-center bg-slate-50 border border-slate-100 text-[#1E3A8A]"
+                      className="w-8 h-8 rounded-lg flex items-center justify-center"
+                      style={{
+                        background: isDark ? 'rgba(30,58,138,0.20)' : '#f8fafc',
+                        border: `1px solid ${isDark ? 'rgba(37,99,235,0.25)' : '#f1f5f9'}`,
+                        color: isDark ? '#93C5FD' : '#1E3A8A',
+                      }}
                     >
                       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
                       </svg>
                     </div>
                     <div>
-                      <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Start Date</p>
-                      <p className="text-xs font-semibold text-slate-600">{project.startDate || 'Not set'}</p>
+                      <p className="text-[9px] font-bold uppercase tracking-wider" style={{ color: isDark ? '#475569' : '#94a3b8' }}>Start Date</p>
+                      <p className="text-xs font-semibold" style={{ color: isDark ? '#CBD5E1' : '#475569' }}>{project.startDate || 'Not set'}</p>
                     </div>
                   </div>
                 </div>
@@ -393,9 +446,13 @@ export default function ProjectDetail({ user, project, onBack, onStartSurvey, on
             <div className="flex flex-col sm:flex-row gap-3">
               <button
                 onClick={onViewSurveySummary}
-                className="flex items-center gap-2 px-6 py-3.5 rounded-2xl font-bold text-xs text-slate-700 bg-slate-100 hover:bg-slate-200 transition-all shrink-0"
+                className="flex items-center gap-2 px-6 py-3.5 rounded-2xl font-bold text-xs transition-all shrink-0"
+                style={{
+                  color: isDark ? '#CBD5E1' : '#334155',
+                  background: isDark ? 'rgba(255,255,255,0.06)' : '#f1f5f9',
+                }}
               >
-                <svg className="w-4 h-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} style={{ color: isDark ? '#94A3B8' : '#64748b' }}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 002 2h2a2 2 0 002-2z" />
                 </svg>
                 VIEW SURVEY REPORT
@@ -415,14 +472,26 @@ export default function ProjectDetail({ user, project, onBack, onStartSurvey, on
         </div>
 
         {/* Progress Stepper */}
-        <div className="bg-white rounded-3xl p-6 mb-8 border border-slate-100 shadow-sm animate-fade-in-up">
+        <div
+          className="rounded-3xl p-6 mb-8 border shadow-sm animate-fade-in-up"
+          style={{
+            background: isDark ? '#131B2E' : '#ffffff',
+            borderColor: isDark ? '#1E293B' : '#f1f5f9',
+          }}
+        >
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h2 className="text-xs font-black tracking-wider text-slate-800 uppercase">Project Survey Workflow</h2>
-              <p className="text-[10px] font-bold text-slate-400 uppercase mt-0.5">Current Phase Progress</p>
+              <h2 className="text-xs font-black tracking-wider uppercase" style={{ color: isDark ? '#F8FAFC' : '#1e293b' }}>Project Survey Workflow</h2>
+              <p className="text-[10px] font-bold uppercase mt-0.5" style={{ color: isDark ? '#475569' : '#94a3b8' }}>Current Phase Progress</p>
             </div>
-            <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-100 rounded-full px-3 py-1">
-              <span className="text-[10px] font-extrabold text-slate-500 uppercase tracking-wide">
+            <div
+              className="flex items-center gap-1.5 rounded-full px-3 py-1 border"
+              style={{
+                background: isDark ? 'rgba(255,255,255,0.04)' : '#f8fafc',
+                borderColor: isDark ? '#1E293B' : '#f1f5f9',
+              }}
+            >
+              <span className="text-[10px] font-extrabold uppercase tracking-wide" style={{ color: isDark ? '#94A3B8' : '#64748b' }}>
                 Current status: {
                   project.status === 'Pending' || project.status === 'In Progress' || project.status === 'Finalized - Rejected'
                     ? 'Survey In Progress'
@@ -436,7 +505,7 @@ export default function ProjectDetail({ user, project, onBack, onStartSurvey, on
 
           <div className="relative mt-8 mb-4 px-4">
             {/* Connecting lines */}
-            <div className="absolute top-[20px] left-8 right-8 h-1 bg-slate-100 z-0 rounded-full" />
+            <div className="absolute top-[20px] left-8 right-8 h-1 rounded-full z-0" style={{ background: isDark ? '#1E293B' : '#f1f5f9' }} />
             <div 
               className={`absolute top-[20px] left-8 h-1 z-0 transition-all duration-700 rounded-full ${
                 project.status === 'Completed' || project.status === 'Finalized - Approved'
@@ -471,20 +540,23 @@ export default function ProjectDetail({ user, project, onBack, onStartSurvey, on
                 return (
                   <div key={step.label} className="flex flex-col items-center text-center flex-1">
                     <div 
-                      className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-black transition-all duration-500 border-2 ${
-                        isCompleted ? 'bg-emerald-500 border-emerald-500 text-white shadow-md shadow-emerald-100' :
-                        isActive ? 'bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-100 scale-110' :
-                        'bg-white border-slate-200 text-slate-400'
-                      }`}
+                      className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-black transition-all duration-500 border-2`}
+                      style={{
+                        background: isCompleted ? '#10b981' : isActive ? '#2563EB' : (isDark ? '#1E293B' : '#ffffff'),
+                        borderColor: isCompleted ? '#10b981' : isActive ? '#2563EB' : (isDark ? '#334155' : '#e2e8f0'),
+                        color: (isCompleted || isActive) ? '#ffffff' : (isDark ? '#475569' : '#94a3b8'),
+                        boxShadow: isActive ? '0 8px 20px rgba(37,99,235,0.35)' : isCompleted ? '0 4px 12px rgba(16,185,129,0.25)' : 'none',
+                        transform: isActive ? 'scale(1.1)' : 'scale(1)',
+                      }}
                     >
                       {isCompleted ? <Check className="w-4 h-4" /> : step.label === 'Survey In Progress' ? <StatBolt className="w-4 h-4" /> : step.label === 'Awaiting Approval' ? <StatClipboard className="w-4 h-4" /> : <Check className="w-4 h-4" />}
                     </div>
-                    <p className={`text-[11px] font-black mt-3 transition-colors duration-300 uppercase tracking-tight ${
-                      isCompleted ? 'text-emerald-600' : isActive ? 'text-blue-600' : 'text-slate-500'
-                    }`}>
+                    <p className={`text-[11px] font-black mt-3 transition-colors duration-300 uppercase tracking-tight`}
+                      style={{ color: isCompleted ? '#10b981' : isActive ? '#2563EB' : (isDark ? '#475569' : '#64748b') }}
+                    >
                       {step.label}
                     </p>
-                    <p className="text-[9px] font-bold text-slate-400 mt-1 max-w-[120px] leading-tight">
+                    <p className="text-[9px] font-bold mt-1 max-w-[120px] leading-tight" style={{ color: isDark ? '#334155' : '#94a3b8' }}>
                       {step.desc}
                     </p>
                   </div>

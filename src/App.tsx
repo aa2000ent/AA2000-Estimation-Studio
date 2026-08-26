@@ -23,7 +23,7 @@ export interface User {
   fullName: string;
   email?: string;
   employeeId?: string;
-  role?: 'ACCOUNTING' | 'PROCUREMENT' | 'ADMIN';
+  role?: 'ACCOUNTING' | 'PROCUREMENT' | 'ADMIN' | 'TECHNICIAN';
 }
 
 export interface Project {

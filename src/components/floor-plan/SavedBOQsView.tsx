@@ -38,8 +38,11 @@ const confidenceColor = (score: number) =>
 const confidenceLabel = (score: number) =>
   score >= 76 ? 'High Confidence' : score >= 51 ? 'Medium Confidence' : score >= 26 ? 'Low Confidence' : 'Poor Quality';
 
-export default function SavedBOQsView() {
+import { canViewPrices } from '../../constants/roles';
+
+export default function SavedBOQsView({ userRole }: { userRole?: string }) {
   const { toast, confirm } = useToast();
+  const showPrices = canViewPrices(userRole);
   const [boqs, setBOQs] = useState<SavedBOQ[]>([]);
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
 
@@ -242,8 +245,12 @@ export default function SavedBOQsView() {
                             <th className="px-4 py-2 text-left font-bold text-slate-500">Category</th>
                             <th className="px-4 py-2 text-right font-bold text-slate-500">Qty</th>
                             <th className="px-4 py-2 text-left font-bold text-slate-500">Unit</th>
-                            <th className="px-4 py-2 text-right font-bold text-slate-500">Unit Price (₱)</th>
-                            <th className="px-4 py-2 text-right font-bold text-slate-500">Total Price (₱)</th>
+                            {showPrices && (
+                              <>
+                                <th className="px-4 py-2 text-right font-bold text-slate-500">Unit Price (₱)</th>
+                                <th className="px-4 py-2 text-right font-bold text-slate-500">Total Price (₱)</th>
+                              </>
+                            )}
                           </tr></thead>
                           <tbody>
                             {boq.result.consumables.map((c, i) => {
@@ -255,18 +262,24 @@ export default function SavedBOQsView() {
                                   <td className="px-4 py-2"><span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500">{c.category}</span></td>
                                   <td className="px-4 py-2 text-right font-black text-slate-800">{c.quantity}</td>
                                   <td className="px-4 py-2 text-slate-400">{c.unit || '—'}</td>
-                                  <td className="px-4 py-2 text-right text-slate-600 font-medium">&#8369;{unitPrice.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</td>
-                                  <td className="px-4 py-2 text-right font-black text-slate-800">&#8369;{totalPrice.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</td>
+                                  {showPrices && (
+                                    <>
+                                      <td className="px-4 py-2 text-right text-slate-600 font-medium">&#8369;{unitPrice.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</td>
+                                      <td className="px-4 py-2 text-right font-black text-slate-800">&#8369;{totalPrice.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</td>
+                                    </>
+                                  )}
                                 </tr>
                               );
                             })}
                           </tbody>
-                          <tfoot>
-                            <tr className="bg-slate-100/70 border-t border-slate-200">
-                              <td colSpan={5} className="px-4 py-2 font-bold text-slate-700 text-right">Total Materials Price:</td>
-                              <td className="px-4 py-2 text-right font-black text-emerald-700">&#8369;{totalMatCost.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</td>
-                            </tr>
-                          </tfoot>
+                          {showPrices && (
+                            <tfoot>
+                              <tr className="bg-slate-100/70 border-t border-slate-200">
+                                <td colSpan={5} className="px-4 py-2 font-bold text-slate-700 text-right">Total Materials Price:</td>
+                                <td className="px-4 py-2 text-right font-black text-emerald-700">&#8369;{totalMatCost.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</td>
+                              </tr>
+                            </tfoot>
+                          )}
                         </table>
                       </div>
                     </div>

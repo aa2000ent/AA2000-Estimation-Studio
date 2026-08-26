@@ -12,8 +12,11 @@ interface FilePreview {
   isTor: boolean;
 }
 
+import { canViewPrices } from '../../constants/roles';
+
 interface Props {
   projects?: Project[];
+  userRole?: string;
   onAddToProjectEstimation?: (projectId: string, result: FloorPlanEstimation) => void;
   onScanningChange?: (scanning: boolean, step?: string) => void;
 }
@@ -137,8 +140,9 @@ const ANALYSIS_STEPS = [
   'Finalizing Bill of Quantities...',
 ];
 
-export default function FloorPlanView({ projects, onAddToProjectEstimation, onScanningChange }: Props) {
+export default function FloorPlanView({ projects, userRole, onAddToProjectEstimation, onScanningChange }: Props) {
   const { toast } = useToast();
+  const showPrices = canViewPrices(userRole);
   const [files, setFiles] = useState<File[]>([]);
   const [previews, setPreviews] = useState<FilePreview[]>([]);
   const [dragOverFloorPlan, setDragOverFloorPlan] = useState(false);
@@ -484,6 +488,7 @@ export default function FloorPlanView({ projects, onAddToProjectEstimation, onSc
                 multiple
                 accept="image/*,application/pdf,.pdf"
                 className="hidden"
+                onClick={e => e.stopPropagation()}
                 onChange={e => { if (e.target.files?.length) { handleFilesSelect(e.target.files, false); e.target.value = ''; } }}
               />
               <div className="w-10 h-10 mx-auto mb-2 rounded-xl bg-blue-100/80 text-blue-600 flex items-center justify-center">
@@ -516,6 +521,7 @@ export default function FloorPlanView({ projects, onAddToProjectEstimation, onSc
                 multiple
                 accept="application/pdf,.pdf"
                 className="hidden"
+                onClick={e => e.stopPropagation()}
                 onChange={e => { if (e.target.files?.length) { handleFilesSelect(e.target.files, true); e.target.value = ''; } }}
               />
               <div className="w-10 h-10 mx-auto mb-2 rounded-xl bg-blue-100/80 text-blue-600 flex items-center justify-center">
@@ -863,8 +869,12 @@ export default function FloorPlanView({ projects, onAddToProjectEstimation, onSc
                             <th className="px-4 py-2 text-left font-bold text-slate-500">Category</th>
                             <th className="px-4 py-2 text-right font-bold text-slate-500">Qty</th>
                             <th className="px-4 py-2 text-left font-bold text-slate-500">Unit</th>
-                            <th className="px-4 py-2 text-right font-bold text-slate-500">Unit Price (₱)</th>
-                            <th className="px-4 py-2 text-right font-bold text-slate-500">Total Price (₱)</th>
+                            {showPrices && (
+                              <>
+                                <th className="px-4 py-2 text-right font-bold text-slate-500">Unit Price (₱)</th>
+                                <th className="px-4 py-2 text-right font-bold text-slate-500">Total Price (₱)</th>
+                              </>
+                            )}
                           </tr>
                         </thead>
                         <tbody>
@@ -877,30 +887,36 @@ export default function FloorPlanView({ projects, onAddToProjectEstimation, onSc
                                 <td className="px-4 py-2.5"><span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">{c.category}</span></td>
                                 <td className="px-4 py-2.5 text-right font-black text-slate-800">{c.quantity}</td>
                                 <td className="px-4 py-2.5 text-slate-500 font-medium">{c.unit || '-'}</td>
-                                <td className="px-4 py-2.5 text-right">
-                                  <div className="flex items-center justify-end gap-1">
-                                    <span className="text-slate-400 font-bold">₱</span>
-                                    <input
-                                      type="number"
-                                      min={0}
-                                      step="any"
-                                      value={unitPrice || ''}
-                                      onChange={e => handleUpdateConsumablePrice(i, parseFloat(e.target.value) || 0)}
-                                      className="w-24 px-2 py-1 text-right text-xs font-bold rounded-md border border-slate-200 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none bg-white text-slate-800"
-                                    />
-                                  </div>
-                                </td>
-                                <td className="px-4 py-2.5 text-right font-black text-slate-800">&#8369;{totalPrice.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</td>
+                                {showPrices && (
+                                  <>
+                                    <td className="px-4 py-2.5 text-right">
+                                      <div className="flex items-center justify-end gap-1">
+                                        <span className="text-slate-400 font-bold">₱</span>
+                                        <input
+                                          type="number"
+                                          min={0}
+                                          step="any"
+                                          value={unitPrice || ''}
+                                          onChange={e => handleUpdateConsumablePrice(i, parseFloat(e.target.value) || 0)}
+                                          className="w-24 px-2 py-1 text-right text-xs font-bold rounded-md border border-slate-200 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none bg-white text-slate-800"
+                                        />
+                                      </div>
+                                    </td>
+                                    <td className="px-4 py-2.5 text-right font-black text-slate-800">&#8369;{totalPrice.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</td>
+                                  </>
+                                )}
                               </tr>
                             );
                           })}
                         </tbody>
-                        <tfoot>
-                          <tr className="bg-slate-100/70 border-t border-slate-200">
-                            <td colSpan={5} className="px-4 py-2.5 font-bold text-slate-700 text-right">Total Materials Price:</td>
-                            <td className="px-4 py-2.5 text-right font-black text-emerald-700 text-sm">&#8369;{totalMaterialsPrice.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</td>
-                          </tr>
-                        </tfoot>
+                        {showPrices && (
+                          <tfoot>
+                            <tr className="bg-slate-100/70 border-t border-slate-200">
+                              <td colSpan={5} className="px-4 py-2.5 font-bold text-slate-700 text-right">Total Materials Price:</td>
+                              <td className="px-4 py-2.5 text-right font-black text-emerald-700 text-sm">&#8369;{totalMaterialsPrice.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</td>
+                            </tr>
+                          </tfoot>
+                        )}
                       </table>
                     </div>
                   </div>

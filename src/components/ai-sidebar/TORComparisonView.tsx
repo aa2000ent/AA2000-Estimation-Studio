@@ -13,13 +13,17 @@ interface FileWithContent {
   error: string | null;
 }
 
+import { canViewPrices } from '../../constants/roles';
+
 interface Props {
+  userRole?: string;
   onSaveAIScan?: (scan: AIScanGroup) => void;
   onScanningChange?: (scanning: boolean) => void;
 }
 
-export default function TORComparisonView({ onSaveAIScan, onScanningChange }: Props) {
+export default function TORComparisonView({ userRole, onSaveAIScan, onScanningChange }: Props) {
   const { toast } = useToast();
+  const showPrices = canViewPrices(userRole);
   const [torFile, setTorFile] = useState<FileWithContent | null>(null);
   const [proposalFile, setProposalFile] = useState<FileWithContent | null>(null);
   const [auditResult, setAuditResult] = useState<AuditDetails | null>(null);
@@ -203,103 +207,136 @@ export default function TORComparisonView({ onSaveAIScan, onScanningChange }: Pr
   const getButtonIcon = () => 'M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09Z';
   const getButtonStyle = () => 'linear-gradient(135deg, #2563EB, #1D4ED8)';
 
-  // Drop zone component
-  const DropZone = ({
-    label,
-    description,
-    file,
-    onFiles,
-    onRemove,
-    acceptedTypes = '.pdf,.xlsx,.xls,.docx,.txt,.csv,.json',
-    color = 'blue',
-  }: {
-    label: string;
-    description: string;
-    file: FileWithContent | null;
-    onFiles: (files: FileList | File[]) => void;
-    onRemove: () => void;
-    acceptedTypes?: string;
-    color?: 'blue' | 'amber';
-  }) => {
-    const inputRef = useRef<HTMLInputElement>(null);
-    const [dragOver, setDragOver] = useState(false);
-    
-    const borderColors = {
-      blue: 'border-blue-300 hover:border-blue-400',
-      amber: 'border-amber-300 hover:border-amber-400',
-    };
-    const bgColors = {
-      blue: 'bg-blue-50/50',
-      amber: 'bg-amber-50/50',
-    };
-    const iconColors = {
-      blue: 'text-blue-600',
-      amber: 'text-amber-600',
-    };
-    const textColors = {
-      blue: 'text-blue-700',
-      amber: 'text-amber-700',
-    };
+interface DropZoneProps {
+  label: string;
+  description: string;
+  file: FileWithContent | null;
+  onFiles: (files: FileList | File[]) => void;
+  onRemove: () => void;
+  acceptedTypes?: string;
+  color?: 'blue' | 'amber';
+}
 
-    return (
-      <div
-        onDragOver={e => { e.preventDefault(); setDragOver(true); }}
-        onDragLeave={() => setDragOver(false)}
-        onDrop={e => { e.preventDefault(); setDragOver(false); onFiles(e.dataTransfer.files); }}
-        onClick={() => inputRef.current?.click()}
-        className={`relative border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-all overflow-hidden ${
-          dragOver
-            ? `border-${color}-400 ${bgColors[color]}`
-            : `border-${color}-200 hover:border-${color}-300 hover:${bgColors[color]}`
-        }`}
-      >
-        <input
-          ref={inputRef}
-          type="file"
-          accept={acceptedTypes}
-          className="hidden"
-          onChange={e => e.target.files && onFiles(e.target.files)}
-        />
-        
-        {file ? (
-          <div className="text-left w-full">
-            <div className="flex items-center justify-between mb-2 w-full">
-              <div className="flex items-center gap-3 min-w-0 flex-1">
-                <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-white text-xs font-black shrink-0`} 
-                     style={{ background: `linear-gradient(135deg, ${color === 'blue' ? '#2563EB' : '#D97706'}CC, ${color === 'blue' ? '#2563EB' : '#D97706'}88)` }}>
-                  {file.parsed.fileName.split('.').pop()?.toUpperCase().slice(0, 4) || 'FILE'}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-bold text-slate-800 truncate whitespace-nowrap">{file.parsed.fileName}</p>
-                  <p className="text-xs text-slate-500 truncate whitespace-nowrap">{file.loading ? 'Parsing...' : `${(file.parsed.content.length / 1024).toFixed(1)} KB`}</p>
-                </div>
-              </div>
-              <button
-                onClick={e => { e.stopPropagation(); onRemove(); }}
-                className="p-1.5 rounded text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors shrink-0 ml-2"
-              >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-          </div>
-        ) : (
-          <>
-            <svg className={`w-12 h-12 mx-auto mb-3 ${iconColors[color]}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m3.75 9v6m3-3H9m1.5-12H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
-            </svg>
-            <p className={`text-base font-bold ${textColors[color]}`}>
-              {label}
-            </p>
-            <p className="text-sm text-slate-500 mt-1">
-              {description}
-            </p>
-          </>
-        )}
-      </div>
-    );
+function DropZone({
+  label,
+  description,
+  file,
+  onFiles,
+  onRemove,
+  acceptedTypes = '*',
+  color = 'blue',
+}: DropZoneProps) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [dragOver, setDragOver] = useState(false);
+
+  const bgColors = {
+    blue: 'bg-blue-50/50',
+    amber: 'bg-amber-50/50',
   };
+  const iconColors = {
+    blue: 'text-blue-600',
+    amber: 'text-amber-600',
+  };
+  const textColors = {
+    blue: 'text-blue-700',
+    amber: 'text-amber-700',
+  };
+
+  const handleContainerClick = () => {
+    if (inputRef.current) {
+      inputRef.current.click();
+    }
+  };
+
+  return (
+    <div
+      onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={e => {
+        e.preventDefault();
+        setDragOver(false);
+        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+          onFiles(e.dataTransfer.files);
+        }
+      }}
+      onClick={handleContainerClick}
+      className={`relative border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-all overflow-hidden ${
+        dragOver
+          ? `border-${color}-400 ${bgColors[color]}`
+          : `border-${color}-200 hover:border-${color}-300 hover:${bgColors[color]}`
+      }`}
+    >
+      <input
+        ref={inputRef}
+        type="file"
+        accept={acceptedTypes}
+        className="hidden"
+        onClick={e => e.stopPropagation()}
+        onChange={e => {
+          if (e.target.files && e.target.files.length > 0) {
+            onFiles(e.target.files);
+          }
+          e.target.value = '';
+        }}
+      />
+      
+      {file ? (
+        <div className="text-left w-full" onClick={e => e.stopPropagation()}>
+          <div className="flex items-center justify-between mb-2 w-full">
+            <div className="flex items-center gap-3 min-w-0 flex-1">
+              <div
+                className="w-10 h-10 rounded-xl flex items-center justify-center text-white text-xs font-black shrink-0" 
+                style={{ background: `linear-gradient(135deg, ${color === 'blue' ? '#2563EB' : '#D97706'}CC, ${color === 'blue' ? '#2563EB' : '#D97706'}88)` }}
+              >
+                {file.parsed.fileName.split('.').pop()?.toUpperCase().slice(0, 4) || 'FILE'}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-bold text-slate-800 truncate whitespace-nowrap">{file.parsed.fileName}</p>
+                <p className="text-xs text-slate-500 truncate whitespace-nowrap">{file.loading ? 'Parsing...' : `${(file.parsed.content.length / 1024).toFixed(1)} KB`}</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={e => { e.stopPropagation(); onRemove(); }}
+              className="p-1.5 rounded text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors shrink-0 ml-2 cursor-pointer"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-col items-center justify-center">
+          <svg className={`w-12 h-12 mb-3 ${iconColors[color]}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m3.75 9v6m3-3H9m1.5-12H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
+          </svg>
+          <p className={`text-base font-bold ${textColors[color]}`}>
+            {label}
+          </p>
+          <p className="text-sm text-slate-500 mt-1">
+            {description}
+          </p>
+          <div className="mt-4">
+            <button
+              type="button"
+              onClick={e => {
+                e.stopPropagation();
+                inputRef.current?.click();
+              }}
+              className="px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 transition-all shadow-md shadow-blue-500/20 cursor-pointer inline-flex items-center gap-2"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+              </svg>
+              Open File / Select from Device
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
   // Results display
   const ResultsDisplay = () => {
@@ -715,8 +752,12 @@ export default function TORComparisonView({ onSaveAIScan, onScanningChange }: Pr
                       <th className="p-2.5 text-right">Tech Qty</th>
                       <th className="p-2.5 text-right">AI Qty</th>
                       <th className="p-2.5 text-center">Variance</th>
-                      <th className="p-2.5 text-right">Unit Price (₱)</th>
-                      <th className="p-2.5 text-right">Total Price (₱)</th>
+                      {showPrices && (
+                        <>
+                          <th className="p-2.5 text-right">Unit Price (₱)</th>
+                          <th className="p-2.5 text-right">Total Price (₱)</th>
+                        </>
+                      )}
                       <th className="p-2.5 text-left">Rationale</th>
                     </tr>
                   </thead>
@@ -738,23 +779,27 @@ export default function TORComparisonView({ onSaveAIScan, onScanningChange }: Pr
                               {item.variance > 0 ? `+${item.variance}` : item.variance < 0 ? item.variance : 'Match'}
                             </span>
                           </td>
-                          <td className="p-2.5 text-right">
-                            <div className="flex items-center justify-end gap-1">
-                              <span className="text-slate-400 font-bold">₱</span>
-                              <input
-                                type="number"
-                                min={0}
-                                step="any"
-                                placeholder="0.00"
-                                value={unitPrice || ''}
-                                onChange={e => handleUpdateEquipmentPrice(i, parseFloat(e.target.value) || 0)}
-                                className="w-24 px-2 py-1 text-right text-xs font-bold rounded-md border border-slate-200 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none bg-white text-slate-800"
-                              />
-                            </div>
-                          </td>
-                          <td className="p-2.5 text-right font-bold text-slate-800">
-                            &#8369;{totalPrice.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
-                          </td>
+                          {showPrices && (
+                            <>
+                              <td className="p-2.5 text-right">
+                                <div className="flex items-center justify-end gap-1">
+                                  <span className="text-slate-400 font-bold">₱</span>
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    step="any"
+                                    placeholder="0.00"
+                                    value={unitPrice || ''}
+                                    onChange={e => handleUpdateEquipmentPrice(i, parseFloat(e.target.value) || 0)}
+                                    className="w-24 px-2 py-1 text-right text-xs font-bold rounded-md border border-slate-200 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none bg-white text-slate-800"
+                                  />
+                                </div>
+                              </td>
+                              <td className="p-2.5 text-right font-bold text-slate-800">
+                                &#8369;{totalPrice.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                              </td>
+                            </>
+                          )}
                           <td className="p-2.5 text-slate-600">{item.rationale}</td>
                         </tr>
                       );
