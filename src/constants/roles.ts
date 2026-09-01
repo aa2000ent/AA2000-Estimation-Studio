@@ -1,7 +1,6 @@
 // Constants for roles and permissions
 export const ROLES = {
   ACCOUNTING: 'ACCOUNTING',
-  PROCUREMENT: 'PROCUREMENT',
   ADMIN: 'ADMIN',
   TECHNICIAN: 'TECHNICIAN',
 } as const;
@@ -18,7 +17,6 @@ export interface UserCredential {
 
 export const USER_CREDENTIALS: UserCredential[] = [
   { employeeId: 'ACCOUNTING',  pin: '111111', fullName: 'Accounting',  role: 'ACCOUNTING' },
-  { employeeId: 'PROCUREMENT', pin: '111111', fullName: 'Procurement', role: 'PROCUREMENT' },
   { employeeId: 'ADMIN',       pin: '111111', fullName: 'Admin',       role: 'ADMIN' },
   { employeeId: 'TECHNICIAN',  pin: '111111', fullName: 'Technician',  role: 'TECHNICIAN' },
 ];
@@ -33,10 +31,7 @@ export const ROLE_PERMISSIONS: Record<Role, string[]> = {
     'approve_financials',
     'export_reports',
     'view_quotations',
-  ],
-  [ROLES.PROCUREMENT]: [
-    'view_all_projects',
-    'view_estimates',
+    // Merged from former PROCUREMENT role
     'view_materials',
     'manage_pricelists',
     'export_boq',

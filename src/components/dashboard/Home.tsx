@@ -496,7 +496,6 @@ export default function Home({
   const [selectedScanGroup, setSelectedScanGroup] = useState<AIScanGroup | null>(null);
   const isAdmin = user.role === 'ADMIN';
   const isAccounting = user.role === 'ACCOUNTING';
-  const isProcurement = user.role === 'PROCUREMENT';
   const canManageCompanies = isAdmin;
   const theme = getRoleTheme(user.role, isDark);
 
@@ -535,7 +534,7 @@ export default function Home({
 
   const roleDisplayName = useMemo(() => {
     if (isAdmin) return 'System Administrator';
-    if (user.role === 'PROCUREMENT') return 'Procurement & Sourcing';
+    if (user.role === 'TECHNICIAN') return 'Field Technician';
     return 'Accounting & Finance';
   }, [user.role, isAdmin]);
 
@@ -827,8 +826,8 @@ export default function Home({
             <div className="flex items-center gap-2 flex-wrap">
               <span className="px-2.5 py-0.5 rounded-full text-[9px] font-bold tracking-widest uppercase bg-white/20 inline-flex items-center gap-1.5">
                 {user.role === 'ADMIN' ? <RoleComputer className="w-3.5 h-3.5" /> :
-                 user.role === 'PROCUREMENT' ? <RoleBox className="w-3.5 h-3.5" /> :
-                 <RoleCalculator className="w-3.5 h-3.5" />}
+                 user.role === 'TECHNICIAN' ? <RoleWrench className="w-3.5 h-3.5" /> :
+                 <RoleChart className="w-3.5 h-3.5" />}
                 <span>{roleDisplayName}</span>
               </span>
               <span className="text-[10px] text-white/60 font-medium">• {todayLabel}</span>

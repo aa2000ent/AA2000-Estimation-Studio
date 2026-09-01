@@ -9,6 +9,7 @@ interface Props {
   onSelectProject?: (project: Project) => void;
   onSaveAIScan?: (scan: AIScanGroup) => void;
   onNavigateToCreate?: () => void;
+  isDark?: boolean;
 }
 
 const ALL_TABS = [
@@ -22,7 +23,9 @@ const ALL_TABS = [
       </svg>
     ),
     color: '#2563EB',
+    colorDark: '#60A5FA',
     bg: '#EFF6FF',
+    bgDark: 'rgba(37,99,235,0.12)',
     description: 'Step-by-step wizard to build a detailed BOQ manually by entering room counts, system types, and project specs.',
   },
   {
@@ -35,35 +38,47 @@ const ALL_TABS = [
       </svg>
     ),
     color: '#059669',
+    colorDark: '#34D399',
     bg: '#ECFDF5',
+    bgDark: 'rgba(5,150,105,0.12)',
     description: 'Upload TOR, RFP, and Proposal documents. AI compares specifications, highlights missing requirements, and audits equipment quantities.',
   },
 ];
 
-export default function EstimationHub({ user, onNavigateToCreate, onSaveAIScan }: Props) {
+export default function EstimationHub({ user, onNavigateToCreate, onSaveAIScan, isDark }: Props) {
   const isAdmin = user?.role === 'ADMIN';
-  const availableTabs = isAdmin
+  const isTechnician = user?.role === 'TECHNICIAN';
+  // Admins & Technicians see both tabs; other roles only see Doc Reader
+  const availableTabs = (isAdmin || isTechnician)
     ? ALL_TABS
     : ALL_TABS.filter(t => t.key === 'document');
 
   const [activeTab, setActiveTab] = useState<'manual' | 'document'>(
-    isAdmin ? 'manual' : 'document'
+    (isAdmin || isTechnician) ? 'manual' : 'document'
   );
   const [, setIsDocScanning] = useState(false);
 
-  // Safeguard: non-admins are restricted exclusively to 'document' (Doc Reader)
+  // Safeguard: non-admin/non-technician roles are restricted to 'document'
   useEffect(() => {
-    if (!isAdmin && activeTab !== 'document') {
+    if (!isAdmin && !isTechnician && activeTab !== 'document') {
       setActiveTab('document');
     }
-  }, [isAdmin, activeTab]);
+  }, [isAdmin, isTechnician, activeTab]);
 
   const activeTabDef = availableTabs.find(t => t.key === activeTab) || availableTabs[0];
+  const activeColor = isDark ? activeTabDef.colorDark : activeTabDef.color;
+  const activeBg = isDark ? activeTabDef.bgDark : activeTabDef.bg;
 
   return (
-    <div className="flex flex-col h-full bg-white">
+    <div
+      className="flex flex-col h-full"
+      style={{ background: isDark ? '#0B0F19' : '#ffffff' }}
+    >
       {/* Header */}
-      <div className="px-6 pt-5 pb-0 shrink-0 border-b border-slate-200">
+      <div
+        className="px-6 pt-5 pb-0 shrink-0 border-b"
+        style={{ borderColor: isDark ? '#1E293B' : '#e2e8f0' }}
+      >
         <div className="flex items-start justify-between mb-4">
           <div>
             <div className="flex items-center gap-2.5">
@@ -73,16 +88,25 @@ export default function EstimationHub({ user, onNavigateToCreate, onSaveAIScan }
                 </svg>
               </div>
               <div>
-                <h1 className="text-base font-black text-slate-900">Estimation Hub</h1>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                <h1 className="text-base font-black" style={{ color: isDark ? '#F8FAFC' : '#0F172A' }}>Estimation Hub</h1>
+                <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: isDark ? '#475569' : '#94A3B8' }}>
                   {isAdmin
                     ? '2 Methods · Manual Estimation · AI Document Reader'
+                    : isTechnician
+                    ? 'Manual Estimation · AI Document Reader'
                     : 'Document AI Reader & Specifications Auditor'}
                 </p>
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-50 border border-slate-200 text-[10px] font-bold text-slate-500">
+          <div
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold border"
+            style={{
+              background: isDark ? 'rgba(255,255,255,0.04)' : '#F8FAFC',
+              borderColor: isDark ? '#1E293B' : '#e2e8f0',
+              color: isDark ? '#64748B' : '#64748B',
+            }}
+          >
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
             AI-Powered
           </div>
@@ -92,17 +116,18 @@ export default function EstimationHub({ user, onNavigateToCreate, onSaveAIScan }
         <div className="flex gap-1">
           {availableTabs.map(tab => {
             const active = activeTab === tab.key;
+            const tabColor = isDark ? tab.colorDark : tab.color;
             return (
               <button
                 key={tab.key}
                 onClick={() => setActiveTab(tab.key as any)}
                 className="flex items-center gap-2 px-4 py-2.5 text-xs font-bold transition-all border-b-2 -mb-px cursor-pointer"
                 style={active
-                  ? { color: tab.color, borderColor: tab.color }
-                  : { color: '#94A3B8', borderColor: 'transparent' }
+                  ? { color: tabColor, borderColor: tabColor }
+                  : { color: isDark ? '#475569' : '#94A3B8', borderColor: 'transparent' }
                 }
               >
-                <span style={{ color: active ? tab.color : '#CBD5E1' }}>{tab.icon(active)}</span>
+                <span style={{ color: active ? tabColor : (isDark ? '#334155' : '#CBD5E1') }}>{tab.icon(active)}</span>
                 {tab.shortLabel}
               </button>
             );
@@ -112,16 +137,19 @@ export default function EstimationHub({ user, onNavigateToCreate, onSaveAIScan }
 
       {/* Tab description strip */}
       <div
-        className="px-6 py-2.5 shrink-0 flex items-center gap-2.5 border-b border-slate-100 text-xs transition-all"
-        style={{ background: activeTabDef.bg }}
+        className="px-6 py-2.5 shrink-0 flex items-center gap-2.5 border-b text-xs transition-all"
+        style={{
+          background: activeBg,
+          borderColor: isDark ? '#1E293B' : '#f1f5f9',
+        }}
       >
-        <span style={{ color: activeTabDef.color }}>{activeTabDef.icon(true)}</span>
-        <p className="font-medium" style={{ color: activeTabDef.color }}>{activeTabDef.description}</p>
-        {isAdmin && activeTab === 'manual' && onNavigateToCreate && (
+        <span style={{ color: activeColor }}>{activeTabDef.icon(true)}</span>
+        <p className="font-medium" style={{ color: activeColor }}>{activeTabDef.description}</p>
+        {(isAdmin || isTechnician) && activeTab === 'manual' && onNavigateToCreate && (
           <button
             onClick={onNavigateToCreate}
             className="ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold text-white transition-all shrink-0 cursor-pointer"
-            style={{ background: activeTabDef.color }}
+            style={{ background: isDark ? activeTabDef.color : activeTabDef.color }}
           >
             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
@@ -133,26 +161,49 @@ export default function EstimationHub({ user, onNavigateToCreate, onSaveAIScan }
 
       {/* Tab content */}
       <div className="flex-1 min-h-0 overflow-hidden">
-        {/* Manual tab — Admin only */}
-        {isAdmin && activeTab === 'manual' && (
-          <div className="h-full overflow-y-auto px-6 py-8">
+        {/* Manual tab — Admin & Technician */}
+        {(isAdmin || isTechnician) && activeTab === 'manual' && (
+          <div
+            className="h-full overflow-y-auto px-6 py-8"
+            style={{ background: isDark ? '#0B0F19' : '#ffffff' }}
+          >
             <div className="max-w-2xl mx-auto space-y-5">
+              {/* Step cards */}
               <div className="grid grid-cols-3 gap-4">
                 {[
                   { step: '1', title: 'Project Details', desc: 'Enter building type, location, floors, and assign technicians.' },
                   { step: '2', title: 'System Selection', desc: 'Choose which security systems to include in the estimation.' },
                   { step: '3', title: 'Generate BOQ', desc: 'Review and export the complete Bill of Quantities.' },
                 ].map(s => (
-                  <div key={s.step} className="rounded-2xl border border-blue-100 bg-blue-50 p-4">
+                  <div
+                    key={s.step}
+                    className="rounded-2xl p-4 border"
+                    style={{
+                      background: isDark ? '#131B2E' : '#EFF6FF',
+                      borderColor: isDark ? 'rgba(37,99,235,0.25)' : '#BFDBFE',
+                    }}
+                  >
                     <div className="w-7 h-7 rounded-full bg-blue-600 text-white text-xs font-black flex items-center justify-center mb-3">{s.step}</div>
-                    <p className="text-xs font-bold text-blue-900 mb-1">{s.title}</p>
-                    <p className="text-[11px] text-blue-700 leading-relaxed">{s.desc}</p>
+                    <p className="text-xs font-bold mb-1" style={{ color: isDark ? '#93C5FD' : '#1E3A8A' }}>{s.title}</p>
+                    <p className="text-[11px] leading-relaxed" style={{ color: isDark ? '#60A5FA' : '#2563EB' }}>{s.desc}</p>
                   </div>
                 ))}
               </div>
 
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
-                <h3 className="text-xs font-bold text-slate-700 mb-2 uppercase tracking-wider">When to use Manual Estimation</h3>
+              {/* When to use section */}
+              <div
+                className="rounded-2xl p-5 border"
+                style={{
+                  background: isDark ? '#131B2E' : '#F8FAFC',
+                  borderColor: isDark ? '#1E293B' : '#E2E8F0',
+                }}
+              >
+                <h3
+                  className="text-xs font-bold mb-2 uppercase tracking-wider"
+                  style={{ color: isDark ? '#94A3B8' : '#475569' }}
+                >
+                  When to use Manual Estimation
+                </h3>
                 <ul className="space-y-1.5">
                   {[
                     'You have a site survey report with room-by-room breakdowns',
@@ -160,8 +211,8 @@ export default function EstimationHub({ user, onNavigateToCreate, onSaveAIScan }
                     'You need full control over quantities and specifications',
                     'Verifying or adjusting AI-generated estimates',
                   ].map((item, i) => (
-                    <li key={i} className="flex items-start gap-2 text-[11px] text-slate-600">
-                      <svg className="w-3.5 h-3.5 text-blue-500 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <li key={i} className="flex items-start gap-2 text-[11px]" style={{ color: isDark ? '#64748B' : '#475569' }}>
+                      <svg className="w-3.5 h-3.5 mt-0.5 shrink-0" style={{ color: isDark ? '#60A5FA' : '#3B82F6' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
                       </svg>
                       {item}

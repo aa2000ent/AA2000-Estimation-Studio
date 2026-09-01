@@ -4,7 +4,7 @@
 // ─────────────────────────────────────────────
 
 export interface RoleTheme {
-  role: 'ACCOUNTING' | 'PROCUREMENT' | 'ADMIN';
+  role: 'ACCOUNTING' | 'ADMIN';
   primary: string;
   primaryDark: string;
   primaryLight: string;
@@ -58,43 +58,12 @@ const ACCOUNTING_THEME: RoleTheme = {
   roleLabel: 'Accounting & Finance',
   roleEmoji: '',
   heroSubtitle:
-    'Welcome to your accounting & audit portal. Review project cost estimations, audit manpower and logistical fees, verify contractor/dealer margins, and approve commercial quotations.',
+    'Welcome to your accounting & finance portal. Review project cost estimations, audit manpower and logistical fees, verify contractor/dealer margins, and approve commercial quotations.',
   quickActions: [
     { label: 'Audit Costs', icon: '' },
     { label: 'Commercial Quotes', icon: '' },
     { label: 'Financial Review', icon: '' },
     { label: 'Cost Reports', icon: '' },
-  ],
-};
-
-const PROCUREMENT_THEME: RoleTheme = {
-  role: 'PROCUREMENT',
-  primary: '#D97706',
-  primaryDark: '#B45309',
-  primaryLight: '#F59E0B',
-  secondary: '#EA580C',
-  accent: '#FBBF24',
-  heroGradient: 'linear-gradient(135deg, #78350F 0%, #B45309 45%, #D97706 100%)',
-  sidebarGradient: 'linear-gradient(180deg, #FFFBEB 0%, #FEF3C7 100%)',
-  buttonGradient: 'linear-gradient(135deg, #D97706 0%, #B45309 100%)',
-  primaryAlpha08: 'rgba(217,119,6,0.08)',
-  primaryAlpha12: 'rgba(217,119,6,0.12)',
-  primaryAlpha20: 'rgba(217,119,6,0.20)',
-  primaryAlpha30: 'rgba(217,119,6,0.30)',
-  onPrimary: '#FFFFFF',
-  badgeBg: 'rgba(217,119,6,0.10)',
-  badgeText: '#B45309',
-  sidebarBg: '#FFFBEB',
-  sidebarBorder: '#FEF3C7',
-  roleLabel: 'Procurement & Sourcing',
-  roleEmoji: '',
-  heroSubtitle:
-    'Welcome to your procurement & inventory workspace. Review Bill of Materials (BOM/BOQ), cross-reference hardware item specifications, track brand pricelists, and verify equipment quantities.',
-  quickActions: [
-    { label: 'View BOQ Lists', icon: '' },
-    { label: 'Check Pricelist', icon: '' },
-    { label: 'Material Audit', icon: '' },
-    { label: 'Export BOM', icon: '' },
   ],
 };
 
@@ -165,9 +134,6 @@ export function getRoleTheme(role?: string, isDark?: boolean): RoleTheme {
   switch (role) {
     case 'ADMIN':
       baseTheme = ADMIN_THEME;
-      break;
-    case 'PROCUREMENT':
-      baseTheme = PROCUREMENT_THEME;
       break;
     case 'TECHNICIAN':
       baseTheme = TECHNICIAN_THEME;

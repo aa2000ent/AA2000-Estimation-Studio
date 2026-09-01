@@ -355,10 +355,10 @@ export default function Sidebar({ user, currentView, onNavigate, notifications, 
   ].includes(currentView);
 
   const isAccounting = user.role === 'ACCOUNTING';
-  const isProcurement = user.role === 'PROCUREMENT';
+  const isTechnician = user.role === 'TECHNICIAN';
   const canApprove = isAdmin || isAccounting;
-  const canUseEstimationHub = isAdmin || isAccounting || isProcurement;
-  const canViewSavedBOQs = isAdmin || isAccounting || isProcurement;
+  const canUseEstimationHub = isAdmin || isAccounting || isTechnician;
+  const canViewSavedBOQs = isAdmin || isAccounting;
 
   const navGroups: { label: string; items: { label: string; view: View; accent?: string; _count?: number }[] }[] = isNotificationView ? [
     {
@@ -377,7 +377,7 @@ export default function Sidebar({ user, currentView, onNavigate, notifications, 
     },
   ] : [
     {
-      label: isAccounting ? 'FINANCE' : isProcurement ? 'SOURCING' : 'SURVEYS',
+      label: isAccounting ? 'FINANCE' : 'SURVEYS',
       items: [
         { view: 'dashboard', label: 'Dashboard' },
         { view: 'calendar', label: isAccounting ? 'Financial Calendar' : 'Survey Calendar' },
@@ -388,7 +388,7 @@ export default function Sidebar({ user, currentView, onNavigate, notifications, 
       items: [
         ...(canApprove
           ? [{ view: 'approval' as View, label: isAccounting ? 'Financial Approvals' : 'Approval Pipeline', accent: '#2563EB' }]
-          : [{ view: 'done' as View, label: isProcurement ? 'Required Materials' : 'Completed Surveys', accent: '#10B981' }]),
+          : [{ view: 'done' as View, label: 'Completed Surveys', accent: '#10B981' }]),
         { view: 'history', label: 'History Archive', accent: '#64748B' },
       ],
     },
@@ -697,7 +697,7 @@ export default function Sidebar({ user, currentView, onNavigate, notifications, 
                     }}
                   >
                     {user.role === 'ADMIN' ? 'Admin' :
-                     user.role === 'PROCUREMENT' ? 'Procurement' : 'Accounting'}
+                     user.role === 'TECHNICIAN' ? 'Technician' : 'Accounting'}
                   </span>
                   {totalUnread > 0 && (
                     <span

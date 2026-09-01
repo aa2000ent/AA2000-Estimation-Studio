@@ -23,7 +23,7 @@ export interface User {
   fullName: string;
   email?: string;
   employeeId?: string;
-  role?: 'ACCOUNTING' | 'PROCUREMENT' | 'ADMIN' | 'TECHNICIAN';
+  role?: 'ACCOUNTING' | 'ADMIN' | 'TECHNICIAN';
 }
 
 export interface Project {
@@ -195,6 +195,25 @@ export default function App() {
   const [prefilledCompanyName, setPrefilledCompanyName] = useState<string>('');
   const [currentCompanyProject, setCurrentCompanyProject] = useState<Project | null>(null);
   const [aiScans, setAiScans] = useState<AIScanGroup[]>(() => loadFromStorage<AIScanGroup[]>(STORAGE_KEYS.aiScans, []));
+  const [isDark, setIsDark] = useState<boolean>(() => {
+    try { return localStorage.getItem('aa2000_theme') === 'dark'; } catch { return false; }
+  });
+
+  // Keep isDark in sync when Dashboard toggles it via localStorage
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === 'aa2000_theme') setIsDark(e.newValue === 'dark');
+    };
+    window.addEventListener('storage', onStorage);
+    // Also poll once on mount in case the event doesn't fire in the same tab
+    const interval = setInterval(() => {
+      try {
+        const val = localStorage.getItem('aa2000_theme') === 'dark';
+        setIsDark(prev => (prev !== val ? val : prev));
+      } catch {}
+    }, 300);
+    return () => { window.removeEventListener('storage', onStorage); clearInterval(interval); };
+  }, []);
 
   useEffect(() => {
     const saved = loadFromStorage<User | null>(STORAGE_KEYS.user, null);
@@ -586,7 +605,7 @@ export default function App() {
   if (screen === 'settings') {
     return (
       <ErrorBoundary>
-        <div className="min-h-screen flex">
+        <div className="min-h-screen flex" style={{ background: isDark ? '#0B0F19' : '#F8FAFC' }}>
           <Dashboard
             user={user}
             onLogout={handleLogout}
@@ -603,7 +622,7 @@ export default function App() {
             onUpdateProject={handleUpdateProject}
             onExitOverride={handleBackFromSettings}
             contentOverride={
-              <Settings user={user} onBack={handleBackFromSettings} onLogout={handleLogout} notifications={notifications} />
+              <Settings user={user} onBack={handleBackFromSettings} onLogout={handleLogout} notifications={notifications} isDark={isDark} />
             }
           />
         </div>
@@ -614,7 +633,7 @@ export default function App() {
   if (screen === 'project-detail' && currentProject) {
     return (
       <ErrorBoundary>
-        <div className="min-h-screen flex" style={{ background: '#F8FAFC' }}>
+        <div className="min-h-screen flex" style={{ background: isDark ? '#0B0F19' : '#F8FAFC' }}>
           <Dashboard
             user={user}
             onLogout={handleLogout}
@@ -640,6 +659,7 @@ export default function App() {
                 onViewSurveySummary={() => navigateToScreen('survey-summary')}
                 onUpdateStatus={handleUpdateProjectStatus}
                 onUpdateProject={handleUpdateProject}
+                isDark={isDark}
               />
             }
           />

@@ -42,7 +42,6 @@ const features = [
 // Role display labels
 const ROLE_LABELS: Record<string, string> = {
   ACCOUNTING: 'Accounting & Finance',
-  PROCUREMENT: 'Procurement & Sourcing',
   ADMIN: 'Admin',
   TECHNICIAN: 'Field Technician',
 };

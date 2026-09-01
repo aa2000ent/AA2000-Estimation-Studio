@@ -9,6 +9,7 @@ interface Props {
   onBack: () => void;
   onLogout?: () => void;
   notifications?: Notification[];
+  isDark?: boolean;
 }
 
 type SettingsTab = 'account' | 'position' | 'userid' | 'privacy' | 'help' | 'accessibility';
@@ -71,16 +72,14 @@ const tabs: { key: SettingsTab; label: string; icon: React.ReactNode }[] = [
   },
 ];
 
-function Toggle({ defaultOn = false }: { defaultOn?: boolean }) {
+function Toggle({ defaultOn = false, isDark }: { defaultOn?: boolean; isDark?: boolean }) {
   const [on, setOn] = useState(defaultOn);
   return (
     <button
       type="button"
       onClick={() => setOn(!on)}
-      className="w-11 h-6 rounded-full p-0.5 transition-all duration-300 relative bg-[#E2E8F0]"
-      style={{
-        background: on ? '#1E3A8A' : '#E2E8F0',
-      }}
+      className="w-11 h-6 rounded-full p-0.5 transition-all duration-300 relative"
+      style={{ background: on ? '#1E3A8A' : (isDark ? '#1E293B' : '#E2E8F0') }}
     >
       <div
         className="w-5 h-5 rounded-full transition-all duration-300 bg-white"
@@ -93,15 +92,16 @@ function Toggle({ defaultOn = false }: { defaultOn?: boolean }) {
   );
 }
 
-export default function Settings({ user, onBack, onLogout, notifications = [] }: Props) {
+export default function Settings({ user, onBack, onLogout, notifications = [], isDark }: Props) {
   const [tab, setTab] = useState<SettingsTab>('account');
 
   const isAdmin = user.role === 'ADMIN';
   const initials = (user.fullName || user.email || 'Admin User').split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
 
+  // Dynamic card style based on dark mode
   const cardStyle: React.CSSProperties = {
-    background: '#FFFFFF',
-    border: '1px solid #E2E8F0',
+    background: isDark ? '#131B2E' : '#FFFFFF',
+    border: `1px solid ${isDark ? '#1E293B' : '#E2E8F0'}`,
     borderRadius: '16px',
     padding: '16px 20px',
     display: 'flex',
@@ -111,19 +111,43 @@ export default function Settings({ user, onBack, onLogout, notifications = [] }:
   };
 
   return (
-    <div className="w-full min-h-screen bg-[#F8FAFC] pb-12">
+    <div
+      className="w-full min-h-screen pb-12"
+      style={{ background: isDark ? '#0B0F19' : '#F8FAFC' }}
+    >
       {/* Top Header Card */}
-      <div className="px-8 pt-6 pb-4 bg-white border-b border-slate-200 shadow-sm animate-fade-in-up">
+      <div
+        className="px-8 pt-6 pb-4 border-b shadow-sm animate-fade-in-up"
+        style={{
+          background: isDark ? '#0D1527' : '#FFFFFF',
+          borderColor: isDark ? '#1E293B' : '#E2E8F0',
+        }}
+      >
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-5">
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-2xl font-black text-slate-800 tracking-tight">Account & Settings</h1>
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-blue-50 text-blue-800 border border-blue-100">
+              <h1
+                className="text-2xl font-black tracking-tight"
+                style={{ color: isDark ? '#F8FAFC' : '#1E293B' }}
+              >
+                Account & Settings
+              </h1>
+              <span
+                className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border"
+                style={{
+                  background: isDark ? 'rgba(37,99,235,0.15)' : '#EFF6FF',
+                  color: isDark ? '#93C5FD' : '#1E3A8A',
+                  borderColor: isDark ? 'rgba(37,99,235,0.30)' : '#BFDBFE',
+                }}
+              >
                 {user.role === 'ADMIN' ? 'Administrator' :
-                 user.role === 'PROCUREMENT' ? 'Procurement & Sourcing' : 'Accounting & Finance'}
+                 user.role === 'TECHNICIAN' ? 'Field Technician' : 'Accounting & Finance'}
               </span>
             </div>
-            <p className="text-[11px] font-medium text-slate-500 mt-0.5">
+            <p
+              className="text-[11px] font-medium mt-0.5"
+              style={{ color: isDark ? '#475569' : '#64748B' }}
+            >
               Manage your profile, system preferences, and platform configurations
             </p>
           </div>
@@ -131,7 +155,12 @@ export default function Settings({ user, onBack, onLogout, notifications = [] }:
           <div className="flex items-center gap-3">
             <button
               onClick={onBack}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold bg-slate-100 text-slate-700 hover:bg-slate-200 transition-all cursor-pointer"
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer"
+              style={{
+                background: isDark ? 'rgba(255,255,255,0.06)' : '#F1F5F9',
+                color: isDark ? '#CBD5E1' : '#475569',
+                border: `1px solid ${isDark ? '#1E293B' : 'transparent'}`,
+              }}
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
@@ -142,7 +171,12 @@ export default function Settings({ user, onBack, onLogout, notifications = [] }:
             {onLogout && (
               <button
                 onClick={onLogout}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold text-red-600 bg-red-50 hover:bg-red-100 border border-red-100 transition-all cursor-pointer"
+                className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                style={{
+                  color: '#DC2626',
+                  background: isDark ? 'rgba(220,38,38,0.12)' : '#FEF2F2',
+                  border: `1px solid ${isDark ? 'rgba(220,38,38,0.25)' : '#FEE2E2'}`,
+                }}
               >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
@@ -161,15 +195,19 @@ export default function Settings({ user, onBack, onLogout, notifications = [] }:
               <button
                 key={t.key}
                 onClick={() => setTab(t.key)}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black transition-all shrink-0 cursor-pointer shadow-sm"
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black transition-all shrink-0 cursor-pointer"
                 style={{
-                  background: active ? '#1E3A8A' : '#F8FAFC',
-                  color: active ? '#FFFFFF' : '#475569',
-                  border: active ? '1px solid #1E3A8A' : '1px solid #E2E8F0',
+                  background: active
+                    ? '#1E3A8A'
+                    : isDark ? 'rgba(255,255,255,0.04)' : '#F8FAFC',
+                  color: active ? '#FFFFFF' : (isDark ? '#94A3B8' : '#475569'),
+                  border: active
+                    ? '1px solid #1E3A8A'
+                    : `1px solid ${isDark ? '#1E293B' : '#E2E8F0'}`,
                 }}
               >
-                <span style={{ color: active ? '#FFFFFF' : '#64748B' }}>{t.icon}</span>
-                <span style={{ color: active ? '#FFFFFF' : '#475569' }}>{t.label}</span>
+                <span style={{ color: active ? '#FFFFFF' : (isDark ? '#64748B' : '#64748B') }}>{t.icon}</span>
+                <span style={{ color: active ? '#FFFFFF' : (isDark ? '#94A3B8' : '#475569') }}>{t.label}</span>
               </button>
             );
           })}
@@ -178,7 +216,10 @@ export default function Settings({ user, onBack, onLogout, notifications = [] }:
 
       {/* Settings Content Body */}
       <main className="px-8 py-6 max-w-5xl mx-auto">
-        <h2 className="text-sm font-black mb-4 text-slate-800 uppercase tracking-wider">
+        <h2
+          className="text-sm font-black mb-4 uppercase tracking-wider"
+          style={{ color: isDark ? '#94A3B8' : '#1E293B' }}
+        >
           {tabs.find(t => t.key === tab)?.label}
         </h2>
 
@@ -188,7 +229,11 @@ export default function Settings({ user, onBack, onLogout, notifications = [] }:
             <div>
               {/* Avatar card */}
               <div
-                className="rounded-2xl p-6 mb-4 flex items-center gap-4 bg-white border border-slate-100"
+                className="rounded-2xl p-6 mb-4 flex items-center gap-4 border"
+                style={{
+                  background: isDark ? '#131B2E' : '#FFFFFF',
+                  borderColor: isDark ? '#1E293B' : '#F1F5F9',
+                }}
               >
                 <div
                   className="w-16 h-16 rounded-full flex items-center justify-center text-xl font-black text-white shrink-0"
@@ -197,24 +242,47 @@ export default function Settings({ user, onBack, onLogout, notifications = [] }:
                   {initials}
                 </div>
                 <div>
-                  <p className="text-base font-black text-slate-800">{user.fullName || user.email}</p>
-                  <p className="text-xs font-semibold text-slate-400 mt-0.5">{user.email}</p>
+                  <p
+                    className="text-base font-black"
+                    style={{ color: isDark ? '#F8FAFC' : '#1E293B' }}
+                  >
+                    {user.fullName || user.email}
+                  </p>
+                  <p
+                    className="text-xs font-semibold mt-0.5"
+                    style={{ color: isDark ? '#475569' : '#94A3B8' }}
+                  >
+                    {user.email}
+                  </p>
                 </div>
               </div>
+
               <div className="grid grid-cols-2 gap-3">
                 {[
                   {
                     label: 'Role',
                     value: user.role === 'ADMIN' ? 'Administrator' :
-                           user.role === 'PROCUREMENT' ? 'Procurement & Sourcing' : 'Accounting & Finance',
-                    color: '#1E3A8A'
+                           user.role === 'TECHNICIAN' ? 'Field Technician' : 'Accounting & Finance',
+                    color: isDark ? '#60A5FA' : '#1E3A8A',
                   },
-                  { label: 'User ID Reference', value: user.id, mono: true, color: '#64748B' },
+                  { label: 'User ID Reference', value: user.id, mono: true, color: isDark ? '#64748B' : '#64748B' },
                   { label: 'Network Connection', value: 'Live Active', color: '#10B981' },
-                  { label: 'Platform Region', value: 'Philippines (PHP)', color: '#64748B' },
+                  { label: 'Platform Region', value: 'Philippines (PHP)', color: isDark ? '#64748B' : '#64748B' },
                 ].map(item => (
-                  <div key={item.label} className="rounded-xl p-4 bg-white border border-slate-200">
-                    <p className="text-[9px] font-bold uppercase tracking-wider mb-1 text-slate-400">{item.label}</p>
+                  <div
+                    key={item.label}
+                    className="rounded-xl p-4 border"
+                    style={{
+                      background: isDark ? '#131B2E' : '#FFFFFF',
+                      borderColor: isDark ? '#1E293B' : '#E2E8F0',
+                    }}
+                  >
+                    <p
+                      className="text-[9px] font-bold uppercase tracking-wider mb-1"
+                      style={{ color: isDark ? '#334155' : '#94A3B8' }}
+                    >
+                      {item.label}
+                    </p>
                     <p className={`text-xs font-black ${item.mono ? 'font-mono' : ''}`} style={{ color: item.color }}>{item.value}</p>
                   </div>
                 ))}
@@ -223,20 +291,55 @@ export default function Settings({ user, onBack, onLogout, notifications = [] }:
           )}
 
           {tab === 'position' && (
-            <div className="rounded-2xl p-6 bg-white border border-slate-200">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Company Position</p>
-              <p className="text-base font-black text-slate-800 mb-2">
-                {user.role === 'ADMIN' ? 'Administrator' :
-                 user.role === 'PROCUREMENT' ? 'Procurement & Sourcing Specialist' : 'Accounting & Financial Auditor'}
+            <div
+              className="rounded-2xl p-6 border"
+              style={{
+                background: isDark ? '#131B2E' : '#FFFFFF',
+                borderColor: isDark ? '#1E293B' : '#E2E8F0',
+              }}
+            >
+              <p
+                className="text-[10px] font-bold uppercase tracking-wider mb-1"
+                style={{ color: isDark ? '#334155' : '#94A3B8' }}
+              >
+                Company Position
               </p>
-              <p className="text-xs text-slate-400 font-semibold">Department: Security and Technology Solutions</p>
+              <p
+                className="text-base font-black mb-2"
+                style={{ color: isDark ? '#F8FAFC' : '#1E293B' }}
+              >
+                {user.role === 'ADMIN' ? 'Administrator' :
+                 user.role === 'TECHNICIAN' ? 'Field Technician' : 'Accounting & Financial Auditor'}
+              </p>
+              <p
+                className="text-xs font-semibold"
+                style={{ color: isDark ? '#475569' : '#94A3B8' }}
+              >
+                Department: Security and Technology Solutions
+              </p>
             </div>
           )}
 
           {tab === 'userid' && (
-            <div className="rounded-2xl p-6 bg-white border border-slate-200">
-              <p className="text-[9px] font-bold uppercase tracking-wider mb-2 text-slate-400">User Reference ID</p>
-              <p className="font-mono text-xl font-black text-[#1E3A8A]">{user.id}</p>
+            <div
+              className="rounded-2xl p-6 border"
+              style={{
+                background: isDark ? '#131B2E' : '#FFFFFF',
+                borderColor: isDark ? '#1E293B' : '#E2E8F0',
+              }}
+            >
+              <p
+                className="text-[9px] font-bold uppercase tracking-wider mb-2"
+                style={{ color: isDark ? '#334155' : '#94A3B8' }}
+              >
+                User Reference ID
+              </p>
+              <p
+                className="font-mono text-xl font-black"
+                style={{ color: isDark ? '#60A5FA' : '#1E3A8A' }}
+              >
+                {user.id}
+              </p>
             </div>
           )}
 
@@ -250,20 +353,44 @@ export default function Settings({ user, onBack, onLogout, notifications = [] }:
               ].map(item => (
                 <div key={item.label} style={cardStyle}>
                   <div>
-                    <p className="text-xs font-black text-slate-700">{item.label}</p>
-                    <p className="text-[11px] font-semibold mt-0.5 text-slate-400">{item.desc}</p>
+                    <p
+                      className="text-xs font-black"
+                      style={{ color: isDark ? '#E2E8F0' : '#334155' }}
+                    >
+                      {item.label}
+                    </p>
+                    <p
+                      className="text-[11px] font-semibold mt-0.5"
+                      style={{ color: isDark ? '#475569' : '#94A3B8' }}
+                    >
+                      {item.desc}
+                    </p>
                   </div>
-                  <Toggle defaultOn={item.on} />
+                  <Toggle defaultOn={item.on} isDark={isDark} />
                 </div>
               ))}
             </div>
           )}
 
           {tab === 'help' && (
-            <div className="rounded-2xl p-6 space-y-4 bg-white border border-slate-200">
-              <p className="text-xs font-semibold text-slate-500">
+            <div
+              className="rounded-2xl p-6 space-y-4 border"
+              style={{
+                background: isDark ? '#131B2E' : '#FFFFFF',
+                borderColor: isDark ? '#1E293B' : '#E2E8F0',
+              }}
+            >
+              <p
+                className="text-xs font-semibold"
+                style={{ color: isDark ? '#64748B' : '#64748B' }}
+              >
                 Need help? Contact our command center support at{' '}
-                <span className="font-bold text-[#1E3A8A]">support@aa2000.com.ph</span>
+                <span
+                  className="font-bold"
+                  style={{ color: isDark ? '#60A5FA' : '#1E3A8A' }}
+                >
+                  support@aa2000.com.ph
+                </span>
               </p>
               {[
                 { label: 'Connect User Manual', icon: Document, desc: 'Read the platform user guide' },
@@ -272,10 +399,31 @@ export default function Settings({ user, onBack, onLogout, notifications = [] }:
               ].map(item => (
                 <div
                   key={item.label}
-                  className="px-4 py-3 rounded-xl cursor-pointer border border-slate-100 bg-slate-50 hover:bg-slate-100 transition-colors"
+                  className="px-4 py-3 rounded-xl cursor-pointer border transition-colors"
+                  style={{
+                    background: isDark ? 'rgba(255,255,255,0.03)' : '#F8FAFC',
+                    borderColor: isDark ? '#1E293B' : '#E2E8F0',
+                  }}
+                  onMouseEnter={e => {
+                    (e.currentTarget as HTMLElement).style.background = isDark ? 'rgba(255,255,255,0.07)' : '#F1F5F9';
+                  }}
+                  onMouseLeave={e => {
+                    (e.currentTarget as HTMLElement).style.background = isDark ? 'rgba(255,255,255,0.03)' : '#F8FAFC';
+                  }}
                 >
-                  <p className="text-xs font-black text-slate-700 flex items-center gap-1.5">{item.icon && React.createElement(item.icon, { className: 'w-4 h-4' })}{item.label}</p>
-                  <p className="text-[11px] text-slate-400 font-semibold mt-0.5">{item.desc}</p>
+                  <p
+                    className="text-xs font-black flex items-center gap-1.5"
+                    style={{ color: isDark ? '#E2E8F0' : '#334155' }}
+                  >
+                    {item.icon && React.createElement(item.icon, { className: 'w-4 h-4' })}
+                    {item.label}
+                  </p>
+                  <p
+                    className="text-[11px] font-semibold mt-0.5"
+                    style={{ color: isDark ? '#475569' : '#94A3B8' }}
+                  >
+                    {item.desc}
+                  </p>
                 </div>
               ))}
             </div>
@@ -285,10 +433,28 @@ export default function Settings({ user, onBack, onLogout, notifications = [] }:
             <div>
               <div style={cardStyle}>
                 <div>
-                  <p className="text-xs font-black text-slate-700">Light Theme (Screenshot Standard)</p>
-                  <p className="text-[11px] font-semibold mt-0.5 text-slate-400">Locked to default light mode as requested</p>
+                  <p
+                    className="text-xs font-black"
+                    style={{ color: isDark ? '#E2E8F0' : '#334155' }}
+                  >
+                    Light Theme (Screenshot Standard)
+                  </p>
+                  <p
+                    className="text-[11px] font-semibold mt-0.5"
+                    style={{ color: isDark ? '#475569' : '#94A3B8' }}
+                  >
+                    Locked to default light mode as requested
+                  </p>
                 </div>
-                <div className="px-3 py-1 rounded bg-[#E0E7FF] text-[#1E3A8A] text-[9px] font-black uppercase tracking-wider">ACTIVE</div>
+                <div
+                  className="px-3 py-1 rounded text-[9px] font-black uppercase tracking-wider"
+                  style={{
+                    background: isDark ? 'rgba(37,99,235,0.18)' : '#E0E7FF',
+                    color: isDark ? '#93C5FD' : '#1E3A8A',
+                  }}
+                >
+                  ACTIVE
+                </div>
               </div>
               {[
                 { label: 'Compact Mode Layout', desc: 'Use denser margins for small monitors', on: false },
@@ -297,16 +463,26 @@ export default function Settings({ user, onBack, onLogout, notifications = [] }:
               ].map(item => (
                 <div key={item.label} style={cardStyle}>
                   <div>
-                    <p className="text-xs font-black text-slate-700">{item.label}</p>
-                    <p className="text-[11px] font-semibold mt-0.5 text-slate-400">{item.desc}</p>
+                    <p
+                      className="text-xs font-black"
+                      style={{ color: isDark ? '#E2E8F0' : '#334155' }}
+                    >
+                      {item.label}
+                    </p>
+                    <p
+                      className="text-[11px] font-semibold mt-0.5"
+                      style={{ color: isDark ? '#475569' : '#94A3B8' }}
+                    >
+                      {item.desc}
+                    </p>
                   </div>
-                  <Toggle defaultOn={item.on} />
+                  <Toggle defaultOn={item.on} isDark={isDark} />
                 </div>
               ))}
             </div>
           )}
-          </div>
-        </main>
+        </div>
+      </main>
     </div>
   );
 }

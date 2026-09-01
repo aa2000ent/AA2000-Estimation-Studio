@@ -675,7 +675,7 @@ export default function Dashboard({
   const userGreetingName =
     user.fullName?.split(' ')[0] ||
     (user.role === 'ADMIN' ? 'Admin' :
-     user.role === 'PROCUREMENT' ? 'Procurement' : 'Accounting');
+     user.role === 'TECHNICIAN' ? 'Technician' : 'Accounting');
 
   // Derive display status for each company folder (matching Home.tsx logic)
   const folderStatusMap: Record<string, string> = {};
@@ -1003,6 +1003,7 @@ export default function Dashboard({
                   onSelectProject={onSelectProject}
                   onSaveAIScan={onSaveAIScan}
                   onNavigateToCreate={onNavigateToCreate}
+                  isDark={isDark}
                 />
               </div>
               {selectedCompanyProject ? (

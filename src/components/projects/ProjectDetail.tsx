@@ -88,17 +88,17 @@ const SURVEY_TYPES: {
   },
 ];
 
-function StatusBadge({ status }: { status: string }) {
+function StatusBadge({ status, isDark }: { status: string; isDark?: boolean }) {
   const isSurvey = status === 'Pending' || status === 'In Progress' || status === 'Finalized - Rejected';
   const isReview = status === 'Finalized';
   const isApproved = status === 'Completed' || status === 'Finalized - Approved';
 
   const label = isReview ? 'Awaiting Approval' : isApproved ? 'Approved' : 'Survey In Progress';
   const cfg = isReview 
-    ? { color: '#CA8A04', bg: 'rgba(202,138,4,0.08)', dot: '#EAB308' }
+    ? { color: '#CA8A04', bg: isDark ? 'rgba(202,138,4,0.15)' : 'rgba(202,138,4,0.08)', dot: '#EAB308' }
     : isApproved 
-    ? { color: '#16A34A', bg: 'rgba(22,163,74,0.08)', dot: '#22C55E' }
-    : { color: '#2563EB', bg: 'rgba(37,99,235,0.08)', dot: '#3B82F6' };
+    ? { color: '#16A34A', bg: isDark ? 'rgba(22,163,74,0.15)' : 'rgba(22,163,74,0.08)', dot: '#22C55E' }
+    : { color: isDark ? '#60A5FA' : '#2563EB', bg: isDark ? 'rgba(37,99,235,0.18)' : 'rgba(37,99,235,0.08)', dot: '#3B82F6' };
 
   return (
     <span
@@ -224,7 +224,7 @@ export default function ProjectDetail({ user, project, onBack, onStartSurvey, on
                 Edit Project
               </button>
             )}
-            <StatusBadge status={project.status} />
+            <StatusBadge status={project.status} isDark={isDark} />
             <span className="text-[10px] font-bold font-mono" style={{ color: isDark ? '#475569' : '#94a3b8' }}>ID: {project.id}</span>
           </div>
         </div>
@@ -344,7 +344,12 @@ export default function ProjectDetail({ user, project, onBack, onStartSurvey, on
                           }
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="px-2 py-0.5 text-[9px] font-bold uppercase bg-blue-50 text-blue-600 hover:bg-blue-100 rounded transition-all border border-blue-100 shrink-0 inline-flex items-center gap-0.5"
+                          className="px-2 py-0.5 text-[9px] font-bold uppercase rounded transition-all shrink-0 inline-flex items-center gap-0.5"
+                          style={{
+                            background: isDark ? 'rgba(37,99,235,0.18)' : '#eff6ff',
+                            color: isDark ? '#93C5FD' : '#2563eb',
+                            border: isDark ? '1px solid rgba(37,99,235,0.35)' : '1px solid #bfdbfe',
+                          }}
                         >
                           View Map
                         </a>
