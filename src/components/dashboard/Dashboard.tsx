@@ -1058,6 +1058,7 @@ export default function Dashboard({
               projects={projectList}
               onSelectProject={onSelectProject}
               userRole={user.role || 'ACCOUNTING'}
+              isDark={isDark}
             />
           ) : view === 'saved-folders' ? (
             <SavedFoldersView

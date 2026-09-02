@@ -1750,7 +1750,13 @@ CCTV:                { bg: '#EFF6FF', color: '#1E3A8A', label: 'CCTV System',   
             accept="image/*,application/pdf,.pdf"
             multiple
             className="hidden"
-            onChange={e => { if (e.target.files?.length) { handleFilesSelect(e.target.files); e.target.value = ''; } }}
+            onChange={e => {
+              if (e.target.files?.length) {
+                const files = Array.from(e.target.files);
+                e.target.value = '';
+                handleFilesSelect(files);
+              }
+            }}
           />
 
           <input
@@ -1759,7 +1765,13 @@ CCTV:                { bg: '#EFF6FF', color: '#1E3A8A', label: 'CCTV System',   
             accept=".xls,.xlsx,.csv,.docx,.doc,.txt,.pdf"
             multiple
             className="hidden"
-            onChange={e => { if (e.target.files?.length) { handleTorSelect(e.target.files); e.target.value = ''; } }}
+            onChange={e => {
+              if (e.target.files?.length) {
+                const files = Array.from(e.target.files);
+                e.target.value = '';
+                handleTorSelect(files);
+              }
+            }}
           />
 
           <p className="text-[10px] font-semibold text-slate-400 mt-3">
@@ -2252,11 +2264,23 @@ CCTV:                { bg: '#EFF6FF', color: '#1E3A8A', label: 'CCTV System',   
                   updatedAt: new Date().toISOString(),
                 };
                 localStorage.setItem(`aa2000_estimation_${project.id}`, JSON.stringify(estimationData));
-                if (onUpdateStatus) {
-                  // Set to 'Finalized' (Awaiting Approval) — admin or sales must manually approve
+
+                const isApproved = project.status === 'Completed' || project.status === 'Finalized - Approved';
+                const isAlreadyFinalized = project.status === 'Finalized';
+
+                if (onUpdateStatus && !isApproved && !isAlreadyFinalized) {
+                  // Only set to 'Finalized' (Awaiting Approval) for unsubmitted/pending projects
                   onUpdateStatus(project.id, 'Finalized');
                 }
-                toast.success('Estimation saved. The project is now awaiting approval from Admin or Sales.');
+
+                if (isApproved) {
+                  toast.success('Estimation updated successfully.');
+                } else if (isAlreadyFinalized) {
+                  toast.success('Estimation updated. The project remains awaiting approval from Admin or Sales.');
+                } else {
+                  toast.success('Estimation saved. The project is now awaiting approval from Admin or Sales.');
+                }
+
                 onBack();
               }}
               className="px-8 py-3 rounded-xl text-xs font-bold text-white transition-all shadow-sm hover:opacity-95"

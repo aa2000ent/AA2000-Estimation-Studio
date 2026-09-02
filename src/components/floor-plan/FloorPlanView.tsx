@@ -488,8 +488,13 @@ export default function FloorPlanView({ projects, userRole, onAddToProjectEstima
                 multiple
                 accept="image/*,application/pdf,.pdf"
                 className="hidden"
-                onClick={e => e.stopPropagation()}
-                onChange={e => { if (e.target.files?.length) { handleFilesSelect(e.target.files, false); e.target.value = ''; } }}
+                onChange={e => {
+                  if (e.target.files?.length) {
+                    const files = Array.from(e.target.files);
+                    e.target.value = '';
+                    handleFilesSelect(files, false);
+                  }
+                }}
               />
               <div className="w-10 h-10 mx-auto mb-2 rounded-xl bg-blue-100/80 text-blue-600 flex items-center justify-center">
                 <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
@@ -521,8 +526,13 @@ export default function FloorPlanView({ projects, userRole, onAddToProjectEstima
                 multiple
                 accept="application/pdf,.pdf"
                 className="hidden"
-                onClick={e => e.stopPropagation()}
-                onChange={e => { if (e.target.files?.length) { handleFilesSelect(e.target.files, true); e.target.value = ''; } }}
+                onChange={e => {
+                  if (e.target.files?.length) {
+                    const files = Array.from(e.target.files);
+                    e.target.value = '';
+                    handleFilesSelect(files, true);
+                  }
+                }}
               />
               <div className="w-10 h-10 mx-auto mb-2 rounded-xl bg-blue-100/80 text-blue-600 flex items-center justify-center">
                 <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
