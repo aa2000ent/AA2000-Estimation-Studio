@@ -13,6 +13,7 @@ interface Props {
   initialClientEmail?: string;
   initialClientContactNumber?: string;
   initialSystemTypes?: SystemType[];
+  isDark?: boolean;
 }
 
 export type SystemType =
@@ -84,7 +85,9 @@ export default function CreateSurveyForm({
   initialClientEmail = '',
   initialClientContactNumber = '',
   initialSystemTypes = [],
+  isDark,
 }: Props) {
+  const dark = isDark ?? (typeof document !== 'undefined' && document.documentElement.classList.contains('dark'));
   const parsedCompanyName = typeof initialCompanyName === 'object' && initialCompanyName !== null
     ? (initialCompanyName as any).name || ''
     : String(initialCompanyName || '');
@@ -166,9 +169,9 @@ export default function CreateSurveyForm({
     width: '100%',
     padding: '10px 14px',
     borderRadius: '10px',
-    background: '#FFFFFF',
-    border: '1px solid #E2E8F0',
-    color: '#1E293B',
+    background: dark ? '#162032' : '#FFFFFF',
+    border: `1px solid ${dark ? '#1E293B' : '#E2E8F0'}`,
+    color: dark ? '#F8FAFC' : '#1E293B',
     fontSize: '13px',
     outline: 'none',
   };
@@ -179,23 +182,29 @@ export default function CreateSurveyForm({
     fontWeight: 700,
     textTransform: 'uppercase' as const,
     letterSpacing: '0.08em',
-    color: '#94A3B8',
+    color: dark ? '#94A3B8' : '#94A3B8',
     marginBottom: '6px',
   };
 
   const sectionStyle: React.CSSProperties = {
-    background: '#FFFFFF',
-    border: '1px solid #E2E8F0',
+    background: dark ? '#131B2E' : '#FFFFFF',
+    border: `1px solid ${dark ? '#1E293B' : '#E2E8F0'}`,
     borderRadius: '24px',
     padding: '20px',
     marginBottom: '24px',
-    boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+    boxShadow: dark ? 'none' : '0 1px 3px rgba(0,0,0,0.02)',
   };
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: '#F8FAFC' }}>
+    <div className="min-h-screen flex flex-col transition-colors duration-200" style={{ background: dark ? '#0B0F19' : '#F8FAFC' }}>
       {/* Header */}
-      <header className="sticky top-0 z-40 px-6 py-3 bg-gradient-to-r from-white to-blue-50 border-b border-slate-200 shadow-sm">
+      <header
+        className="sticky top-0 z-40 px-6 py-3 border-b shadow-sm transition-colors duration-200"
+        style={{
+          background: dark ? '#0D1527' : 'linear-gradient(to right, #FFFFFF, #EFF6FF)',
+          borderColor: dark ? '#1E293B' : '#E2E8F0',
+        }}
+      >
         <div className="max-w-4xl mx-auto">
           <div className="flex items-center gap-3 mb-4">
               <div
@@ -205,8 +214,8 @@ export default function CreateSurveyForm({
                 <Folder className="w-5 h-5 text-white" />
               </div>
               <div>
-                <h2 className="text-base font-black text-slate-800">Create Survey Estimation</h2>
-                <p className="text-[10px] font-bold text-slate-400">Initialize a new client survey site mapping</p>
+                <h2 className="text-base font-black" style={{ color: dark ? '#F8FAFC' : '#1E293B' }}>Create Survey Estimation</h2>
+                <p className="text-[10px] font-bold" style={{ color: dark ? '#64748B' : '#94A3B8' }}>Initialize a new client survey site mapping</p>
               </div>
             </div>
 
@@ -217,11 +226,18 @@ export default function CreateSurveyForm({
                 key={s.label}
                 type="button"
                 onClick={() => setStep(i)}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all shrink-0"
+                className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all shrink-0 cursor-pointer"
                 style={
                   i === step
-                    ? { background: 'rgba(30,58,138,0.06)', color: '#1E3A8A', border: '1px solid rgba(30,58,138,0.1)' }
-                    : { color: '#94A3B8', border: '1px solid transparent' }
+                    ? {
+                        background: dark ? 'rgba(37,99,235,0.2)' : 'rgba(30,58,138,0.06)',
+                        color: dark ? '#93C5FD' : '#1E3A8A',
+                        border: `1px solid ${dark ? 'rgba(37,99,235,0.4)' : 'rgba(30,58,138,0.1)'}`,
+                      }
+                    : {
+                        color: dark ? '#64748B' : '#94A3B8',
+                        border: '1px solid transparent',
+                      }
                 }
               >
                 <span>{s.label === 'Company & Project' ? <StatBuilding className="w-4 h-4" /> : s.label === 'System Types' ? <SysShield className="w-4 h-4" /> : null}</span>
@@ -229,7 +245,7 @@ export default function CreateSurveyForm({
                 <span
                   className="w-1.5 h-1.5 rounded-full ml-1"
                   style={{
-                    background: i === step ? '#1E3A8A' : i < step ? '#10B981' : '#E2E8F0',
+                    background: i === step ? (dark ? '#3B82F6' : '#1E3A8A') : i < step ? '#10B981' : (dark ? '#334155' : '#E2E8F0'),
                   }}
                 />
               </button>
@@ -245,7 +261,7 @@ export default function CreateSurveyForm({
           {/* Step 0: Company & Project */}
           {step === 0 && (
             <div style={sectionStyle}>
-              <p className="text-[10px] font-bold uppercase tracking-wider mb-4 text-[#1D4ED8]">
+              <p className="text-[10px] font-bold uppercase tracking-wider mb-4" style={{ color: dark ? '#60A5FA' : '#1D4ED8' }}>
                 <StatBuilding className="w-4 h-4 inline mr-1.5" /> COMPANY & PROJECT DETAILS
               </p>
               <div className="space-y-6">
@@ -325,11 +341,11 @@ export default function CreateSurveyForm({
           {/* Step 1: System Types */}
           {step === 1 && (
             <div style={sectionStyle}>
-              <p className="text-[10px] font-bold uppercase tracking-wider mb-4 text-[#1D4ED8]">
+              <p className="text-[10px] font-bold uppercase tracking-wider mb-4" style={{ color: dark ? '#60A5FA' : '#1D4ED8' }}>
                 <SysShield className="w-4 h-4 inline mr-1.5" /> SYSTEM TYPES & NOTES
               </p>
               
-              <p className="text-xs text-slate-400 font-semibold mb-5">Select all systems that apply — the AI will generate the correct equipment list for each.</p>
+              <p className="text-xs font-semibold mb-5" style={{ color: dark ? '#64748B' : '#94A3B8' }}>Select all systems that apply — the AI will generate the correct equipment list for each.</p>
               <div className="grid grid-cols-2 gap-3">
                 {SYSTEM_OPTIONS.map(opt => {
                   const selected = form.systemTypes.includes(opt.type);
@@ -339,18 +355,20 @@ export default function CreateSurveyForm({
                       key={opt.type}
                       type="button"
                       onClick={() => toggleSystemType(opt.type)}
-                      className="flex items-center gap-3 p-3 rounded-2xl border-2 text-left transition-all"
+                      className="flex items-center gap-3 p-3 rounded-2xl border-2 text-left transition-all cursor-pointer"
                       style={{
-                        borderColor: selected ? opt.color : '#E2E8F0',
-                        background: selected ? opt.bg : '#FAFAFA',
+                        borderColor: selected ? (dark ? '#3B82F6' : opt.color) : (dark ? '#1E293B' : '#E2E8F0'),
+                        background: selected
+                          ? (dark ? 'rgba(37,99,235,0.2)' : opt.bg)
+                          : (dark ? '#162032' : '#FAFAFA'),
                         boxShadow: selected ? `0 0 0 3px ${opt.color}18` : 'none',
                       }}
                     >
-                      <span className="text-2xl" style={{ color: selected ? opt.color : '#94A3B8' }}>{IconComp ? <IconComp className="w-5 h-5" /> : null}</span>
+                      <span className="text-2xl" style={{ color: selected ? (dark ? '#93C5FD' : opt.color) : (dark ? '#475569' : '#94A3B8') }}>{IconComp ? <IconComp className="w-5 h-5" /> : null}</span>
                       <div className="flex-1">
-                        <p className="text-xs font-black" style={{ color: selected ? opt.color : '#475569' }}>{opt.label}</p>
+                        <p className="text-xs font-black" style={{ color: selected ? (dark ? '#93C5FD' : opt.color) : (dark ? '#E2E8F0' : '#475569') }}>{opt.label}</p>
                         {selected && (
-                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded mt-0.5 inline-flex items-center gap-1" style={{ background: opt.color, color: '#fff' }}>SELECTED <Check className="w-2.5 h-2.5" /></span>
+                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded mt-0.5 inline-flex items-center gap-1" style={{ background: dark ? '#2563EB' : opt.color, color: '#fff' }}>SELECTED <Check className="w-2.5 h-2.5" /></span>
                         )}
                       </div>
                     </button>
@@ -370,14 +388,8 @@ export default function CreateSurveyForm({
             </div>
           )}
 
-
-
-
-
-
-
           {errorMsg && (
-            <div className="p-3 mb-4 bg-red-50 text-red-600 rounded-xl text-[11px] font-bold flex items-center gap-1.5 border border-red-100 animate-shake">
+            <div className="p-3 mb-4 bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-400 rounded-xl text-[11px] font-bold flex items-center gap-1.5 border border-red-100 dark:border-red-900/50 animate-shake">
               <svg className="w-4 h-4 shrink-0 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4.5c-.77-.833-2.694-.833-3.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z" />
               </svg>
@@ -391,7 +403,12 @@ export default function CreateSurveyForm({
               <button
                 type="button"
                 onClick={() => setStep(step - 1)}
-                className="px-6 py-3 rounded-xl text-xs font-bold bg-white text-slate-500 border border-slate-200 hover:text-slate-800 transition-colors"
+                className="px-6 py-3 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                style={{
+                  background: dark ? '#131B2E' : '#FFFFFF',
+                  color: dark ? '#CBD5E1' : '#64748B',
+                  border: `1px solid ${dark ? '#1E293B' : '#E2E8F0'}`,
+                }}
               >
                 ← Back
               </button>
@@ -399,7 +416,12 @@ export default function CreateSurveyForm({
               <button
                 type="button"
                 onClick={onExit}
-                className="px-6 py-3 rounded-xl text-xs font-bold bg-white text-slate-500 border border-slate-200 hover:text-slate-800 transition-colors"
+                className="px-6 py-3 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+                style={{
+                  background: dark ? '#131B2E' : '#FFFFFF',
+                  color: dark ? '#CBD5E1' : '#64748B',
+                  border: `1px solid ${dark ? '#1E293B' : '#E2E8F0'}`,
+                }}
               >
                 Exit
               </button>

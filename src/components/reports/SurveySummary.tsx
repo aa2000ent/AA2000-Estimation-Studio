@@ -6,6 +6,7 @@ interface Props {
   user: User;
   onBack: () => void;
   onViewEstimation?: () => void;
+  isDark?: boolean;
 }
 
 const FIELD_LABELS: Record<string, string> = {
@@ -101,8 +102,9 @@ function getFieldLabel(key: string): string {
   return FIELD_LABELS[key] || key.replace(/([A-Z])/g, ' $1').replace(/^./, s => s.toUpperCase());
 }
 
-export default function SurveySummary({ project, user, onBack, onViewEstimation }: Props) {
-  const theme = getRoleTheme(user.role);
+export default function SurveySummary({ project, user, onBack, onViewEstimation, isDark }: Props) {
+  const dark = isDark ?? (typeof document !== 'undefined' && document.documentElement.classList.contains('dark'));
+  const theme = getRoleTheme(user?.role, dark);
   const surveys = JSON.parse(localStorage.getItem('aa2000_surveys') || '[]')
     .filter((s: any) => s.projectId === project.id);
 
@@ -130,52 +132,90 @@ export default function SurveySummary({ project, user, onBack, onViewEstimation 
   }
 
   return (
-    <div className="flex-1 overflow-y-auto" style={{ background: `linear-gradient(135deg, ${theme.primaryLight}15, #ffffff, ${theme.primaryLight}15)` }}>
-      <header className="sticky top-0 z-40 bg-gradient-to-r from-white/80 to-white/80 backdrop-blur-sm border-b border-slate-200 px-6 py-4 shadow-sm">
+    <div
+      className="flex-1 overflow-y-auto transition-colors duration-200"
+      style={{
+        background: dark
+          ? '#0B0F19'
+          : `linear-gradient(135deg, ${theme.primaryLight}15, #ffffff, ${theme.primaryLight}15)`,
+      }}
+    >
+      <header
+        className="sticky top-0 z-40 backdrop-blur-sm border-b px-6 py-4 shadow-sm transition-colors duration-200"
+        style={{
+          background: dark ? '#0D1527' : 'rgba(255,255,255,0.8)',
+          borderColor: dark ? '#1E293B' : '#E2E8F0',
+        }}
+      >
         <div className="max-w-5xl mx-auto flex items-center justify-between">
           <button
             onClick={onBack}
-            className="flex items-center gap-2 text-sm text-slate-500 transition"
-            style={{ color: '#64748B' }}
+            className="flex items-center gap-2 text-sm transition cursor-pointer"
+            style={{ color: dark ? '#94A3B8' : '#64748B' }}
             onMouseEnter={e => (e.currentTarget.style.color = theme.primary)}
-            onMouseLeave={e => (e.currentTarget.style.color = '#64748B')}
+            onMouseLeave={e => (e.currentTarget.style.color = dark ? '#94A3B8' : '#64748B')}
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
             Back
           </button>
-          <span className="font-bold text-sm" style={{ color: theme.primaryDark }}>Survey Summary</span>
+          <span className="font-bold text-sm" style={{ color: dark ? '#60A5FA' : theme.primaryDark }}>Survey Summary</span>
         </div>
       </header>
 
       <main className="max-w-5xl mx-auto px-6 py-8 space-y-8">
-        <div className="bg-white/90 backdrop-blur-sm rounded-2xl shadow-lg shadow-slate-200/50 border border-slate-200/60 p-6">
-          <h1 className="text-2xl font-black tracking-tight" style={{ color: '#0F172A' }}>{project.name}</h1>
-          <p className="text-slate-500 text-sm mt-1">{project.clientName} &middot; {project.location}</p>
+        <div
+          className="rounded-2xl border p-6 transition-colors duration-200"
+          style={{
+            background: dark ? '#131B2E' : 'rgba(255,255,255,0.9)',
+            borderColor: dark ? '#1E293B' : 'rgba(226,232,240,0.6)',
+            boxShadow: dark ? 'none' : '0 10px 25px -5px rgba(226, 232, 240, 0.5)',
+          }}
+        >
+          <h1 className="text-2xl font-black tracking-tight" style={{ color: dark ? '#F8FAFC' : '#0F172A' }}>{project.name}</h1>
+          <p className="text-sm mt-1" style={{ color: dark ? '#94A3B8' : '#64748B' }}>{project.clientName} &middot; {project.location}</p>
         </div>
 
         {surveys.length === 0 ? (
-          <div className="bg-white/90 backdrop-blur-sm rounded-2xl shadow-lg shadow-slate-200/50 border border-slate-200/60 p-12 text-center">
-            <p className="text-slate-400 font-semibold">No surveys completed yet for this project.</p>
+          <div
+            className="rounded-2xl border p-12 text-center transition-colors duration-200"
+            style={{
+              background: dark ? '#131B2E' : 'rgba(255,255,255,0.9)',
+              borderColor: dark ? '#1E293B' : 'rgba(226,232,240,0.6)',
+              boxShadow: dark ? 'none' : '0 10px 25px -5px rgba(226, 232, 240, 0.5)',
+            }}
+          >
+            <p className="font-semibold" style={{ color: dark ? '#64748B' : '#94A3B8' }}>No surveys completed yet for this project.</p>
           </div>
         ) : (
           surveys.map((survey: any) => {
             const sections = buildSections(survey);
             return (
-              <div key={survey.id} className="bg-white/90 backdrop-blur-sm rounded-2xl shadow-md shadow-slate-200/30 border border-slate-200/60 overflow-hidden">
-                <div className="px-6 py-4 flex items-center gap-3 border-b border-slate-100">
-                  <span className="px-3 py-1 rounded-full text-xs font-bold uppercase" style={{ background: `${theme.primary}15`, color: theme.primary }}>
+              <div
+                key={survey.id}
+                className="rounded-2xl border overflow-hidden transition-colors duration-200"
+                style={{
+                  background: dark ? '#131B2E' : 'rgba(255,255,255,0.9)',
+                  borderColor: dark ? '#1E293B' : 'rgba(226,232,240,0.6)',
+                  boxShadow: dark ? 'none' : '0 4px 12px rgba(226, 232, 240, 0.3)',
+                }}
+              >
+                <div
+                  className="px-6 py-4 flex items-center gap-3 border-b"
+                  style={{ borderColor: dark ? '#1E293B' : '#F1F5F9' }}
+                >
+                  <span className="px-3 py-1 rounded-full text-xs font-bold uppercase" style={{ background: `${theme.primary}25`, color: dark ? '#93C5FD' : theme.primary }}>
                     {survey.type}
                   </span>
-                  <span className="text-xs text-slate-400">{survey.status}</span>
-                  <span className="text-xs text-slate-400">{new Date(survey.createdAt).toLocaleDateString()}</span>
+                  <span className="text-xs" style={{ color: dark ? '#64748B' : '#94A3B8' }}>{survey.status}</span>
+                  <span className="text-xs" style={{ color: dark ? '#64748B' : '#94A3B8' }}>{new Date(survey.createdAt).toLocaleDateString()}</span>
                 </div>
 
-                <div className="divide-y divide-slate-100">
+                <div className="divide-y" style={{ borderColor: dark ? '#1E293B' : '#F1F5F9' }}>
                   {sections.map((section, sIdx) => (
-                    <div key={sIdx} className="px-6 py-5">
-                      <h3 className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-4">
+                    <div key={sIdx} className="px-6 py-5" style={{ borderBottom: dark ? '1px solid #1E293B' : undefined }}>
+                      <h3 className="text-[10px] font-bold uppercase tracking-widest mb-4" style={{ color: dark ? '#64748B' : '#94A3B8' }}>
                         {section.title}
                       </h3>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4">
@@ -183,15 +223,15 @@ export default function SurveySummary({ project, user, onBack, onViewEstimation 
                           const highlighted = HIGHLIGHTED.has(key);
                           return (
                             <div key={key} className={highlighted ? 'sm:col-span-2' : ''}>
-                              <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-0.5">
+                              <p className="text-[10px] font-bold uppercase tracking-wider mb-0.5" style={{ color: dark ? '#64748B' : '#94A3B8' }}>
                                 {getFieldLabel(key)}
                               </p>
                               {highlighted ? (
-                                <p className="text-base font-bold" style={{ color: theme.primaryDark }}>
+                                <p className="text-base font-bold" style={{ color: dark ? '#60A5FA' : theme.primaryDark }}>
                                   {formatValue(value)}
                                 </p>
                               ) : (
-                                <p className="text-sm font-semibold text-slate-800">
+                                <p className="text-sm font-semibold" style={{ color: dark ? '#F8FAFC' : '#1E293B' }}>
                                   {formatValue(value)}
                                 </p>
                               )}
@@ -204,10 +244,13 @@ export default function SurveySummary({ project, user, onBack, onViewEstimation 
                 </div>
 
                 {onViewEstimation && (
-                  <div className="px-6 py-4 border-t border-slate-100 flex justify-end">
+                  <div
+                    className="px-6 py-4 border-t flex justify-end"
+                    style={{ borderColor: dark ? '#1E293B' : '#F1F5F9' }}
+                  >
                     <button
                       onClick={onViewEstimation}
-                      className="px-6 py-3 rounded-xl text-xs font-bold text-white transition-all shadow-sm active:scale-95 hover:opacity-90"
+                      className="px-6 py-3 rounded-xl text-xs font-bold text-white transition-all shadow-sm active:scale-95 hover:opacity-90 cursor-pointer"
                       style={{ background: theme.buttonGradient }}
                     >
                       View Cost Estimation

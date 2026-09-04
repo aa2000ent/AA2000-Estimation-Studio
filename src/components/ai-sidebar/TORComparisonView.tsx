@@ -43,18 +43,24 @@ function DropZone({
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
 
-  const bgColors = {
-    blue: 'bg-blue-50/50',
-    amber: 'bg-amber-50/50',
+  const colorStyles = {
+    blue: {
+      idle: 'border-blue-200/80 dark:border-blue-500/30 bg-transparent',
+      hover: 'hover:border-blue-400 dark:hover:border-blue-400/70 hover:bg-blue-500/[0.04] dark:hover:bg-blue-500/10',
+      active: 'border-blue-500 dark:border-blue-400 bg-blue-500/10 dark:bg-blue-500/20',
+      icon: 'text-blue-600 dark:text-blue-400',
+      text: 'text-blue-700 dark:text-blue-300',
+    },
+    amber: {
+      idle: 'border-amber-200/80 dark:border-amber-500/30 bg-transparent',
+      hover: 'hover:border-amber-400 dark:hover:border-amber-400/70 hover:bg-amber-500/[0.04] dark:hover:bg-amber-500/10',
+      active: 'border-amber-500 dark:border-amber-400 bg-amber-500/10 dark:bg-amber-500/20',
+      icon: 'text-amber-600 dark:text-amber-400',
+      text: 'text-amber-700 dark:text-amber-300',
+    },
   };
-  const iconColors = {
-    blue: 'text-blue-600',
-    amber: 'text-amber-600',
-  };
-  const textColors = {
-    blue: 'text-blue-700',
-    amber: 'text-amber-700',
-  };
+
+  const currentStyle = colorStyles[color];
 
   const handleContainerClick = () => {
     if (!file && inputRef.current) {
@@ -75,10 +81,10 @@ function DropZone({
         }
       }}
       onClick={handleContainerClick}
-      className={`relative border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-all overflow-hidden ${
+      className={`relative border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-all duration-200 overflow-hidden ${
         dragOver
-          ? `border-${color}-400 ${bgColors[color]}`
-          : `border-${color}-200 hover:border-${color}-300 hover:${bgColors[color]}`
+          ? currentStyle.active
+          : `${currentStyle.idle} ${currentStyle.hover}`
       }`}
     >
       <input
@@ -100,20 +106,20 @@ function DropZone({
           <div className="flex items-center justify-between mb-2 w-full">
             <div className="flex items-center gap-3 min-w-0 flex-1">
               <div
-                className="w-10 h-10 rounded-xl flex items-center justify-center text-white text-xs font-black shrink-0" 
+                className="w-10 h-10 rounded-xl flex items-center justify-center text-white text-xs font-black shrink-0 shadow-sm" 
                 style={{ background: `linear-gradient(135deg, ${color === 'blue' ? '#2563EB' : '#D97706'}CC, ${color === 'blue' ? '#2563EB' : '#D97706'}88)` }}
               >
                 {file.parsed.fileName.split('.').pop()?.toUpperCase().slice(0, 4) || 'FILE'}
               </div>
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-bold text-slate-800 truncate whitespace-nowrap">{file.parsed.fileName}</p>
-                <p className="text-xs text-slate-500 truncate whitespace-nowrap">{file.loading ? 'Parsing...' : `${(file.parsed.content.length / 1024).toFixed(1)} KB`}</p>
+                <p className="text-sm font-bold text-slate-800 dark:text-slate-100 truncate whitespace-nowrap">{file.parsed.fileName}</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 truncate whitespace-nowrap">{file.loading ? 'Parsing...' : `${(file.parsed.content.length / 1024).toFixed(1)} KB`}</p>
               </div>
             </div>
             <button
               type="button"
               onClick={e => { e.stopPropagation(); onRemove(); }}
-              className="p-1.5 rounded text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors shrink-0 ml-2 cursor-pointer"
+              className="p-1.5 rounded text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors shrink-0 ml-2 cursor-pointer"
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
@@ -123,13 +129,13 @@ function DropZone({
         </div>
       ) : (
         <div className="flex flex-col items-center justify-center">
-          <svg className={`w-12 h-12 mb-3 ${iconColors[color]}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+          <svg className={`w-12 h-12 mb-3 ${currentStyle.icon}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m3.75 9v6m3-3H9m1.5-12H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
           </svg>
-          <p className={`text-base font-bold ${textColors[color]}`}>
+          <p className={`text-base font-bold ${currentStyle.text}`}>
             {label}
           </p>
-          <p className="text-sm text-slate-500 mt-1">
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
             {description}
           </p>
           <div className="mt-4">
@@ -455,23 +461,23 @@ export default function TORComparisonView({ userRole, onSaveAIScan, onScanningCh
   const varianceBg = (auditResult?.varianceAmount ?? 0) > 0 ? 'bg-red-50' : (auditResult?.varianceAmount ?? 0) < 0 ? 'bg-amber-50' : 'bg-slate-50';
 
   return (
-    <div className="flex flex-col h-full bg-white">
+    <div className="flex flex-col h-full bg-white dark:bg-[#0B132B] transition-colors">
       {/* Header */}
-      <div className="flex items-center justify-between px-6 h-16 shrink-0 border-b border-slate-200">
+      <div className="flex items-center justify-between px-6 h-16 shrink-0 border-b border-slate-200 dark:border-slate-800">
         <div className="flex items-center gap-3">
-          <svg className="w-5 h-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <svg className="w-5 h-5 text-blue-600 dark:text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 0 0-2.455 2.456Z" />
           </svg>
-          <span className="text-base font-black text-slate-900">TOR Comparison Tool</span>
+          <span className="text-base font-black text-slate-900 dark:text-white">TOR Comparison Tool</span>
         </div>
       </div>
 
       <div className="flex-1 px-6 py-6 overflow-y-auto">
         <div className="max-w-6xl mx-auto space-y-6">
           {/* Instruction */}
-          <div className="p-4 bg-blue-50 border border-blue-100 rounded-xl">
-            <p className="text-sm text-blue-800 font-medium">
-              Upload a <span className="font-bold">Terms of Reference (TOR)</span> or technical specifications document (PDF, XLSX, DOCX).
+          <div className="p-4 bg-blue-50/70 dark:bg-[#131B2E] border border-blue-200/80 dark:border-slate-800 rounded-xl transition-colors">
+            <p className="text-sm text-blue-900 dark:text-blue-200 font-medium leading-relaxed">
+              Upload a <span className="font-bold text-blue-950 dark:text-white">Terms of Reference (TOR)</span> or technical specifications document (PDF, XLSX, DOCX).
               The AI will extract hardware requirements, identify scope and compliance gaps, and provide a detailed audit with cost recommendations.
             </p>
           </div>

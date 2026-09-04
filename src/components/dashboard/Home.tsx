@@ -506,7 +506,7 @@ export default function Home({
   const [menuOpen, setMenuOpen] = useState<string | null>(null);
   const [editProject, setEditProject] = useState<Project | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [showPendingModal, setShowPendingModal] = useState(false);
   const [pinned, setPinned] = useState<Set<string>>(() => {
     try {
@@ -520,9 +520,6 @@ export default function Home({
   // Sync projects prop to local state
   useEffect(() => {
     setProjectList(projects);
-    // Simulate brief loading state for skeleton
-    const t = setTimeout(() => setIsLoading(false), 300);
-    return () => clearTimeout(t);
   }, [projects]);
 
   // Sync pinned set to localStorage

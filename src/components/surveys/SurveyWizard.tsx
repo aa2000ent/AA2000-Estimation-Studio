@@ -9,6 +9,7 @@ interface Props {
   surveyType: SurveyType;
   onComplete: () => void;
   onBack: () => void;
+  isDark?: boolean;
 }
 
 const SURVEY_CONFIG: Record<SurveyType, { label: string; icon: string; steps: { key: string; label: string }[] }> = {
@@ -72,7 +73,8 @@ const SURVEY_CONFIG: Record<SurveyType, { label: string; icon: string; steps: { 
   },
 };
 
-export default function SurveyWizard({ projectId, surveyType, onComplete, onBack }: Props) {
+export default function SurveyWizard({ projectId, surveyType, onComplete, onBack, isDark }: Props) {
+  const dark = isDark ?? (typeof document !== 'undefined' && document.documentElement.classList.contains('dark'));
   const normalizedKey = (surveyType || '').toUpperCase().replace('-', '_');
   const config = SURVEY_CONFIG[normalizedKey as keyof typeof SURVEY_CONFIG] || SURVEY_CONFIG['OTHER'];
   const [currentStep, setCurrentStep] = useState(0);
@@ -224,31 +226,31 @@ export default function SurveyWizard({ projectId, surveyType, onComplete, onBack
   };
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden" style={{ background: '#f5f6fa' }}>
+    <div className="flex-1 flex flex-col overflow-hidden" style={{ background: dark ? '#0B0F19' : '#f5f6fa' }}>
 
       {/* ── Top Header Bar ── */}
       <header style={{
-        background: '#fff',
-        borderBottom: '1px solid #e5e7eb',
+        background: dark ? '#0D1527' : '#fff',
+        borderBottom: dark ? '1px solid #1E293B' : '1px solid #e5e7eb',
         padding: '0 32px',
         height: 60,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
         flexShrink: 0,
-        boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+        boxShadow: dark ? '0 1px 3px rgba(0,0,0,0.4)' : '0 1px 3px rgba(0,0,0,0.06)',
       }}>
         <button
           onClick={handlePrev}
           style={{
             display: 'flex', alignItems: 'center', gap: 6,
-            fontSize: 13, fontWeight: 500, color: '#6b7280',
+            fontSize: 13, fontWeight: 500, color: dark ? '#94A3B8' : '#6b7280',
             background: 'none', border: 'none', cursor: 'pointer',
             padding: '6px 10px', borderRadius: 8,
             transition: 'background 0.15s, color 0.15s',
           }}
-          onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = '#f3f4f6'; (e.currentTarget as HTMLButtonElement).style.color = '#1e3a5f'; }}
-          onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'none'; (e.currentTarget as HTMLButtonElement).style.color = '#6b7280'; }}
+          onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = dark ? '#1E293B' : '#f3f4f6'; (e.currentTarget as HTMLButtonElement).style.color = dark ? '#F8FAFC' : '#1e3a5f'; }}
+          onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = 'none'; (e.currentTarget as HTMLButtonElement).style.color = dark ? '#94A3B8' : '#6b7280'; }}
         >
           <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
@@ -262,17 +264,17 @@ export default function SurveyWizard({ projectId, surveyType, onComplete, onBack
             background: '#1e3a5f', display: 'flex', alignItems: 'center', justifyContent: 'center',
             fontSize: 16,
           }}>
-            {SurveyIconCmp ? <SurveyIconCmp className="w-4 h-4" /> : null}
+            {SurveyIconCmp ? <SurveyIconCmp className="w-4 h-4 text-white" /> : null}
           </div>
           <div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: '#111827', lineHeight: 1.2 }}>{config.label}</div>
-            <div style={{ fontSize: 11, color: '#9ca3af', fontWeight: 500 }}>Site Survey Form</div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: dark ? '#F8FAFC' : '#111827', lineHeight: 1.2 }}>{config.label}</div>
+            <div style={{ fontSize: 11, color: dark ? '#94A3B8' : '#9ca3af', fontWeight: 500 }}>Site Survey Form</div>
           </div>
         </div>
 
         <div style={{
-          fontSize: 12, fontWeight: 600, color: '#6b7280',
-          background: '#f9fafb', border: '1px solid #e5e7eb',
+          fontSize: 12, fontWeight: 600, color: dark ? '#94A3B8' : '#6b7280',
+          background: dark ? '#162032' : '#f9fafb', border: dark ? '1px solid #1E293B' : '1px solid #e5e7eb',
           padding: '4px 12px', borderRadius: 20,
         }}>
           Step {currentStep + 1} / {adjustedSteps.length}
@@ -285,14 +287,14 @@ export default function SurveyWizard({ projectId, surveyType, onComplete, onBack
         {/* ── Left Sidebar — Step Progress ── */}
         <aside style={{
           width: 220, flexShrink: 0,
-          background: '#fff',
-          borderRight: '1px solid #e5e7eb',
+          background: dark ? '#0D1527' : '#fff',
+          borderRight: dark ? '1px solid #1E293B' : '1px solid #e5e7eb',
           padding: '32px 20px',
           display: 'flex',
           flexDirection: 'column',
           gap: 4,
         }}>
-          <div style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', letterSpacing: '0.08em', marginBottom: 16, paddingLeft: 12 }}>PROGRESS</div>
+          <div style={{ fontSize: 10, fontWeight: 700, color: dark ? '#64748B' : '#9ca3af', letterSpacing: '0.08em', marginBottom: 16, paddingLeft: 12 }}>PROGRESS</div>
           {adjustedSteps.map((s, i) => {
             const isActive = i === currentStep;
             const isPast = i < currentStep;
@@ -301,7 +303,7 @@ export default function SurveyWizard({ projectId, surveyType, onComplete, onBack
                 <div style={{
                   display: 'flex', alignItems: 'center', gap: 12,
                   padding: '10px 12px', borderRadius: 10,
-                  background: isActive ? '#eff6ff' : 'transparent',
+                  background: isActive ? (dark ? 'rgba(37,99,235,0.2)' : '#eff6ff') : 'transparent',
                   borderLeft: isActive ? '3px solid #2563eb' : '3px solid transparent',
                   transition: 'all 0.2s',
                 }}>
@@ -310,8 +312,8 @@ export default function SurveyWizard({ projectId, surveyType, onComplete, onBack
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     fontSize: 11, fontWeight: 700,
                     flexShrink: 0,
-                    background: isPast ? '#16a34a' : isActive ? '#2563eb' : '#f3f4f6',
-                    color: isPast || isActive ? '#fff' : '#9ca3af',
+                    background: isPast ? '#16a34a' : isActive ? '#2563eb' : (dark ? '#1E293B' : '#f3f4f6'),
+                    color: isPast || isActive ? '#fff' : (dark ? '#64748B' : '#9ca3af'),
                     transition: 'all 0.2s',
                   }}>
                     {isPast ? (
@@ -322,12 +324,12 @@ export default function SurveyWizard({ projectId, surveyType, onComplete, onBack
                   </div>
                   <span style={{
                     fontSize: 13, fontWeight: isActive ? 700 : 500,
-                    color: isPast ? '#16a34a' : isActive ? '#1d4ed8' : '#9ca3af',
+                    color: isPast ? '#22c55e' : isActive ? (dark ? '#60A5FA' : '#1d4ed8') : (dark ? '#64748B' : '#9ca3af'),
                     transition: 'color 0.2s',
                   }}>{s.label}</span>
                 </div>
                 {i < adjustedSteps.length - 1 && (
-                  <div style={{ width: 2, height: 16, background: isPast ? '#bbf7d0' : '#f3f4f6', marginLeft: 23, borderRadius: 2 }} />
+                  <div style={{ width: 2, height: 16, background: isPast ? (dark ? '#065f46' : '#bbf7d0') : (dark ? '#1E293B' : '#f3f4f6'), marginLeft: 23, borderRadius: 2 }} />
                 )}
               </div>
             );
@@ -338,16 +340,16 @@ export default function SurveyWizard({ projectId, surveyType, onComplete, onBack
         <main style={{ flex: 1, overflowY: 'auto', padding: '32px 40px 100px 40px' }}>
           {/* AI Pre-Estimation Helper Banner */}
           {aiBaseline && (
-            <div className="mb-6 p-4 rounded-xl border border-indigo-200 bg-gradient-to-r from-indigo-50/80 to-blue-50/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+            <div className={`mb-6 p-4 rounded-xl border ${dark ? 'border-indigo-900/50 bg-indigo-950/30' : 'border-indigo-200 bg-gradient-to-r from-indigo-50/80 to-blue-50/80'} flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs`}>
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center text-sm font-black shrink-0">
                   🤖
                 </div>
                 <div>
-                  <h4 className="text-xs font-black text-slate-800 uppercase tracking-wide">
+                  <h4 className={`text-xs font-black uppercase tracking-wide ${dark ? 'text-indigo-200' : 'text-slate-800'}`}>
                     AI Pre-Estimation Available for this Project
                   </h4>
-                  <p className="text-[11px] text-slate-500 font-medium">
+                  <p className={`text-[11px] font-medium ${dark ? 'text-indigo-300/80' : 'text-slate-500'}`}>
                     Pre-populate this survey form with AI recommended hardware and device specifications as a starting baseline.
                   </p>
                 </div>
@@ -364,14 +366,14 @@ export default function SurveyWizard({ projectId, surveyType, onComplete, onBack
 
           {/* Form card */}
           <div style={{
-            background: '#fff',
-            border: '1px solid #e5e7eb',
+            background: dark ? '#131B2E' : '#fff',
+            border: dark ? '1px solid #1E293B' : '1px solid #e5e7eb',
             borderRadius: 12,
             padding: '36px 40px',
-            boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+            boxShadow: dark ? '0 4px 20px rgba(0,0,0,0.3)' : '0 1px 4px rgba(0,0,0,0.06)',
           }}>
             {step.key === 'building' && (
-              <BuildingForm data={formData} onChange={updateField} errors={errors} />
+              <BuildingForm data={formData} onChange={updateField} errors={errors} isDark={dark} />
             )}
             {step.key === 'cameras' && (
               <CameraForm data={formData} onChange={updateField} />
@@ -411,19 +413,19 @@ export default function SurveyWizard({ projectId, surveyType, onComplete, onBack
             marginTop: 24,
             padding: '16px 0',
             paddingRight: '150px',
-            borderTop: '1px solid #e5e7eb',
+            borderTop: dark ? '1px solid #1E293B' : '1px solid #e5e7eb',
           }}>
             <button
               onClick={handlePrev}
               style={{
                 display: 'flex', alignItems: 'center', gap: 6,
-                fontSize: 13, fontWeight: 600, color: '#374151',
-                background: '#fff', border: '1px solid #d1d5db',
+                fontSize: 13, fontWeight: 600, color: dark ? '#CBD5E1' : '#374151',
+                background: dark ? '#131B2E' : '#fff', border: dark ? '1px solid #1E293B' : '1px solid #d1d5db',
                 padding: '10px 20px', borderRadius: 8,
                 cursor: 'pointer', transition: 'all 0.15s',
               }}
-              onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = '#f9fafb'; }}
-              onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = '#fff'; }}
+              onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = dark ? '#1E293B' : '#f9fafb'; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = dark ? '#131B2E' : '#fff'; }}
             >
               <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
@@ -451,11 +453,6 @@ export default function SurveyWizard({ projectId, surveyType, onComplete, onBack
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
                 </svg>
               )}
-              {isLast && (
-                <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                </svg>
-              )}
             </button>
           </div>
         </main>
@@ -466,7 +463,7 @@ export default function SurveyWizard({ projectId, surveyType, onComplete, onBack
 
 // ─── Sub-forms ─────────────────────────────────────────────
 
-function BuildingForm({ data, onChange, errors = {} }: { data: any; onChange: any; errors?: Record<string, string> }) {
+function BuildingForm({ data, onChange, errors = {}, isDark }: { data: any; onChange: any; errors?: Record<string, string>; isDark?: boolean }) {
   React.useEffect(() => {
     const length = Number(data.buildingLength) || 0;
     const width = Number(data.buildingWidth) || 0;
@@ -500,14 +497,24 @@ function BuildingForm({ data, onChange, errors = {} }: { data: any; onChange: an
     width: '100%',
     padding: '9px 12px',
     borderRadius: 8,
-    border: errors[key] ? '1px solid #f87171' : '1px solid #d1d5db',
-    background: errors[key] ? '#fff5f5' : '#fff',
+    border: errors[key] ? '1px solid #f87171' : (isDark ? '1px solid #1E293B' : '1px solid #d1d5db'),
+    background: errors[key] ? (isDark ? '#3b1212' : '#fff5f5') : (isDark ? '#162032' : '#fff'),
     fontSize: 13,
-    color: '#111827',
+    color: isDark ? '#F8FAFC' : '#111827',
     outline: 'none',
     boxSizing: 'border-box',
     transition: 'border-color 0.15s',
   });
+
+  const labelStyle: React.CSSProperties = {
+    display: 'block',
+    fontSize: 11,
+    fontWeight: 700,
+    color: isDark ? '#CBD5E1' : '#374151',
+    marginBottom: 6,
+    textTransform: 'uppercase',
+    letterSpacing: '0.04em',
+  };
 
   const ErrorMsg = ({ fieldKey }: { fieldKey: string }) =>
     errors[fieldKey] ? (
@@ -524,16 +531,17 @@ function BuildingForm({ data, onChange, errors = {} }: { data: any; onChange: an
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
       {/* Section header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 16, borderBottom: '1px solid #f3f4f6' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 16, borderBottom: isDark ? '1px solid #1E293B' : '1px solid #f3f4f6' }}>
         <div>
-          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#111827' }}>Building Information</h3>
-          <p style={{ margin: '4px 0 0', fontSize: 12, color: '#6b7280' }}>Provide key structural details about the site building.</p>
+          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: isDark ? '#F8FAFC' : '#111827' }}>Building Information</h3>
+          <p style={{ margin: '4px 0 0', fontSize: 12, color: isDark ? '#94A3B8' : '#6b7280' }}>Provide key structural details about the site building.</p>
         </div>
         {errCount > 0 && (
           <div style={{
             display: 'flex', alignItems: 'center', gap: 6,
             fontSize: 11, fontWeight: 700, color: '#dc2626',
-            background: '#fef2f2', border: '1px solid #fecaca',
+            background: isDark ? 'rgba(239,68,68,0.15)' : '#fef2f2',
+            border: isDark ? '1px solid rgba(239,68,68,0.3)' : '1px solid #fecaca',
             padding: '5px 12px', borderRadius: 20,
           }}>
             <svg width="11" height="11" fill="currentColor" viewBox="0 0 20 20">
@@ -545,7 +553,7 @@ function BuildingForm({ data, onChange, errors = {} }: { data: any; onChange: an
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px 20px' }}>
         <div>
-          <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#374151', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+          <label style={labelStyle}>
             Is New Building? <span style={{ color: '#dc2626' }}>*</span>
           </label>
           <select
@@ -560,7 +568,7 @@ function BuildingForm({ data, onChange, errors = {} }: { data: any; onChange: an
           <ErrorMsg fieldKey="isNew" />
         </div>
         <div>
-          <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#374151', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+          <label style={labelStyle}>
             Building Type <span style={{ color: '#dc2626' }}>*</span>
           </label>
           <select
@@ -593,7 +601,7 @@ function BuildingForm({ data, onChange, errors = {} }: { data: any; onChange: an
         </div>
 
         <div>
-          <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#374151', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+          <label style={labelStyle}>
             Building Length (m) <span style={{ color: '#dc2626' }}>*</span>
           </label>
           <input
@@ -606,7 +614,7 @@ function BuildingForm({ data, onChange, errors = {} }: { data: any; onChange: an
           <ErrorMsg fieldKey="buildingLength" />
         </div>
         <div>
-          <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#374151', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+          <label style={labelStyle}>
             Building Width (m) <span style={{ color: '#dc2626' }}>*</span>
           </label>
           <input
@@ -620,7 +628,7 @@ function BuildingForm({ data, onChange, errors = {} }: { data: any; onChange: an
         </div>
 
         <div>
-          <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#374151', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+          <label style={labelStyle}>
             Total Floor Area (m²)
           </label>
           <input
@@ -631,17 +639,17 @@ function BuildingForm({ data, onChange, errors = {} }: { data: any; onChange: an
             placeholder="Auto-calculated"
             style={{
               ...inputStyle('totalFloorArea'),
-              background: '#f8fafc',
-              color: data.totalFloorArea ? '#1e293b' : '#94a3b8',
+              background: isDark ? '#0F172A' : '#f8fafc',
+              color: data.totalFloorArea ? (isDark ? '#93C5FD' : '#1e293b') : (isDark ? '#64748B' : '#94A3B8'),
               fontWeight: 700,
               cursor: 'not-allowed',
               userSelect: 'none',
-              border: '1px solid #e2e8f0',
+              border: isDark ? '1px solid #1E293B' : '1px solid #e2e8f0',
             }}
           />
         </div>
         <div>
-          <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#374151', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+          <label style={labelStyle}>
             Floor Height (m) <span style={{ color: '#dc2626' }}>*</span>
           </label>
           <input
@@ -655,7 +663,7 @@ function BuildingForm({ data, onChange, errors = {} }: { data: any; onChange: an
         </div>
 
         <div>
-          <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#374151', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+          <label style={labelStyle}>
             Number of Floors <span style={{ color: '#dc2626' }}>*</span>
           </label>
           <input
@@ -668,7 +676,7 @@ function BuildingForm({ data, onChange, errors = {} }: { data: any; onChange: an
           <ErrorMsg fieldKey="floors" />
         </div>
         <div>
-          <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#374151', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+          <label style={labelStyle}>
             Number of Rooms <span style={{ color: '#dc2626' }}>*</span>
           </label>
           <input

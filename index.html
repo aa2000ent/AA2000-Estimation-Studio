@@ -16,6 +16,17 @@
     <link href="https://fonts.cdnfonts.com/css/lemon-milk" rel="stylesheet" />
     <link href="https://fonts.cdnfonts.com/css/google-sans" rel="stylesheet" />
 
+    <script>
+      (function() {
+        try {
+          if (localStorage.getItem('aa2000_theme') === 'dark') {
+            document.documentElement.classList.add('dark');
+            document.documentElement.setAttribute('data-theme', 'dark');
+          }
+        } catch(e) {}
+      })();
+    </script>
+
     <style>
       @import "tailwindcss";
       @custom-variant dark (&:where(.dark, .dark *));
@@ -148,14 +159,36 @@
         background-color: #0B0F19 !important;
         color: #F8FAFC !important;
       }
-      html.dark .bg-white {
+      html.dark .bg-white,
+      html.dark .bg-white\/95,
+      html.dark .bg-white\/90,
+      html.dark .bg-white\/80,
+      html.dark .bg-white\/70,
+      html.dark .bg-white\/60,
+      html.dark .bg-white\/50 {
         background-color: #131B2E !important;
       }
       html.dark .bg-slate-50, html.dark .bg-slate-50\/70, html.dark .bg-slate-50\/80, html.dark .bg-slate-50\/90 {
         background-color: #162032 !important;
       }
-      html.dark .border-slate-200, html.dark .border-slate-200\/80, html.dark .border-slate-200\/90, html.dark .border-slate-100, html.dark .border-blue-100\/70 {
+      html.dark .bg-blue-50, html.dark .bg-blue-50\/50, html.dark .bg-blue-50\/60, html.dark .bg-blue-50\/70, html.dark .bg-blue-50\/80 {
+        background-color: #131B2E !important;
+      }
+      html.dark .border-slate-200, html.dark .border-slate-200\/80, html.dark .border-slate-200\/90, html.dark .border-slate-200\/60, html.dark .border-slate-200\/50, html.dark .border-slate-200\/40, html.dark .border-slate-100, html.dark .border-blue-100, html.dark .border-blue-100\/70, html.dark .border-blue-200, html.dark .border-blue-200\/80 {
         border-color: #1E293B !important;
+      }
+      html.dark .shadow-slate-200\/50,
+      html.dark .shadow-slate-200\/40,
+      html.dark .shadow-slate-200\/30,
+      html.dark .shadow-slate-200\/20,
+      html.dark .shadow-slate-100 {
+        box-shadow: none !important;
+      }
+      html.dark .divide-slate-100 > :not([hidden]) ~ :not([hidden]) {
+        border-color: #1E293B !important;
+      }
+      html.dark .text-blue-800, html.dark .text-blue-900, html.dark .text-blue-950 {
+        color: #93C5FD !important;
       }
       html.dark .text-slate-800, html.dark .text-slate-900 {
         color: #F8FAFC !important;
@@ -185,6 +218,14 @@
       }
       html.dark ::-webkit-scrollbar-thumb:hover {
         background: #475569;
+      }
+      html.dark .skeleton {
+        background: linear-gradient(90deg, #1E293B 25%, #334155 50%, #1E293B 75%) !important;
+        background-size: 800px 100% !important;
+      }
+      html.dark .skeleton-soft {
+        background: linear-gradient(90deg, #162032 25%, #1E293B 50%, #162032 75%) !important;
+        background-size: 800px 100% !important;
       }
 
       /* ─── Base Body ─── */

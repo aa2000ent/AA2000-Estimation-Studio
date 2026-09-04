@@ -139,7 +139,13 @@ export default function CalendarView({ projects, onSelectProject, userRole, isDa
             >
               Survey Calendar
             </h1>
-            <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-700">
+            <span
+              className={`text-xs font-bold px-2.5 py-0.5 rounded-full transition-colors ${
+                isDark
+                  ? 'bg-blue-950/60 text-blue-300 border border-blue-900/50'
+                  : 'bg-blue-100 text-blue-700'
+              }`}
+            >
               {monthName} {year}
             </span>
           </div>
@@ -530,7 +536,11 @@ export default function CalendarView({ projects, onSelectProject, userRole, isDa
                         {proj.systemTypes.map(s => (
                           <span
                             key={s}
-                            className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-blue-100 text-blue-700"
+                            className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
+                              isDark
+                                ? 'bg-blue-950/60 text-blue-300 border border-blue-900/40'
+                                : 'bg-blue-100 text-blue-700'
+                            }`}
                           >
                             {s}
                           </span>
@@ -539,7 +549,9 @@ export default function CalendarView({ projects, onSelectProject, userRole, isDa
                     )}
                   </div>
 
-                  <div className="pt-2 border-t border-slate-200/60 flex items-center justify-between text-[11px] text-slate-500">
+                  <div className={`pt-2 border-t flex items-center justify-between text-[11px] ${
+                    isDark ? 'border-slate-700/60 text-slate-400' : 'border-slate-200/60 text-slate-500'
+                  }`}>
                     <span className="font-semibold">
                       📅 {proj.startDate || 'No date'}
                     </span>

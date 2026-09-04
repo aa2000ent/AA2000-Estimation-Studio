@@ -11,7 +11,6 @@ import CompanyDetail from '../projects/CompanyDetail';
 import AccountDropdown from './AccountDropdown';
 import { getRoleTheme } from '../../utils/RoleTheme';
 import CalendarView from './CalendarView';
-import { SkeletonStatCard, SkeletonProjectRow, SkeletonTable } from '../utils/Skeleton';
 import { StatBuilding, StatClipboard, StatBolt, StatCalendar, StatCheckCircle, ChartBar, Bell, RoleWrench, RoleChart, RoleComputer } from '../../utils/Icons';
 import AISidebar from '../ai-sidebar/AISidebar';
 import FloorPlanView from '../floor-plan/FloorPlanView';
@@ -43,6 +42,8 @@ interface Props {
   contentOverride?: React.ReactNode;
   activeViewOverride?: View;
   onExitOverride?: () => void;
+  isDark?: boolean;
+  onToggleDark?: () => void;
 }
 
 type SortMode = 'newest' | 'oldest' | 'name-asc' | 'name-desc';
@@ -552,11 +553,12 @@ export default function Dashboard({
   contentOverride,
   activeViewOverride,
   onExitOverride,
+  isDark: propIsDark,
+  onToggleDark,
 }: Props) {
   const [view, setView] = useState<View>('dashboard');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768);
-  const [isLoading, setIsLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [isCompanyMode, setIsCompanyMode] = useState(false);
   const [activeNotifTab, setActiveNotifTab] = useState<'ongoing' | 'upcoming' | 'missing' | 'approval' | 'finalize'>('ongoing');
@@ -573,13 +575,6 @@ export default function Dashboard({
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  useEffect(() => {
-    setIsLoading(true);
-    const timer = setTimeout(() => {
-      setIsLoading(false);
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [view]);
   const [menuOpen, setMenuOpen] = useState<string | null>(null);
   const [pinned, setPinned] = useState<Set<string>>(() => {
     try { const s = localStorage.getItem('aa2000_pinned'); return s ? new Set(JSON.parse(s)) : new Set(); }
@@ -591,15 +586,39 @@ export default function Dashboard({
     localStorage.setItem('aa2000_pinned', JSON.stringify([...pinned]));
   }, [pinned]);
 
-  // Dark / Night Mode state
-  const [isDark, setIsDark] = useState<boolean>(() => {
+  // Dark / Night Mode state: synced with parent prop if provided
+  const [localIsDark, setLocalIsDark] = useState<boolean>(() => {
     try {
       const saved = localStorage.getItem('aa2000_theme');
-      return saved === 'dark';
+      return saved === 'dark' || (typeof document !== 'undefined' && document.documentElement.classList.contains('dark'));
     } catch {
       return false;
     }
   });
+
+  const isDark = propIsDark !== undefined ? propIsDark : localIsDark;
+
+  const handleToggleTheme = () => {
+    if (onToggleDark) {
+      onToggleDark();
+    } else {
+      setLocalIsDark(prev => {
+        const next = !prev;
+        try {
+          if (next) {
+            document.documentElement.classList.add('dark');
+            document.documentElement.setAttribute('data-theme', 'dark');
+            localStorage.setItem('aa2000_theme', 'dark');
+          } else {
+            document.documentElement.classList.remove('dark');
+            document.documentElement.setAttribute('data-theme', 'light');
+            localStorage.setItem('aa2000_theme', 'light');
+          }
+        } catch {}
+        return next;
+      });
+    }
+  };
 
   useEffect(() => {
     try {
@@ -948,7 +967,7 @@ export default function Dashboard({
 
             {/* Dark / Night Mode Toggle */}
             <button
-              onClick={() => setIsDark(d => !d)}
+              onClick={handleToggleTheme}
               className="p-1.5 sm:p-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-amber-400 transition-all duration-200 flex items-center justify-center cursor-pointer shadow-2xs group"
               title={isDark ? 'Switch to Light Mode' : 'Switch to Night Mode'}
               aria-label="Toggle Night Mode"
@@ -1353,9 +1372,7 @@ export default function Dashboard({
 
                     {/* Table body */}
                     <div className="overflow-x-auto flex-1 pb-16">
-                      {isLoading ? (
-                        <SkeletonTable columns={4} rows={5} />
-                      ) : ordered.length === 0 ? (
+                      {ordered.length === 0 ? (
                         <div className="flex flex-col items-center justify-center py-16 gap-3 flex-1">
                           <div
                             className="w-14 h-14 rounded-2xl flex items-center justify-center text-2xl animate-float-a"

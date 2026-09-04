@@ -42,6 +42,7 @@ interface QuotationModalProps {
   showEditQuotation: boolean;
   setShowEditQuotation: React.Dispatch<React.SetStateAction<boolean>>;
   onClose: () => void;
+  isDark?: boolean;
 }
 
 export function generateSystemScopeOfWorks(
@@ -336,7 +337,46 @@ export default function QuotationModal({
   showEditQuotation,
   setShowEditQuotation,
   onClose,
+  isDark,
 }: QuotationModalProps) {
+  // Theme state synced with DOM and localStorage
+  const [themeDark, setThemeDark] = React.useState<boolean>(() => {
+    if (typeof isDark === 'boolean') return isDark;
+    if (typeof document !== 'undefined') {
+      return document.documentElement.classList.contains('dark') ||
+        document.documentElement.getAttribute('data-theme') === 'dark' ||
+        localStorage.getItem('aa2000_theme') === 'dark';
+    }
+    return false;
+  });
+
+  React.useEffect(() => {
+    if (typeof isDark === 'boolean') {
+      setThemeDark(isDark);
+    }
+  }, [isDark]);
+
+  React.useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const updateTheme = () => {
+      const isDocDark = document.documentElement.classList.contains('dark') ||
+        document.documentElement.getAttribute('data-theme') === 'dark' ||
+        localStorage.getItem('aa2000_theme') === 'dark';
+      setThemeDark(isDocDark);
+    };
+
+    updateTheme();
+    const observer = new MutationObserver(updateTheme);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'data-theme'] });
+    window.addEventListener('storage', updateTheme);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('storage', updateTheme);
+    };
+  }, []);
+
+  const dark = themeDark;
+
   if (!canViewPrices(userRole)) return null;
   // ── Compute dynamic values for the quotation document ─────────────────────
   const primarySys = (project.systemTypes?.[0] || 'CCTV').toUpperCase();
@@ -448,12 +488,12 @@ export default function QuotationModal({
       const isSubHeader = !isHeader && !startsWithNumber && !startsWithBullet && t.length < 60 && !startsWithKnownAction;
 
       if (isHeader) {
-        return <strong key={li} className="block font-black text-indigo-950 uppercase text-[11px] mb-0.5">{t}</strong>;
+        return <strong key={li} className={`block font-black uppercase text-[11px] mb-0.5 ${dark ? 'text-blue-400' : 'text-indigo-950'}`}>{t}</strong>;
       }
       if (isSubHeader) {
-        return <span key={li} className="block font-bold text-slate-800 text-[11px]">{t}</span>;
+        return <span key={li} className={`block font-bold text-[11px] ${dark ? 'text-slate-100' : 'text-slate-800'}`}>{t}</span>;
       }
-      return <span key={li} className="block text-slate-600 text-[11px] leading-relaxed">{t}</span>;
+      return <span key={li} className={`block text-[11px] leading-relaxed ${dark ? 'text-slate-300' : 'text-slate-600'}`}>{t}</span>;
     });
   };
 
@@ -473,31 +513,60 @@ export default function QuotationModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center p-3 bg-slate-950/80 backdrop-blur-md overflow-y-auto">
-      <div className="w-full max-w-4xl bg-white rounded-2xl border border-slate-300 shadow-2xl overflow-hidden my-6 text-slate-900 font-sans text-xs">
+      {/* Scoped print override to make sure paper prints remain clean black/white */}
+      <style>{`
+        @media print {
+          body, html {
+            background-color: #ffffff !important;
+            color: #000000 !important;
+          }
+          .printable-quotation {
+            background-color: #ffffff !important;
+            color: #000000 !important;
+          }
+          .printable-quotation * {
+            border-color: #0f172a !important;
+            color: inherit !important;
+          }
+          .no-print {
+            display: none !important;
+          }
+        }
+      `}</style>
+
+      <div className={`w-full max-w-4xl rounded-2xl border shadow-2xl overflow-hidden my-6 font-sans text-xs transition-colors duration-200 ${
+        dark ? 'bg-[#0B0F19] border-[#1E293B] text-slate-100' : 'bg-white border-slate-300 text-slate-900'
+      }`}>
 
         {/* ── Modal Control Bar ── */}
-        <div className="px-5 py-3 bg-slate-900 text-white flex items-center justify-between sticky top-0 z-10 no-print">
+        <div className={`px-5 py-3 flex items-center justify-between sticky top-0 z-20 no-print border-b ${
+          dark ? 'bg-[#131B2E] border-[#1E293B] text-white' : 'bg-slate-900 border-slate-800 text-white'
+        }`}>
           <div className="flex items-center gap-2">
-            <span className="px-2 py-0.5 text-[10px] font-bold bg-indigo-500 rounded">{quotHeader.referenceCode || 'PQ-FDAS-2026-08-013'}</span>
-            <span className="font-bold">AA2000 Commercial Sales Quotation</span>
-            {aiQuotation && <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-emerald-700 text-emerald-100">AI-Generated</span>}
+            <span className="px-2 py-0.5 text-[10px] font-bold bg-blue-600 text-white rounded">{quotHeader.referenceCode || 'PQ-FDAS-2026-08-013'}</span>
+            <span className="font-bold tracking-wide">AA2000 Commercial Sales Quotation</span>
+            {aiQuotation && <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-emerald-700/80 text-emerald-200 border border-emerald-500/30">AI-Generated</span>}
           </div>
           <div className="flex items-center gap-2">
             <button
               onClick={() => setShowEditQuotation(v => !v)}
-              className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold rounded-lg transition-all flex items-center gap-1.5"
+              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
+                dark
+                  ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700'
+                  : 'bg-slate-700 hover:bg-slate-600 text-white'
+              }`}
             >
               <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" /></svg>
               {showEditQuotation ? 'Done Editing' : 'Edit Details'}
             </button>
             <button
               onClick={() => window.print()}
-              className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 shadow-sm"
+              className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 shadow-sm cursor-pointer"
             >
               <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>
               Print / PDF
             </button>
-            <button onClick={onClose} className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors">
+            <button onClick={onClose} className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors cursor-pointer">
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
             </button>
           </div>
@@ -505,24 +574,40 @@ export default function QuotationModal({
 
         {/* ── Editable Details Panel ── */}
         {showEditQuotation && (
-          <div className="bg-indigo-50 border-b-2 border-indigo-200 p-4 no-print">
-            <p className="text-[9px] font-black uppercase text-indigo-600 mb-3 tracking-wider">Edit Quotation Details — changes apply to the printed document immediately</p>
+          <div className={`p-4 no-print border-b transition-colors ${
+            dark ? 'bg-[#101726] border-[#1E293B]' : 'bg-indigo-50 border-indigo-200'
+          }`}>
+            <p className={`text-[9px] font-black uppercase mb-3 tracking-wider ${
+              dark ? 'text-blue-400' : 'text-indigo-600'
+            }`}>Edit Quotation Details — changes apply to the printed document immediately</p>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
               {editFields.map(({ key, label }) => (
                 <div key={key}>
-                  <label className="text-[9px] font-black uppercase text-indigo-500 block mb-1">{label}</label>
+                  <label className={`text-[9px] font-black uppercase block mb-1 ${
+                    dark ? 'text-blue-300' : 'text-indigo-500'
+                  }`}>{label}</label>
                   <input
-                    className="w-full text-xs border border-indigo-200 rounded-lg px-2 py-1.5 bg-white outline-none focus:border-indigo-400"
+                    className={`w-full text-xs border rounded-lg px-2.5 py-1.5 outline-none transition-all ${
+                      dark
+                        ? 'bg-[#162032] border-[#1E293B] text-slate-100 focus:border-blue-500'
+                        : 'border-indigo-200 rounded-lg bg-white focus:border-indigo-400'
+                    }`}
                     value={quotHeader[key]}
                     onChange={e => setQuotHeader(p => ({ ...p, [key]: e.target.value }))}
                   />
                 </div>
               ))}
               <div>
-                <label className="text-[9px] font-black uppercase text-indigo-500 block mb-1">Discount Amount (₱)</label>
+                <label className={`text-[9px] font-black uppercase block mb-1 ${
+                  dark ? 'text-blue-300' : 'text-indigo-500'
+                }`}>Discount Amount (₱)</label>
                 <input
                   type="number" min={0}
-                  className="w-full text-xs border border-indigo-200 rounded-lg px-2 py-1.5 bg-white outline-none focus:border-indigo-400"
+                  className={`w-full text-xs border rounded-lg px-2.5 py-1.5 outline-none transition-all ${
+                    dark
+                      ? 'bg-[#162032] border-[#1E293B] text-slate-100 focus:border-blue-500'
+                      : 'border-indigo-200 rounded-lg bg-white focus:border-indigo-400'
+                  }`}
                   value={quotDiscount}
                   onChange={e => setQuotDiscount(Number(e.target.value))}
                 />
@@ -532,13 +617,19 @@ export default function QuotationModal({
         )}
 
         {/* ── Printable Quotation Document ── */}
-        <div className="p-6 space-y-4 bg-white printable-quotation">
+        <div className={`p-6 space-y-4 printable-quotation ${
+          dark ? 'bg-[#0B0F19] text-slate-100' : 'bg-white text-slate-900'
+        }`}>
 
           {/* 1 ▸ Header Banner */}
-          <div className="border-2 border-slate-900 rounded-lg overflow-hidden">
-            <div className="grid grid-cols-12 bg-slate-900 text-white p-4 items-start">
+          <div className={`border-2 rounded-lg overflow-hidden ${
+            dark ? 'border-[#1E293B] bg-[#0E1626]' : 'border-slate-900 bg-white'
+          }`}>
+            <div className={`grid grid-cols-12 p-4 items-start ${
+              dark ? 'bg-[#131B2E] text-white border-b border-[#1E293B]' : 'bg-slate-900 text-white'
+            }`}>
               <div className="col-span-5 flex items-center gap-3">
-                <div className="w-12 h-12 bg-blue-600 rounded-full flex items-center justify-center font-black text-xl text-white border-2 border-white shadow flex-shrink-0">AA</div>
+                <div className="w-12 h-12 bg-blue-600 rounded-full flex items-center justify-center font-black text-xl text-white border-2 border-white/80 shadow flex-shrink-0">AA</div>
                 <div>
                   <h1 className="font-black text-xl tracking-wider text-white">AA2000</h1>
                   <p className="text-[9px] text-slate-300 font-semibold uppercase tracking-widest leading-tight">Security and Technology Solutions Inc.</p>
@@ -553,117 +644,207 @@ export default function QuotationModal({
 
             {/* Reference, Validity & Date */}
             <div className="grid grid-cols-12 text-xs">
-              <div className="col-span-4 p-2.5 bg-slate-100 border-r border-b border-slate-300">
-                <div className="font-black text-slate-800">QUOTATION</div>
-                <div className="text-slate-600 text-[10px]">Validity of Quote:</div>
-                <div className="font-bold text-[10px]">{quotHeader.validityPeriod}</div>
+              <div className={`col-span-4 p-2.5 border-r border-b ${
+                dark ? 'bg-[#131B2E] border-[#1E293B]' : 'bg-slate-100 border-slate-300'
+              }`}>
+                <div className={`font-black uppercase tracking-wider ${dark ? 'text-slate-200' : 'text-slate-800'}`}>QUOTATION</div>
+                <div className={`text-[10px] ${dark ? 'text-slate-400' : 'text-slate-600'}`}>Validity of Quote:</div>
+                <div className={`font-bold text-[10px] ${dark ? 'text-blue-300' : 'text-slate-900'}`}>{quotHeader.validityPeriod}</div>
               </div>
-              <div className="col-span-4 p-2.5 bg-slate-800 text-white text-center border-r border-b border-slate-900">
+              <div className={`col-span-4 p-2.5 text-center border-r border-b ${
+                dark ? 'bg-[#162032] border-[#1E293B] text-white' : 'bg-slate-800 text-white border-slate-900'
+              }`}>
                 <div className="text-[9px] text-slate-400 uppercase tracking-wider">REFERENCE CODE:</div>
-                <div className="font-black text-base mt-0.5">{quotHeader.referenceCode || 'PQ-FDAS-2026-08-013'}</div>
+                <div className="font-black text-base mt-0.5 text-blue-400 tracking-wide">{quotHeader.referenceCode || 'PQ-FDAS-2026-08-013'}</div>
               </div>
-              <div className="col-span-4 p-2.5 bg-slate-100 border-b border-slate-300 text-right">
-                <div className="text-[9px] text-slate-500 uppercase tracking-wider">DATE:</div>
-                <div className="font-black">{quotHeader.quoteDate}</div>
+              <div className={`col-span-4 p-2.5 border-b text-right ${
+                dark ? 'bg-[#131B2E] border-[#1E293B]' : 'bg-slate-100 border-slate-300'
+              }`}>
+                <div className={`text-[9px] uppercase tracking-wider ${dark ? 'text-slate-400' : 'text-slate-500'}`}>DATE:</div>
+                <div className={`font-black ${dark ? 'text-slate-100' : 'text-slate-900'}`}>{quotHeader.quoteDate}</div>
               </div>
             </div>
 
             {/* Client Info Grid */}
             <div className="grid grid-cols-12 text-xs">
-              <div className="col-span-6 p-2 border-r border-b border-slate-200"><strong className="text-slate-500 text-[9px] uppercase">ATTENTION TO:</strong> {quotHeader.attentionTo || 'Mr. Jon Carlo A. Castronuevo'}</div>
-              <div className="col-span-6 p-2 border-b border-slate-200"><strong className="text-slate-500 text-[9px] uppercase">COMPANY:</strong> {quotHeader.company || 'JOLLIBEE CENTER CONDOMINIUM CORPORATION'}</div>
-              <div className="col-span-6 p-2 border-r border-b border-slate-200"><strong className="text-slate-500 text-[9px] uppercase">THRU:</strong> {quotHeader.thru || 'Building Manager'}</div>
-              <div className="col-span-6 p-2 border-b border-slate-200"><strong className="text-slate-500 text-[9px] uppercase">ADDRESS:</strong> {quotHeader.address || 'San Miguel Ave., Ortigas Center, Brgy. San Antonio'}</div>
-              <div className="col-span-6 p-2 border-r border-b border-slate-200"><strong className="text-slate-500 text-[9px] uppercase">EMAIL ADD:</strong> {quotHeader.emailAdd || 'jollibee_center@yahoo.com'}</div>
-              <div className="col-span-6 p-2 border-b border-slate-200 bg-amber-50"><strong className="text-slate-500 text-[9px] uppercase">PROJECT SITE:</strong> {quotHeader.projectSite || 'Pasig City'}</div>
-              <div className="col-span-6 p-2 border-r border-slate-200"><strong className="text-slate-500 text-[9px] uppercase">CONTACT NO.:</strong> {quotHeader.contactNo || '0917 709 1015'}</div>
-              <div className="col-span-6 p-2 bg-amber-200/60"><strong className="text-slate-600 text-[9px] uppercase">PROJECT FOR:</strong> <span className="font-black">{quotHeader.projectTitle || 'FDAS PREVENTIVE MAINTENANCE FY: 2026 (QUARTERLY)'}</span></div>
+              <div className={`col-span-6 p-2 border-r border-b ${
+                dark ? 'border-[#1E293B] bg-[#0E1626]' : 'border-slate-200 bg-white'
+              }`}>
+                <strong className={`text-[9px] uppercase ${dark ? 'text-slate-400' : 'text-slate-500'}`}>ATTENTION TO:</strong>{' '}
+                <span className={dark ? 'text-slate-100 font-semibold' : ''}>{quotHeader.attentionTo || 'Mr. Jon Carlo A. Castronuevo'}</span>
+              </div>
+              <div className={`col-span-6 p-2 border-b ${
+                dark ? 'border-[#1E293B] bg-[#0E1626]' : 'border-slate-200 bg-white'
+              }`}>
+                <strong className={`text-[9px] uppercase ${dark ? 'text-slate-400' : 'text-slate-500'}`}>COMPANY:</strong>{' '}
+                <span className={dark ? 'text-slate-100 font-semibold' : ''}>{quotHeader.company || 'JOLLIBEE CENTER CONDOMINIUM CORPORATION'}</span>
+              </div>
+              <div className={`col-span-6 p-2 border-r border-b ${
+                dark ? 'border-[#1E293B] bg-[#0E1626]' : 'border-slate-200 bg-white'
+              }`}>
+                <strong className={`text-[9px] uppercase ${dark ? 'text-slate-400' : 'text-slate-500'}`}>THRU:</strong>{' '}
+                <span className={dark ? 'text-slate-100 font-semibold' : ''}>{quotHeader.thru || 'Building Manager'}</span>
+              </div>
+              <div className={`col-span-6 p-2 border-b ${
+                dark ? 'border-[#1E293B] bg-[#0E1626]' : 'border-slate-200 bg-white'
+              }`}>
+                <strong className={`text-[9px] uppercase ${dark ? 'text-slate-400' : 'text-slate-500'}`}>ADDRESS:</strong>{' '}
+                <span className={dark ? 'text-slate-100 font-semibold' : ''}>{quotHeader.address || 'San Miguel Ave., Ortigas Center, Brgy. San Antonio'}</span>
+              </div>
+              <div className={`col-span-6 p-2 border-r border-b ${
+                dark ? 'border-[#1E293B] bg-[#0E1626]' : 'border-slate-200 bg-white'
+              }`}>
+                <strong className={`text-[9px] uppercase ${dark ? 'text-slate-400' : 'text-slate-500'}`}>EMAIL ADD:</strong>{' '}
+                <span className={dark ? 'text-slate-100 font-semibold' : ''}>{quotHeader.emailAdd || 'jollibee_center@yahoo.com'}</span>
+              </div>
+              <div className={`col-span-6 p-2 border-b ${
+                dark ? 'border-[#1E293B] bg-blue-950/30' : 'border-slate-200 bg-amber-50'
+              }`}>
+                <strong className={`text-[9px] uppercase ${dark ? 'text-blue-300' : 'text-slate-500'}`}>PROJECT SITE:</strong>{' '}
+                <span className={dark ? 'text-blue-100 font-semibold' : ''}>{quotHeader.projectSite || 'Pasig City'}</span>
+              </div>
+              <div className={`col-span-6 p-2 border-r border-b ${
+                dark ? 'border-[#1E293B] bg-[#0E1626]' : 'border-slate-200 bg-white'
+              }`}>
+                <strong className={`text-[9px] uppercase ${dark ? 'text-slate-400' : 'text-slate-500'}`}>CONTACT NO.:</strong>{' '}
+                <span className={dark ? 'text-slate-100 font-semibold' : ''}>{quotHeader.contactNo || '0917 709 1015'}</span>
+              </div>
+              <div className={`col-span-6 p-2 ${
+                dark ? 'bg-indigo-950/40 border-b border-[#1E293B]' : 'bg-amber-200/60'
+              }`}>
+                <strong className={`text-[9px] uppercase ${dark ? 'text-indigo-300' : 'text-slate-600'}`}>PROJECT FOR:</strong>{' '}
+                <span className={`font-black ${dark ? 'text-indigo-200' : ''}`}>{quotHeader.projectTitle || 'FDAS PREVENTIVE MAINTENANCE FY: 2026 (QUARTERLY)'}</span>
+              </div>
             </div>
 
             {/* Intro text */}
-            <div className="p-2.5 text-center text-[10px] border-t border-slate-200 text-slate-600 bg-white">
-              We respectfully submit our proposal for your <strong>{sysLabel}</strong> System requirements. We look forward to the approval of our product sales quotation, as follows:
+            <div className={`p-2.5 text-center text-[10px] border-t leading-relaxed ${
+              dark ? 'bg-[#101726] border-[#1E293B] text-slate-300' : 'border-slate-200 text-slate-600 bg-white'
+            }`}>
+              We respectfully submit our proposal for your <strong className={dark ? 'text-blue-400' : ''}>{sysLabel}</strong> System requirements. We look forward to the approval of our product sales quotation, as follows:
             </div>
           </div>
 
           {/* 2 ▸ Summary of Devices & Equipment */}
-          <div className="border-2 border-slate-900 rounded-lg overflow-hidden">
-            <div className="bg-amber-400 font-black text-center py-1.5 uppercase tracking-wider text-slate-900 text-xs border-b border-slate-900">
+          <div className={`border-2 rounded-lg overflow-hidden ${
+            dark ? 'border-[#1E293B] bg-[#0E1626]' : 'border-slate-900 bg-white'
+          }`}>
+            <div className={`font-black text-center py-1.5 uppercase tracking-wider text-xs border-b ${
+              dark
+                ? 'bg-[#1E293B] text-amber-300 border-[#1E293B]'
+                : 'bg-amber-400 text-slate-900 border-slate-900'
+            }`}>
               SUMMARY OF DEVICES AND OTHER {(project.systemTypes?.[0] || 'FDAS').replace(/_/g,' ').toUpperCase()} EQUIPMENT
             </div>
             <div className="grid grid-cols-12 text-xs">
-              <div className="col-span-7 p-2 border-r border-b border-slate-300 font-bold">
+              <div className={`col-span-7 p-2 border-r border-b font-bold ${
+                dark ? 'border-[#1E293B] text-slate-200' : 'border-slate-300'
+              }`}>
                 FACP BRAND : {ds?.facpBrand || (consumables[0]?.brand?.toUpperCase() || 'ASENWARE')}
               </div>
-              <div className="col-span-5 p-2 border-b border-slate-300 font-bold text-red-700 text-[10px]">
+              <div className={`col-span-5 p-2 border-b font-bold text-[10px] ${
+                dark ? 'border-[#1E293B] text-amber-400' : 'border-slate-300 text-red-700'
+              }`}>
                 OTHER REMARKS: HIGH CEILING: NONE, ORDINARY HEIGHT | INTEGRATION: NOT DECLARED
               </div>
-              <div className="col-span-7 p-2 border-r border-b border-slate-300 font-bold">
+              <div className={`col-span-7 p-2 border-r border-b font-bold ${
+                dark ? 'border-[#1E293B] text-slate-200' : 'border-slate-300'
+              }`}>
                 {(project.systemTypes?.[0] || 'FDAS').replace(/_/g, ' ')} SYSTEM : {ds?.systemType || 'ADDRESSABLE FDAS'}
               </div>
-              <div className="col-span-5 p-2 border-b border-slate-300 font-bold text-red-700 text-[10px]">
+              <div className={`col-span-5 p-2 border-b font-bold text-[10px] ${
+                dark ? 'border-[#1E293B] text-amber-400' : 'border-slate-300 text-red-700'
+              }`}>
                 WORKING SCHEDULES: DAY SHIFT 8AM-5PM ONLY | MONDAY TO SATURDAY SCHEDULE
               </div>
-              <div className="col-span-7 p-2 border-r border-b border-slate-300 font-semibold text-[10px]">
+              <div className={`col-span-7 p-2 border-r border-b font-semibold text-[10px] ${
+                dark ? 'border-[#1E293B] text-slate-300' : 'border-slate-300'
+              }`}>
                 ESTIMATED NO. DEVICES: {ds?.totalUnitsText || (consumables.length > 0 ? `1-FACP, ${consumables.map(c => `${c.quantity}-${c.name.slice(0, 8)}`).join(', ')} (TOTAL: ${totalDeviceCount} UNITS)` : '1- FACP, 457-SD, 18-HD, 36-H/S, 36-MPS, 19 sets of modules for WF/TS (TOTAL: 567 UNITS)')}
               </div>
-              <div className="col-span-5 p-2 border-b border-slate-300 font-semibold text-[10px]">
+              <div className={`col-span-5 p-2 border-b font-semibold text-[10px] ${
+                dark ? 'border-[#1E293B] text-slate-300' : 'border-slate-300'
+              }`}>
                 STOREY BUILDING : {ds?.buildingProfile || `${project.floors || 16} FLOORS WITH ${project.floors ? Math.min(3, Math.floor(project.floors/5)) : 3} BASEMENT`}
               </div>
             </div>
-            <div className="bg-red-100 text-red-800 p-2 text-[11px] font-bold">
+            <div className={`p-2 text-[11px] font-bold ${
+              dark ? 'bg-rose-950/40 text-rose-300 border-t border-rose-900/40' : 'bg-red-100 text-red-800'
+            }`}>
               NOTE: MAKE SURE THAT THE ROOMS/AREAS ARE ACCESSIBLE PRIOR BEFORE MOBILIZATION
             </div>
           </div>
 
           {/* 3 ▸ Section A: General Requirements */}
-          <div className="border-2 border-slate-900 rounded-lg overflow-hidden">
-            <div className="bg-slate-900 text-white font-bold px-3 py-1.5 text-xs">A.&nbsp;&nbsp;&nbsp;GENERAL REQUIREMENTS</div>
+          <div className={`border-2 rounded-lg overflow-hidden ${
+            dark ? 'border-[#1E293B] bg-[#0E1626]' : 'border-slate-900 bg-white'
+          }`}>
+            <div className={`font-bold px-3 py-1.5 text-xs ${
+              dark ? 'bg-[#131B2E] text-white border-b border-[#1E293B]' : 'bg-slate-900 text-white'
+            }`}>A.&nbsp;&nbsp;&nbsp;GENERAL REQUIREMENTS</div>
             <table className="w-full text-xs border-collapse">
               <thead>
-                <tr className="bg-slate-200 font-bold text-slate-800">
-                  <th className="p-2 border border-slate-300 w-10 text-center">ITEM</th>
-                  <th className="p-2 border border-slate-300 text-left">DESCRIPTION</th>
-                  <th className="p-2 border border-slate-300 w-12 text-center">QTY.</th>
-                  <th className="p-2 border border-slate-300 w-14 text-center">UNIT</th>
-                  <th className="p-2 border border-slate-300 w-24 text-right">UNIT PRICE</th>
-                  <th className="p-2 border border-slate-300 w-28 text-right">TOTAL PRICE</th>
+                <tr className={`font-bold ${
+                  dark ? 'bg-[#162032] text-slate-200' : 'bg-slate-200 text-slate-800'
+                }`}>
+                  <th className={`p-2 border w-10 text-center ${dark ? 'border-[#1E293B]' : 'border-slate-300'}`}>ITEM</th>
+                  <th className={`p-2 border text-left ${dark ? 'border-[#1E293B]' : 'border-slate-300'}`}>DESCRIPTION</th>
+                  <th className={`p-2 border w-12 text-center ${dark ? 'border-[#1E293B]' : 'border-slate-300'}`}>QTY.</th>
+                  <th className={`p-2 border w-14 text-center ${dark ? 'border-[#1E293B]' : 'border-slate-300'}`}>UNIT</th>
+                  <th className={`p-2 border w-24 text-right ${dark ? 'border-[#1E293B]' : 'border-slate-300'}`}>UNIT PRICE</th>
+                  <th className={`p-2 border w-28 text-right ${dark ? 'border-[#1E293B]' : 'border-slate-300'}`}>TOTAL PRICE</th>
                 </tr>
               </thead>
               <tbody>
                 {sectionAItems.map((r, i) => {
                   const isFree = r.unitPrice === 0 && (r.description.toLowerCase().includes('safety officer') || r.description.toLowerCase().includes('free'));
                   return (
-                    <tr key={i} className="border-b border-slate-200 hover:bg-slate-50">
-                      <td className="p-2 border-r border-slate-200 text-center font-semibold align-top">{r.itemNumber}</td>
-                      <td className="p-2 border-r border-slate-200 align-top">
+                    <tr key={i} className={`border-b transition-colors ${
+                      dark ? 'border-[#1E293B] hover:bg-[#162032]/60' : 'border-slate-200 hover:bg-slate-50'
+                    }`}>
+                      <td className={`p-2 border-r text-center font-semibold align-top ${dark ? 'border-[#1E293B] text-slate-300' : 'border-slate-200'}`}>{r.itemNumber}</td>
+                      <td className={`p-2 border-r align-top ${dark ? 'border-[#1E293B]' : 'border-slate-200'}`}>
                         {r.description.split('\n').map((line, li) => (
-                          <span key={li} className={`block ${li === 0 ? 'font-semibold text-slate-800' : 'text-[10px] italic text-red-700'}`}>{line}</span>
+                          <span key={li} className={`block ${
+                            li === 0
+                              ? (dark ? 'font-semibold text-slate-100' : 'font-semibold text-slate-800')
+                              : (dark ? 'text-[10px] italic text-rose-400' : 'text-[10px] italic text-red-700')
+                          }`}>{line}</span>
                         ))}
                       </td>
-                      <td className="p-2 border-r border-slate-200 text-center align-top">{r.qty || 1}</td>
-                      <td className="p-2 border-r border-slate-200 text-center align-top">{r.unit}</td>
-                      <td className="p-2 border-r border-slate-200 text-right align-top">
-                        {isFree ? <span className="text-slate-800 font-bold">FREE</span> : (r.unitPrice ? fmt(r.unitPrice) : '-')}
+                      <td className={`p-2 border-r text-center align-top ${dark ? 'border-[#1E293B] text-slate-300' : 'border-slate-200'}`}>{r.qty || 1}</td>
+                      <td className={`p-2 border-r text-center align-top ${dark ? 'border-[#1E293B] text-slate-300' : 'border-slate-200'}`}>{r.unit}</td>
+                      <td className={`p-2 border-r text-right align-top ${dark ? 'border-[#1E293B] text-slate-200' : 'border-slate-200'}`}>
+                        {isFree ? <span className={dark ? 'text-blue-400 font-bold' : 'text-slate-800 font-bold'}>FREE</span> : (r.unitPrice ? fmt(r.unitPrice) : '-')}
                       </td>
-                      <td className="p-2 text-right font-bold align-top">{r.totalPrice ? fmt(r.totalPrice) : '-'}</td>
+                      <td className={`p-2 text-right font-bold align-top ${dark ? 'text-slate-100' : ''}`}>{r.totalPrice ? fmt(r.totalPrice) : '-'}</td>
                     </tr>
                   );
                 })}
                 {/* Note row matching reference image 1 */}
-                <tr className="border-b border-slate-200 bg-amber-50/40">
-                  <td className="p-2 border-r border-slate-200 text-center font-bold text-red-600 align-top">NOTE:</td>
-                  <td className="p-2 border-r border-slate-200 align-top text-[10.5px]">
-                    <p className="text-slate-800">1. Electric Power Supply for testing purposes shall be bare by the client.</p>
-                    <p className="text-slate-800">2. Assistance from other service provider of integrated system of FDAS (Elevator and PA system) if needed</p>
+                <tr className={`border-b ${
+                  dark ? 'border-[#1E293B] bg-amber-950/20' : 'border-slate-200 bg-amber-50/40'
+                }`}>
+                  <td className={`p-2 border-r text-center font-bold align-top ${
+                    dark ? 'border-[#1E293B] text-amber-400' : 'border-slate-200 text-red-600'
+                  }`}>NOTE:</td>
+                  <td className={`p-2 border-r align-top text-[10.5px] ${dark ? 'border-[#1E293B]' : 'border-slate-200'}`}>
+                    <p className={dark ? 'text-slate-200' : 'text-slate-800'}>1. Electric Power Supply for testing purposes shall be bare by the client.</p>
+                    <p className={dark ? 'text-slate-200' : 'text-slate-800'}>2. Assistance from other service provider of integrated system of FDAS (Elevator and PA system) if needed</p>
                   </td>
-                  <td className="p-2 border-r border-slate-200 text-center align-top">1</td>
-                  <td className="p-2 border-r border-slate-200 text-center align-top">LOT</td>
-                  <td className="p-2 border-r border-slate-200 text-right align-top">-</td>
-                  <td className="p-2 text-right font-bold align-top">-</td>
+                  <td className={`p-2 border-r text-center align-top ${dark ? 'border-[#1E293B] text-slate-400' : 'border-slate-200'}`}>1</td>
+                  <td className={`p-2 border-r text-center align-top ${dark ? 'border-[#1E293B] text-slate-400' : 'border-slate-200'}`}>LOT</td>
+                  <td className={`p-2 border-r text-right align-top ${dark ? 'border-[#1E293B] text-slate-400' : 'border-slate-200'}`}>-</td>
+                  <td className={`p-2 text-right font-bold align-top ${dark ? 'text-slate-400' : ''}`}>-</td>
                 </tr>
-                <tr className="bg-slate-100 font-bold border-t-2 border-slate-900">
-                  <td colSpan={5} className="p-2 text-right border-r border-slate-300 uppercase text-[11px] pr-4">SUB. TOTAL: ITEM A (1 TO {sectionAItems.length}):</td>
+                <tr className={`font-bold border-t-2 ${
+                  dark
+                    ? 'bg-[#101726] border-[#1E293B] text-slate-100'
+                    : 'bg-slate-100 border-slate-900 text-slate-900'
+                }`}>
+                  <td colSpan={5} className={`p-2 text-right border-r uppercase text-[11px] pr-4 ${
+                    dark ? 'border-[#1E293B] text-slate-300' : 'border-slate-300 text-slate-800'
+                  }`}>SUB. TOTAL: ITEM A (1 TO {sectionAItems.length}):</td>
                   <td className="p-2 text-right font-black">{fmt(sectionATotal)}</td>
                 </tr>
               </tbody>
@@ -671,15 +852,21 @@ export default function QuotationModal({
           </div>
 
           {/* 4 ▸ Section B: Scope of Works */}
-          <div className="border-2 border-slate-900 rounded-lg overflow-hidden">
-            <div className="bg-slate-900 text-white font-bold px-3 py-1.5 text-xs">B.&nbsp;&nbsp;&nbsp;SCOPE OF WORKS</div>
+          <div className={`border-2 rounded-lg overflow-hidden ${
+            dark ? 'border-[#1E293B] bg-[#0E1626]' : 'border-slate-900 bg-white'
+          }`}>
+            <div className={`font-bold px-3 py-1.5 text-xs ${
+              dark ? 'bg-[#131B2E] text-white border-b border-[#1E293B]' : 'bg-slate-900 text-white'
+            }`}>B.&nbsp;&nbsp;&nbsp;SCOPE OF WORKS</div>
             <table className="w-full text-xs border-collapse">
               <thead>
-                <tr className="bg-slate-200 font-bold text-slate-800">
-                  <th className="p-2 border border-slate-300 w-10 text-center">ITEM</th>
-                  <th className="p-2 border border-slate-300 text-left">DESCRIPTION</th>
-                  <th className="p-2 border border-slate-300 w-20 text-center">UNIT</th>
-                  <th className="p-2 border border-slate-300 w-28 text-right">TOTAL PRICE</th>
+                <tr className={`font-bold ${
+                  dark ? 'bg-[#162032] text-slate-200' : 'bg-slate-200 text-slate-800'
+                }`}>
+                  <th className={`p-2 border w-10 text-center ${dark ? 'border-[#1E293B]' : 'border-slate-300'}`}>ITEM</th>
+                  <th className={`p-2 border text-left ${dark ? 'border-[#1E293B]' : 'border-slate-300'}`}>DESCRIPTION</th>
+                  <th className={`p-2 border w-20 text-center ${dark ? 'border-[#1E293B]' : 'border-slate-300'}`}>UNIT</th>
+                  <th className={`p-2 border w-28 text-right ${dark ? 'border-[#1E293B]' : 'border-slate-300'}`}>TOTAL PRICE</th>
                 </tr>
               </thead>
               <tbody>
@@ -688,23 +875,39 @@ export default function QuotationModal({
                   const isFreqRow = desc.toLowerCase().includes('frequency') || desc.toLowerCase().includes('pms activity');
                   const isFreeRow = item.totalPrice === 0 && (desc.toLowerCase().includes('free') || desc.toLowerCase().includes('rental of tools') || desc.toLowerCase().includes('freebies'));
                   return (
-                    <tr key={i} className={`border-b border-slate-200 ${isFreqRow ? 'bg-amber-300/80 font-bold' : 'hover:bg-slate-50'}`}>
-                      <td className="p-2 border-r border-slate-200 text-center font-semibold align-top">{item.itemNumber}</td>
-                      <td className={`p-2 border-r border-slate-200 leading-relaxed align-top ${isFreqRow ? 'text-slate-950 font-bold' : ''}`}>
+                    <tr key={i} className={`border-b transition-colors ${
+                      isFreqRow
+                        ? (dark ? 'bg-amber-950/40 text-amber-200 font-bold border-[#1E293B]' : 'bg-amber-300/80 font-bold border-slate-200')
+                        : (dark ? 'border-[#1E293B] hover:bg-[#162032]/60' : 'border-slate-200 hover:bg-slate-50')
+                    }`}>
+                      <td className={`p-2 border-r text-center font-semibold align-top ${
+                        dark ? 'border-[#1E293B] text-slate-300' : 'border-slate-200'
+                      }`}>{item.itemNumber}</td>
+                      <td className={`p-2 border-r leading-relaxed align-top ${
+                        dark ? 'border-[#1E293B]' : 'border-slate-200'
+                      } ${isFreqRow ? (dark ? 'text-amber-200 font-bold' : 'text-slate-950 font-bold') : ''}`}>
                         {renderDesc(desc)}
                       </td>
-                      <td className="p-2 border-r border-slate-200 text-center font-semibold align-top">{item.unit || '1 LOT'}</td>
+                      <td className={`p-2 border-r text-center font-semibold align-top ${
+                        dark ? 'border-[#1E293B] text-slate-300' : 'border-slate-200'
+                      }`}>{item.unit || '1 LOT'}</td>
                       <td className="p-2 text-right font-bold align-top">
                         {isFreeRow
-                          ? <span className="text-red-600 font-black">FREE</span>
+                          ? <span className={dark ? 'text-rose-400 font-black' : 'text-red-600 font-black'}>FREE</span>
                           : item.totalPrice ? fmt(item.totalPrice)
-                          : <span className="text-slate-400">-</span>}
+                          : <span className={dark ? 'text-slate-500' : 'text-slate-400'}>-</span>}
                       </td>
                     </tr>
                   );
                 })}
-                <tr className="bg-slate-100 font-bold border-t-2 border-slate-900">
-                  <td colSpan={3} className="p-2 text-right border-r border-slate-300 uppercase text-[11px] pr-4">SUB. TOTAL:</td>
+                <tr className={`font-bold border-t-2 ${
+                  dark
+                    ? 'bg-[#101726] border-[#1E293B] text-slate-100'
+                    : 'bg-slate-100 border-slate-900 text-slate-900'
+                }`}>
+                  <td colSpan={3} className={`p-2 text-right border-r uppercase text-[11px] pr-4 ${
+                    dark ? 'border-[#1E293B] text-slate-300' : 'border-slate-300 text-slate-800'
+                  }`}>SUB. TOTAL:</td>
                   <td className="p-2 text-right font-black">{fmt(sectionBTotal)}</td>
                 </tr>
               </tbody>
@@ -712,61 +915,91 @@ export default function QuotationModal({
           </div>
 
           {/* 5 ▸ Section C: Breakdown of Cost */}
-          <div className="border-2 border-slate-900 rounded-lg overflow-hidden">
-            <div className="bg-slate-900 text-white font-bold px-3 py-1.5 text-xs">C.&nbsp;&nbsp;&nbsp;BREAKDOWN OF COST:</div>
+          <div className={`border-2 rounded-lg overflow-hidden ${
+            dark ? 'border-[#1E293B] bg-[#0E1626]' : 'border-slate-900 bg-white'
+          }`}>
+            <div className={`font-bold px-3 py-1.5 text-xs ${
+              dark ? 'bg-[#131B2E] text-white border-b border-[#1E293B]' : 'bg-slate-900 text-white'
+            }`}>C.&nbsp;&nbsp;&nbsp;BREAKDOWN OF COST:</div>
             <table className="w-full text-xs border-collapse">
               <thead>
-                <tr className="bg-slate-200 font-bold text-slate-800">
-                  <th className="p-2 border border-slate-300 w-10 text-center">ITEM</th>
-                  <th className="p-2 border border-slate-300 text-left">DESCRIPTION</th>
-                  <th className="p-2 border border-slate-300 w-12 text-center">QTY.</th>
-                  <th className="p-2 border border-slate-300 w-14 text-center">UNIT</th>
-                  <th className="p-2 border border-slate-300 w-28 text-right">UNIT PRICE</th>
-                  <th className="p-2 border border-slate-300 w-32 text-right">TOTAL PRICE</th>
+                <tr className={`font-bold ${
+                  dark ? 'bg-[#162032] text-slate-200' : 'bg-slate-200 text-slate-800'
+                }`}>
+                  <th className={`p-2 border w-10 text-center ${dark ? 'border-[#1E293B]' : 'border-slate-300'}`}>ITEM</th>
+                  <th className={`p-2 border text-left ${dark ? 'border-[#1E293B]' : 'border-slate-300'}`}>DESCRIPTION</th>
+                  <th className={`p-2 border w-12 text-center ${dark ? 'border-[#1E293B]' : 'border-slate-300'}`}>QTY.</th>
+                  <th className={`p-2 border w-14 text-center ${dark ? 'border-[#1E293B]' : 'border-slate-300'}`}>UNIT</th>
+                  <th className={`p-2 border w-28 text-right ${dark ? 'border-[#1E293B]' : 'border-slate-300'}`}>UNIT PRICE</th>
+                  <th className={`p-2 border w-32 text-right ${dark ? 'border-[#1E293B]' : 'border-slate-300'}`}>TOTAL PRICE</th>
                 </tr>
               </thead>
               <tbody>
-                <tr className="border-b border-slate-200">
-                  <td className="p-2 border-r border-slate-200 text-center font-bold">A.</td>
-                  <td className="p-2 border-r border-slate-200 font-bold">GENERAL REQUIREMENTS</td>
-                  <td className="p-2 border-r border-slate-200 text-center">1</td>
-                  <td className="p-2 border-r border-slate-200 text-center">LOT</td>
-                  <td className="p-2 border-r border-slate-200 text-right">{fmt(sectionATotal)}</td>
+                <tr className={`border-b ${dark ? 'border-[#1E293B]' : 'border-slate-200'}`}>
+                  <td className={`p-2 border-r text-center font-bold ${dark ? 'border-[#1E293B] text-slate-300' : 'border-slate-200'}`}>A.</td>
+                  <td className={`p-2 border-r font-bold ${dark ? 'border-[#1E293B] text-slate-200' : 'border-slate-200'}`}>GENERAL REQUIREMENTS</td>
+                  <td className={`p-2 border-r text-center ${dark ? 'border-[#1E293B] text-slate-300' : 'border-slate-200'}`}>1</td>
+                  <td className={`p-2 border-r text-center ${dark ? 'border-[#1E293B] text-slate-300' : 'border-slate-200'}`}>LOT</td>
+                  <td className={`p-2 border-r text-right ${dark ? 'border-[#1E293B] text-slate-200' : 'border-slate-200'}`}>{fmt(sectionATotal)}</td>
                   <td className="p-2 text-right font-bold">{fmt(sectionATotal)}</td>
                 </tr>
-                <tr className="border-b border-slate-200">
-                  <td className="p-2 border-r border-slate-200 text-center font-bold">B.</td>
-                  <td className="p-2 border-r border-slate-200 font-bold">SCOPE OF WORKS</td>
-                  <td className="p-2 border-r border-slate-200 text-center">1</td>
-                  <td className="p-2 border-r border-slate-200 text-center">LOT</td>
-                  <td className="p-2 border-r border-slate-200 text-right">{fmt(sectionBTotal)}</td>
+                <tr className={`border-b ${dark ? 'border-[#1E293B]' : 'border-slate-200'}`}>
+                  <td className={`p-2 border-r text-center font-bold ${dark ? 'border-[#1E293B] text-slate-300' : 'border-slate-200'}`}>B.</td>
+                  <td className={`p-2 border-r font-bold ${dark ? 'border-[#1E293B] text-slate-200' : 'border-slate-200'}`}>SCOPE OF WORKS</td>
+                  <td className={`p-2 border-r text-center ${dark ? 'border-[#1E293B] text-slate-300' : 'border-slate-200'}`}>1</td>
+                  <td className={`p-2 border-r text-center ${dark ? 'border-[#1E293B] text-slate-300' : 'border-slate-200'}`}>LOT</td>
+                  <td className={`p-2 border-r text-right ${dark ? 'border-[#1E293B] text-slate-200' : 'border-slate-200'}`}>{fmt(sectionBTotal)}</td>
                   <td className="p-2 text-right font-bold">{fmt(sectionBTotal)}</td>
                 </tr>
-                <tr className="bg-slate-100 border-b border-slate-200">
-                  <td colSpan={5} className="p-2 text-right border-r border-slate-200 font-bold uppercase text-[11px] pr-4">SUB. TOTAL:</td>
+                <tr className={`border-b font-bold ${
+                  dark ? 'bg-[#101726] border-[#1E293B] text-slate-100' : 'bg-slate-100 border-slate-200'
+                }`}>
+                  <td colSpan={5} className={`p-2 text-right border-r uppercase text-[11px] pr-4 ${
+                    dark ? 'border-[#1E293B] text-slate-300' : 'border-slate-200'
+                  }`}>SUB. TOTAL:</td>
                   <td className="p-2 text-right font-black">{fmt(grandSubtotal)}</td>
                 </tr>
                 {discountAmt > 0 && (
-                  <tr className="bg-red-50 border-b border-slate-200">
-                    <td colSpan={5} className="p-2 text-right border-r border-slate-200 font-bold text-red-700 uppercase text-[11px] pr-4">LESS DISCOUNT:</td>
-                    <td className="p-2 text-right font-black text-red-700">{fmt(discountAmt)}</td>
+                  <tr className={`border-b ${
+                    dark ? 'bg-rose-950/30 border-[#1E293B]' : 'bg-red-50 border-slate-200'
+                  }`}>
+                    <td colSpan={5} className={`p-2 text-right border-r font-bold uppercase text-[11px] pr-4 ${
+                      dark ? 'border-[#1E293B] text-rose-300' : 'border-slate-200 text-red-700'
+                    }`}>LESS DISCOUNT:</td>
+                    <td className={`p-2 text-right font-black ${
+                      dark ? 'text-rose-400' : 'text-red-700'
+                    }`}>{fmt(discountAmt)}</td>
                   </tr>
                 )}
                 {discountAmt > 0 && (
-                  <tr className="bg-slate-200 border-b border-slate-200">
-                    <td colSpan={5} className="p-2 text-right border-r border-slate-200 font-bold uppercase text-[11px] pr-4">SUB. TOTAL W/ DISCOUNT:</td>
+                  <tr className={`border-b font-bold ${
+                    dark ? 'bg-[#131B2E] border-[#1E293B] text-slate-100' : 'bg-slate-200 border-slate-200'
+                  }`}>
+                    <td colSpan={5} className={`p-2 text-right border-r uppercase text-[11px] pr-4 ${
+                      dark ? 'border-[#1E293B] text-slate-300' : 'border-slate-200'
+                    }`}>SUB. TOTAL W/ DISCOUNT:</td>
                     <td className="p-2 text-right font-black">{fmt(subWithDiscount)}</td>
                   </tr>
                 )}
-                <tr className="bg-amber-100 border-b border-amber-200">
-                  <td colSpan={5} className="p-2 text-right border-r border-amber-200 font-bold text-red-600 uppercase text-[11px] pr-4">12% VAT</td>
-                  <td className="p-2 text-right font-black text-red-600">{fmt(vatAmount)}</td>
+                <tr className={`border-b ${
+                  dark ? 'bg-amber-950/20 border-[#1E293B]' : 'bg-amber-100 border-amber-200'
+                }`}>
+                  <td colSpan={5} className={`p-2 text-right border-r font-bold uppercase text-[11px] pr-4 ${
+                    dark ? 'border-[#1E293B] text-amber-300' : 'border-amber-200 text-red-600'
+                  }`}>12% VAT</td>
+                  <td className={`p-2 text-right font-black ${
+                    dark ? 'text-amber-300' : 'text-red-600'
+                  }`}>{fmt(vatAmount)}</td>
                 </tr>
-                <tr className="bg-slate-900 text-white">
-                  <td colSpan={4} className="p-3 text-right border-r border-slate-700 font-black uppercase tracking-wide text-[11px]">
+                <tr className={dark ? 'bg-[#131B2E] text-white border-t border-[#1E293B]' : 'bg-slate-900 text-white'}>
+                  <td colSpan={4} className={`p-3 text-right border-r font-black uppercase tracking-wide text-[11px] ${
+                    dark ? 'border-[#1E293B]' : 'border-slate-700'
+                  }`}>
                     {(project.systemTypes?.[0] || 'FDAS').replace(/_/g, ' ')} PMS PRICE PER YEAR
                   </td>
-                  <td className="p-3 border-r border-slate-700 text-right font-black uppercase text-[11px]">TOTAL AMOUNT:</td>
+                  <td className={`p-3 border-r text-right font-black uppercase text-[11px] ${
+                    dark ? 'border-[#1E293B]' : 'border-slate-700'
+                  }`}>TOTAL AMOUNT:</td>
                   <td className="p-3 text-right font-black text-emerald-400 text-base">{fmt(grandTotal)}</td>
                 </tr>
               </tbody>
@@ -774,32 +1007,58 @@ export default function QuotationModal({
           </div>
 
           {/* 6 ▸ Section D: Schedule of Payment */}
-          <div className="border-2 border-slate-900 rounded-lg overflow-hidden">
-            <div className="bg-slate-900 text-white font-bold px-3 py-1.5 text-xs">D.&nbsp;&nbsp;&nbsp;SCHEDULE OF PAYMENT</div>
+          <div className={`border-2 rounded-lg overflow-hidden ${
+            dark ? 'border-[#1E293B] bg-[#0E1626]' : 'border-slate-900 bg-white'
+          }`}>
+            <div className={`font-bold px-3 py-1.5 text-xs ${
+              dark ? 'bg-[#131B2E] text-white border-b border-[#1E293B]' : 'bg-slate-900 text-white'
+            }`}>D.&nbsp;&nbsp;&nbsp;SCHEDULE OF PAYMENT</div>
             <table className="w-full text-xs border-collapse">
               <thead>
-                <tr className="bg-slate-200 font-bold text-slate-800">
-                  <th className="p-2 border border-slate-300 w-10 text-center">ITEM</th>
-                  <th className="p-2 border border-slate-300 text-left">DESCRIPTION</th>
-                  <th className="p-2 border border-slate-300 w-12 text-center">QTY.</th>
-                  <th className="p-2 border border-slate-300 w-14 text-center">UNIT</th>
-                  <th className="p-2 border border-slate-300 w-28 text-right">UNIT PRICE</th>
-                  <th className="p-2 border border-slate-300 w-32 text-right">TOTAL PRICE</th>
+                <tr className={`font-bold ${
+                  dark ? 'bg-[#162032] text-slate-200' : 'bg-slate-200 text-slate-800'
+                }`}>
+                  <th className={`p-2 border w-10 text-center ${dark ? 'border-[#1E293B]' : 'border-slate-300'}`}>ITEM</th>
+                  <th className={`p-2 border text-left ${dark ? 'border-[#1E293B]' : 'border-slate-300'}`}>DESCRIPTION</th>
+                  <th className={`p-2 border w-12 text-center ${dark ? 'border-[#1E293B]' : 'border-slate-300'}`}>QTY.</th>
+                  <th className={`p-2 border w-14 text-center ${dark ? 'border-[#1E293B]' : 'border-slate-300'}`}>UNIT</th>
+                  <th className={`p-2 border w-28 text-right ${dark ? 'border-[#1E293B]' : 'border-slate-300'}`}>UNIT PRICE</th>
+                  <th className={`p-2 border w-32 text-right ${dark ? 'border-[#1E293B]' : 'border-slate-300'}`}>TOTAL PRICE</th>
                 </tr>
               </thead>
               <tbody>
                 {paySchedule.map((pay, i) => (
-                  <tr key={i} className="border-b border-slate-200 hover:bg-slate-50">
-                    <td className="p-2 border-r border-slate-200 text-center font-bold">{pay.itemCode}</td>
-                    <td className="p-2 border-r border-slate-200 font-semibold">{pay.milestone}</td>
-                    <td className="p-2 border-r border-slate-200 text-center">{pay.qty}</td>
-                    <td className="p-2 border-r border-slate-200 text-center">{pay.unit}</td>
-                    <td className="p-2 border-r border-slate-200 text-right">{fmt(pay.unitPrice)}</td>
-                    <td className="p-2 text-right font-bold">{fmt(pay.totalPrice)}</td>
+                  <tr key={i} className={`border-b transition-colors ${
+                    dark ? 'border-[#1E293B] hover:bg-[#162032]/60' : 'border-slate-200 hover:bg-slate-50'
+                  }`}>
+                    <td className={`p-2 border-r text-center font-bold ${
+                      dark ? 'border-[#1E293B] text-slate-300' : 'border-slate-200'
+                    }`}>{pay.itemCode}</td>
+                    <td className={`p-2 border-r font-semibold ${
+                      dark ? 'border-[#1E293B] text-slate-200' : 'border-slate-200'
+                    }`}>{pay.milestone}</td>
+                    <td className={`p-2 border-r text-center ${
+                      dark ? 'border-[#1E293B] text-slate-300' : 'border-slate-200'
+                    }`}>{pay.qty}</td>
+                    <td className={`p-2 border-r text-center ${
+                      dark ? 'border-[#1E293B] text-slate-300' : 'border-slate-200'
+                    }`}>{pay.unit}</td>
+                    <td className={`p-2 border-r text-right ${
+                      dark ? 'border-[#1E293B] text-slate-200' : 'border-slate-200'
+                    }`}>{fmt(pay.unitPrice)}</td>
+                    <td className={`p-2 text-right font-bold ${
+                      dark ? 'text-slate-100' : ''
+                    }`}>{fmt(pay.totalPrice)}</td>
                   </tr>
                 ))}
-                <tr className="bg-slate-100 border-t-2 border-slate-900">
-                  <td colSpan={5} className="p-2 text-right border-r border-slate-300 uppercase font-bold text-[11px] pr-4">SUB. TOTAL:</td>
+                <tr className={`font-bold border-t-2 ${
+                  dark
+                    ? 'bg-[#101726] border-[#1E293B] text-slate-100'
+                    : 'bg-slate-100 border-slate-900 text-slate-900'
+                }`}>
+                  <td colSpan={5} className={`p-2 text-right border-r uppercase font-bold text-[11px] pr-4 ${
+                    dark ? 'border-[#1E293B] text-slate-300' : 'border-slate-300'
+                  }`}>SUB. TOTAL:</td>
                   <td className="p-2 text-right font-black">{fmt(paySchedule.reduce((a, b) => a + (b.totalPrice || 0), 0))}</td>
                 </tr>
               </tbody>
@@ -807,8 +1066,14 @@ export default function QuotationModal({
           </div>
 
           {/* 7 ▸ Notes & Remarks */}
-          <div className="border-2 border-slate-900 rounded-lg overflow-hidden">
-            <div className="bg-amber-400 font-black text-center py-1.5 uppercase text-slate-900 text-[11px] tracking-wide border-b border-slate-900">
+          <div className={`border-2 rounded-lg overflow-hidden ${
+            dark ? 'border-[#1E293B] bg-[#0E1626]' : 'border-slate-900 bg-white'
+          }`}>
+            <div className={`font-black text-center py-1.5 uppercase text-[11px] tracking-wide border-b ${
+              dark
+                ? 'bg-[#1E293B] text-amber-300 border-[#1E293B]'
+                : 'bg-amber-400 text-slate-900 border-slate-900'
+            }`}>
               NOTE AND REMARKS:&nbsp;&nbsp;ALL INDICATED BELOW SHALL BE BILLED SEPARATELY
             </div>
             <table className="w-full text-xs border-collapse">
@@ -818,9 +1083,13 @@ export default function QuotationModal({
                   'Replacement of FACP, Annunciator, backup batteries, other supply of devices and equipment, and spare parts',
                   'Any additional civil and engineering works.',
                 ].map((note, i) => (
-                  <tr key={i} className="border-b border-slate-200">
-                    <td className="p-2 border-r border-slate-200 text-center font-bold w-10">{i + 1}</td>
-                    <td className="p-2 text-slate-700 font-medium">{note}</td>
+                  <tr key={i} className={`border-b ${dark ? 'border-[#1E293B]' : 'border-slate-200'}`}>
+                    <td className={`p-2 border-r text-center font-bold w-10 ${
+                      dark ? 'border-[#1E293B] text-slate-400' : 'border-slate-200'
+                    }`}>{i + 1}</td>
+                    <td className={`p-2 font-medium ${
+                      dark ? 'text-slate-300' : 'text-slate-700'
+                    }`}>{note}</td>
                   </tr>
                 ))}
               </tbody>
@@ -828,59 +1097,79 @@ export default function QuotationModal({
           </div>
 
           {/* 8 ▸ Terms & Conditions */}
-          <div className="border-2 border-slate-900 rounded-lg p-4 bg-slate-50">
-            <h4 className="font-black text-xs uppercase tracking-wider text-slate-900 border-b border-slate-300 pb-1.5 mb-3 text-center">TERMS AND CONDITIONS</h4>
+          <div className={`border-2 rounded-lg p-4 ${
+            dark ? 'border-[#1E293B] bg-[#0E1626]' : 'border-slate-900 bg-slate-50'
+          }`}>
+            <h4 className={`font-black text-xs uppercase tracking-wider border-b pb-1.5 mb-3 text-center ${
+              dark ? 'text-slate-100 border-[#1E293B]' : 'text-slate-900 border-slate-300'
+            }`}>TERMS AND CONDITIONS</h4>
             <div className="space-y-2">
               {termsItems.map((term, i) => (
                 <div key={i} className="flex gap-2 text-[10.5px]">
-                  <span className="font-black text-slate-700 shrink-0 w-6">{String.fromCharCode(65 + i)}</span>
-                  <span className="text-slate-700 font-medium leading-relaxed">{term}</span>
+                  <span className={`font-black shrink-0 w-6 ${
+                    dark ? 'text-blue-400' : 'text-slate-700'
+                  }`}>{String.fromCharCode(65 + i)}</span>
+                  <span className={`font-medium leading-relaxed ${
+                    dark ? 'text-slate-300' : 'text-slate-700'
+                  }`}>{term}</span>
                 </div>
               ))}
             </div>
           </div>
 
           {/* 9 ▸ Payment Terms & Sign-off Block */}
-          <div className="border-2 border-slate-900 rounded-lg overflow-hidden">
-            <div className="bg-amber-400 font-black text-center py-1.5 uppercase text-slate-900 text-[11px] tracking-wide border-b border-slate-900">
+          <div className={`border-2 rounded-lg overflow-hidden ${
+            dark ? 'border-[#1E293B] bg-[#0E1626]' : 'border-slate-900 bg-white'
+          }`}>
+            <div className={`font-black text-center py-1.5 uppercase text-[11px] tracking-wide border-b ${
+              dark
+                ? 'bg-[#1E293B] text-amber-300 border-[#1E293B]'
+                : 'bg-amber-400 text-slate-900 border-slate-900'
+            }`}>
               PAYMENT TERMS: QUARTERLY FEE: FULL PAYMENT AFTER SUBMISSION OF ACCOMPLISHMENT REPORT.
             </div>
 
-            <div className="p-4 bg-white space-y-4">
-              <div className="flex items-center gap-2 text-xs border-b border-slate-200 pb-2">
-                <span className="font-black text-slate-900 uppercase">PAYEE</span>
-                <span className="text-slate-600">PO and payment issued in favor of:</span>
-                <span className="font-black text-indigo-900">AA2000 Security and Technology Solution Inc.</span>
+            <div className={`p-4 space-y-4 ${dark ? 'bg-[#0E1626]' : 'bg-white'}`}>
+              <div className={`flex items-center gap-2 text-xs border-b pb-2 ${
+                dark ? 'border-[#1E293B]' : 'border-slate-200'
+              }`}>
+                <span className={`font-black uppercase ${dark ? 'text-slate-100' : 'text-slate-900'}`}>PAYEE</span>
+                <span className={dark ? 'text-slate-400' : 'text-slate-600'}>PO and payment issued in favor of:</span>
+                <span className={`font-black ${dark ? 'text-blue-400' : 'text-indigo-900'}`}>AA2000 Security and Technology Solution Inc.</span>
               </div>
 
               <div className="grid grid-cols-2 gap-12 pt-2">
                 <div>
-                  <p className="font-bold text-[11px] text-slate-700 mb-1">SUBMITTED BY:</p>
+                  <p className={`font-bold text-[11px] mb-1 ${dark ? 'text-slate-300' : 'text-slate-700'}`}>SUBMITTED BY:</p>
                   <div className="h-12 flex items-end">
-                    <svg className="w-32 h-10 text-slate-800" viewBox="0 0 120 40" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <svg className={`w-32 h-10 ${dark ? 'text-blue-400' : 'text-slate-800'}`} viewBox="0 0 120 40" fill="none" stroke="currentColor" strokeWidth="1.5">
                       <path d="M10,25 Q30,5 50,20 T90,15 T110,25" />
                       <path d="M20,30 Q45,15 70,25" />
                     </svg>
                   </div>
-                  <div className="border-t-2 border-slate-900 pt-1">
-                    <p className="font-black text-slate-900 text-xs">PRINCESS ALGABRE</p>
-                    <p className="font-bold text-[10px] text-slate-600">GENERAL MANAGER</p>
+                  <div className={`border-t-2 pt-1 ${dark ? 'border-[#1E293B]' : 'border-slate-900'}`}>
+                    <p className={`font-black text-xs ${dark ? 'text-slate-100' : 'text-slate-900'}`}>PRINCESS ALGABRE</p>
+                    <p className={`font-bold text-[10px] ${dark ? 'text-slate-400' : 'text-slate-600'}`}>GENERAL MANAGER</p>
                   </div>
                 </div>
 
                 <div className="text-right">
-                  <p className="font-bold text-[11px] text-slate-700 mb-1">Client&apos;s / Customer Conforme:</p>
+                  <p className={`font-bold text-[11px] mb-1 ${dark ? 'text-slate-300' : 'text-slate-700'}`}>Client&apos;s / Customer Conforme:</p>
                   <div className="h-12"></div>
-                  <div className="border-t-2 border-slate-900 pt-1">
-                    <p className="font-bold text-[10px] text-slate-600">Authorized Representative (Printed Name/Signature/Date)</p>
+                  <div className={`border-t-2 pt-1 ${dark ? 'border-[#1E293B]' : 'border-slate-900'}`}>
+                    <p className={`font-bold text-[10px] ${dark ? 'text-slate-400' : 'text-slate-600'}`}>Authorized Representative (Printed Name/Signature/Date)</p>
                   </div>
                 </div>
               </div>
             </div>
 
             {/* Dark Notice Bar */}
-            <div className="bg-slate-800 text-white p-3 text-center text-[10px] font-semibold border-t-2 border-slate-900">
-              <span className="font-bold uppercase tracking-wider block mb-0.5 text-slate-300">NOTICE</span>
+            <div className={`p-3 text-center text-[10px] font-semibold border-t-2 ${
+              dark
+                ? 'bg-[#131B2E] text-slate-300 border-[#1E293B]'
+                : 'bg-slate-800 text-white border-slate-900'
+            }`}>
+              <span className={`font-bold uppercase tracking-wider block mb-0.5 ${dark ? 'text-blue-400' : 'text-slate-300'}`}>NOTICE</span>
               This proposal will be regarded as an order confirmation upon acceptance. Kindly acknowledge with your signature accompanied by a Purchase Order and/or company stamp. Thank you for your trust and confidence.
             </div>
           </div>

@@ -161,6 +161,7 @@ interface Props {
   user: User | null;
   onBack: () => void;
   onUpdateStatus?: (projectId: string, status: string) => void;
+  isDark?: boolean;
 }
 
 function getRoleDefaultDayRate(_role: string): number {
@@ -190,27 +191,27 @@ function createScopeOfWork(count: number): ScopeOfWorkEntry {
   };
 }
 
-const inputStyle: React.CSSProperties = {
+const getInputStyle = (dark: boolean): React.CSSProperties => ({
   padding: '8px 12px',
   borderRadius: '8px',
-  background: '#FFFFFF',
-  border: '1px solid #E2E8F0',
-  color: '#1E293B',
+  background: dark ? '#0D1527' : '#FFFFFF',
+  border: dark ? '1px solid #1E293B' : '1px solid #E2E8F0',
+  color: dark ? '#F1F5F9' : '#1E293B',
   fontSize: '13px',
   outline: 'none',
   width: '100%',
-};
+});
 
-const tableHeadStyle: React.CSSProperties = {
+const getTableHeadStyle = (dark: boolean): React.CSSProperties => ({
   paddingBottom: '10px',
   fontSize: '10px',
   fontWeight: 700,
   textTransform: 'uppercase',
   letterSpacing: '0.08em',
-  color: '#94A3B8',
-  borderBottom: '1px solid #E2E8F0',
+  color: dark ? '#94A3B8' : '#94A3B8',
+  borderBottom: dark ? '1px solid #1E293B' : '1px solid #E2E8F0',
   textAlign: 'left',
-};
+});
 
 const AI_STEPS = [
   'Reading floor plan layout & room structure...',
@@ -222,9 +223,49 @@ const AI_STEPS = [
 
 import { canViewPrices } from '../../constants/roles';
 
-export default function EstimationSummary({ project, user, onBack, onUpdateStatus }: Props) {
+export default function EstimationSummary({ project, user, onBack, onUpdateStatus, isDark }: Props) {
   const { toast } = useToast();
   const showPrices = canViewPrices(user?.role, user);
+
+  // Sync dark theme reactive state
+  const [themeDark, setThemeDark] = useState<boolean>(() => {
+    if (typeof isDark === 'boolean') return isDark;
+    if (typeof document !== 'undefined') {
+      return document.documentElement.classList.contains('dark') ||
+        document.documentElement.getAttribute('data-theme') === 'dark' ||
+        localStorage.getItem('aa2000_theme') === 'dark';
+    }
+    return false;
+  });
+
+  useEffect(() => {
+    if (typeof isDark === 'boolean') {
+      setThemeDark(isDark);
+    }
+  }, [isDark]);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const updateTheme = () => {
+      const isDocDark = document.documentElement.classList.contains('dark') ||
+        document.documentElement.getAttribute('data-theme') === 'dark' ||
+        localStorage.getItem('aa2000_theme') === 'dark';
+      setThemeDark(isDocDark);
+    };
+
+    updateTheme();
+    const observer = new MutationObserver(updateTheme);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'data-theme'] });
+    window.addEventListener('storage', updateTheme);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('storage', updateTheme);
+    };
+  }, []);
+
+  const dark = themeDark;
+  const inputStyle = getInputStyle(dark);
+  const tableHeadStyle = getTableHeadStyle(dark);
 
   const [priceTier, setPriceTier] = useState<'srp' | 'contractorPrice' | 'dealerPrice'>('srp');
   const [showQuotationModal, setShowQuotationModal] = useState(false);
@@ -1347,18 +1388,22 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
 
   const hasFiles = floorPlanFiles.length > 0;
   const sectionCard: React.CSSProperties = {
-    background: '#FFFFFF',
-    border: '1px solid #E2E8F0',
+    background: dark ? '#131B2E' : '#FFFFFF',
+    border: dark ? '1px solid #1E293B' : '1px solid #E2E8F0',
     borderRadius: '24px',
     padding: '24px',
     marginBottom: '20px',
-    boxShadow: '0 1px 3px rgba(0,0,0,0.02)',
+    boxShadow: dark ? '0 4px 20px rgba(0,0,0,0.25)' : '0 1px 3px rgba(0,0,0,0.02)',
   };
 
   const addBtn = (label: string, onClick: () => void) => (
     <button
       onClick={onClick}
-      className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all border border-slate-200 hover:bg-slate-50 text-slate-600"
+      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all border cursor-pointer ${
+        dark
+          ? 'border-slate-700 bg-slate-800/80 hover:bg-slate-700 text-slate-200'
+          : 'border-slate-200 hover:bg-slate-50 text-slate-600'
+      }`}
     >
       + {label}
     </button>
@@ -1367,20 +1412,28 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
   const removeBtn = (onClick: () => void) => (
     <button
       onClick={onClick}
-      className="text-xs font-bold text-slate-400 hover:text-red-500 transition-colors px-2 py-1 rounded"
+      className="text-xs font-bold text-slate-400 hover:text-red-500 transition-colors px-2 py-1 rounded cursor-pointer"
     >
       Remove
     </button>
   );
 
   return (
-    <div className="flex-1 overflow-y-auto pb-16" style={{ background: '#F8FAFC' }}>
+    <div className="flex-1 overflow-y-auto pb-16 transition-colors" style={{ background: dark ? '#0B132B' : '#F8FAFC' }}>
       {/* Header */}
-      <header className="sticky top-0 z-40 px-6 py-4 bg-gradient-to-r from-white/95 to-blue-50/95 border-b border-slate-200 shadow-sm backdrop-blur-md">
+      <header className={`sticky top-0 z-40 px-6 py-4 border-b shadow-sm backdrop-blur-md transition-colors ${
+        dark
+          ? 'bg-[#0D1527]/95 border-slate-800'
+          : 'bg-gradient-to-r from-white/95 to-blue-50/95 border-slate-200'
+      }`}>
         <div className="max-w-5xl mx-auto flex items-center justify-between">
           <button
             onClick={onBack}
-            className="flex items-center gap-2 text-xs font-bold text-slate-500 hover:text-slate-800 hover:bg-slate-50 transition-colors px-3 py-2 rounded-lg"
+            className={`flex items-center gap-2 text-xs font-bold transition-colors px-3 py-2 rounded-lg cursor-pointer ${
+              dark
+                ? 'text-slate-300 hover:text-white hover:bg-slate-800/60'
+                : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
+            }`}
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
@@ -1391,18 +1444,22 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
           <div className="flex items-center gap-3">
             <button
               onClick={runAiEstimation}
-              className="px-4 py-2.5 rounded-full text-xs font-bold text-white flex items-center gap-2 shadow-sm transition-all hover:opacity-95"
+              className="px-4 py-2.5 rounded-full text-xs font-bold text-white flex items-center gap-2 shadow-sm transition-all hover:opacity-95 cursor-pointer"
               style={{ background: 'linear-gradient(135deg, #1E3A8A 0%, #2563EB 100%)' }}
             >
               <svg className="w-3.5 h-3.5 animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 0 0-2.455 2.456Z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0 3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 0 0-2.455 2.456Z" />
               </svg>
               {hasFiles ? `ANALYZE ${floorPlanFiles.length} FLOOR PLAN${floorPlanFiles.length > 1 ? 'S' : ''}` : 'AI ESTIMATE SCAN'}
             </button>
 
             <button
               onClick={handleExportPdf}
-              className="px-4 py-2 rounded-xl text-xs font-bold bg-white text-slate-500 border border-slate-200 hover:text-[#1E3A8A] transition-colors flex items-center gap-1.5 cursor-pointer"
+              className={`px-4 py-2 rounded-xl text-xs font-bold border transition-colors flex items-center gap-1.5 cursor-pointer ${
+                dark
+                  ? 'bg-[#131B2E] text-slate-300 border-slate-700 hover:text-blue-400 hover:border-blue-500/50'
+                  : 'bg-white text-slate-500 border-slate-200 hover:text-[#1E3A8A]'
+              }`}
             >
               <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
@@ -1417,7 +1474,7 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
 
         {/* Project title card */}
         <div style={{ ...sectionCard, marginBottom: '24px' }}>
-          <h1 className="text-xl font-black text-slate-800">{project.name}</h1>
+          <h1 className={`text-xl font-black ${dark ? 'text-white' : 'text-slate-800'}`}>{project.name}</h1>
           <p className="text-xs font-bold text-slate-400 mt-1 uppercase tracking-wider">{project.clientName} · {project.location}</p>
 
           {/* System type badges — MOST IMPORTANT CONTEXT */}
@@ -1425,7 +1482,7 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
             <div className="flex flex-wrap gap-2 mt-3">
               {project.systemTypes.map(type => {
                 const COLORS: Record<string, { bg: string; color: string; label: string; icon: string }> = {
-CCTV:                { bg: '#EFF6FF', color: '#1E3A8A', label: 'CCTV System',                        icon: '' },
+                  CCTV:                { bg: '#EFF6FF', color: '#1E3A8A', label: 'CCTV System',                        icon: '' },
                   FDAS:                { bg: '#FEF2F2', color: '#DC2626', label: 'FDAS / Fire Alarm System',           icon: '' },
                   ACCESS_CONTROL:      { bg: '#ECFDF5', color: '#065F46', label: 'Access Control System',              icon: '' },
                   BURGLAR_ALARM:       { bg: '#FFFBEB', color: '#92400E', label: 'Burglar Alarm System',               icon: '' },
@@ -1443,11 +1500,13 @@ CCTV:                { bg: '#EFF6FF', color: '#1E3A8A', label: 'CCTV System',   
                 const cfg = COLORS[type] || { bg: '#F8FAFC', color: '#475569', label: type, icon: '' };
                 const brand = getSystemBrand(type);
                 const displayLabel = brand ? `${cfg.label} (${brand})` : cfg.label;
+                const badgeBg = dark ? `${cfg.color}25` : cfg.bg;
+                const badgeColor = dark ? (cfg.color === '#1E3A8A' ? '#60A5FA' : cfg.color === '#065F46' ? '#34D399' : cfg.color === '#92400E' ? '#FBBF24' : cfg.color === '#7E22CE' ? '#C084FC' : '#93C5FD') : cfg.color;
                 return (
                   <span
                     key={type}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-black border"
-                    style={{ background: cfg.bg, color: cfg.color, borderColor: cfg.color + '30' }}
+                    style={{ background: badgeBg, color: badgeColor, borderColor: dark ? `${badgeColor}40` : cfg.color + '30' }}
                   >
                     {React.createElement(systemBadgeIcons[type] || systemBadgeIcons.OTHER, { className: 'w-3.5 h-3.5' })}
                     {displayLabel}
@@ -1463,15 +1522,19 @@ CCTV:                { bg: '#EFF6FF', color: '#1E3A8A', label: 'CCTV System',   
               ...(project.buildingType ? [{ label: 'Building Type', value: project.buildingType }] : []),
               ...(project.floors ? [{ label: 'Floors', value: `${project.floors}` }] : []),
             ].map(item => (
-              <div key={item.label} className="px-3 py-1.5 rounded-lg bg-slate-50 border border-slate-200">
+              <div key={item.label} className={`px-3 py-1.5 rounded-lg border ${
+                dark ? 'bg-[#0D1527] border-slate-800' : 'bg-slate-50 border-slate-200'
+              }`}>
                 <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400">{item.label}: </span>
-                <span className="text-xs font-bold text-slate-600">{item.value}</span>
+                <span className={`text-xs font-bold ${dark ? 'text-slate-200' : 'text-slate-600'}`}>{item.value}</span>
               </div>
             ))}
             {project.surveyScope && (
-              <div className="px-3 py-1.5 rounded-lg bg-slate-50 border border-slate-200 max-w-sm">
+              <div className={`px-3 py-1.5 rounded-lg border max-w-sm ${
+                dark ? 'bg-[#0D1527] border-slate-800' : 'bg-slate-50 border-slate-200'
+              }`}>
                 <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Scope: </span>
-                <span className="text-xs font-semibold text-slate-600 line-clamp-1">{project.surveyScope}</span>
+                <span className={`text-xs font-semibold line-clamp-1 ${dark ? 'text-slate-200' : 'text-slate-600'}`}>{project.surveyScope}</span>
               </div>
             )}
           </div>
@@ -1481,15 +1544,15 @@ CCTV:                { bg: '#EFF6FF', color: '#1E3A8A', label: 'CCTV System',   
         {(manpower.length > 0 || consumables.length > 0) && (
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-5">
             {[
-              { label: 'Total Headcount', value: `${totalHeadcount} pax`, icon: '', color: '#1E3A8A', bg: '#EFF6FF' },
-              { label: 'Total Man-Days', value: `${totalManDays} days`, icon: '', color: '#065F46', bg: '#ECFDF5' },
-              { label: 'Material Lines', value: `${totalMaterialLines} items`, icon: '', color: '#92400E', bg: '#FFFBEB' },
-              { label: 'Cable Estimate', value: cableTotal > 0 ? `~${cableTotal.toLocaleString()} m` : '—', icon: '', color: '#6B21A8', bg: '#FAF5FF' },
+              { label: 'Total Headcount', value: `${totalHeadcount} pax`, icon: '', color: dark ? '#60A5FA' : '#1E3A8A', bg: dark ? '#1E3A8A25' : '#EFF6FF' },
+              { label: 'Total Man-Days', value: `${totalManDays} days`, icon: '', color: dark ? '#34D399' : '#065F46', bg: dark ? '#065F4625' : '#ECFDF5' },
+              { label: 'Material Lines', value: `${totalMaterialLines} items`, icon: '', color: dark ? '#FBBF24' : '#92400E', bg: dark ? '#92400E25' : '#FFFBEB' },
+              { label: 'Cable Estimate', value: cableTotal > 0 ? `~${cableTotal.toLocaleString()} m` : '—', icon: '', color: dark ? '#C084FC' : '#6B21A8', bg: dark ? '#6B21A825' : '#FAF5FF' },
             ].map(card => (
-              <div key={card.label} className="rounded-2xl p-4 flex flex-col gap-1" style={{ background: card.bg, border: `1px solid ${card.color}18` }}>
+              <div key={card.label} className="rounded-2xl p-4 flex flex-col gap-1" style={{ background: card.bg, border: `1px solid ${card.color}25` }}>
                 {card.label === 'Total Headcount' ? <Users className="w-5 h-5" /> : card.label === 'Total Man-Days' ? <StatCalendar className="w-5 h-5" /> : card.label === 'Material Lines' ? <PackageIcon className="w-5 h-5" /> : card.label === 'Cable Estimate' ? <Plug className="w-5 h-5" /> : null}
                 <span className="text-lg font-black" style={{ color: card.color }}>{card.value}</span>
-                <span className="text-[9px] font-bold uppercase tracking-wider" style={{ color: card.color + 'AA' }}>{card.label}</span>
+                <span className="text-[9px] font-bold uppercase tracking-wider" style={{ color: card.color + 'CC' }}>{card.label}</span>
               </div>
             ))}
           </div>
@@ -1497,23 +1560,31 @@ CCTV:                { bg: '#EFF6FF', color: '#1E3A8A', label: 'CCTV System',   
 
         {/* ── AI Baseline vs. Field Validated Variance Tracker ── */}
         {aiBaseline && (
-          <div className="rounded-2xl p-5 mb-5 border border-indigo-100 bg-gradient-to-r from-indigo-50/70 via-blue-50/50 to-white shadow-xs">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3 pb-3 border-b border-indigo-100/70">
+          <div className={`rounded-2xl p-5 mb-5 border shadow-xs ${
+            dark
+              ? 'border-indigo-900/40 bg-[#131B2E]'
+              : 'border-indigo-100 bg-gradient-to-r from-indigo-50/70 via-blue-50/50 to-white'
+          }`}>
+            <div className={`flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3 pb-3 border-b ${
+              dark ? 'border-slate-800' : 'border-indigo-100/70'
+            }`}>
               <div className="flex items-center gap-2">
                 <div className="w-7 h-7 rounded-xl bg-indigo-600 text-white flex items-center justify-center text-xs font-bold shadow-xs">
                   🤖
                 </div>
                 <div>
-                  <h3 className="text-xs font-black text-slate-800 uppercase tracking-wide">
+                  <h3 className={`text-xs font-black uppercase tracking-wide ${dark ? 'text-slate-100' : 'text-slate-800'}`}>
                     AI Pre-Estimate vs. Ground-Validated Variance
                   </h3>
-                  <p className="text-[10px] text-slate-500 font-medium">
+                  <p className="text-[10px] text-slate-400 font-medium">
                     AI recommendation is baseline · Field technician and sales can adjust all counts, materials, and pricing
                   </p>
                 </div>
               </div>
               <div className="flex items-center gap-1.5 self-start sm:self-auto">
-                <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 flex items-center gap-1">
+                <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold border flex items-center gap-1 ${
+                  dark ? 'bg-emerald-950/50 text-emerald-300 border-emerald-900/50' : 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                }`}>
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
                   Editable Ground Overrides Active
                 </span>
@@ -1521,41 +1592,43 @@ CCTV:                { bg: '#EFF6FF', color: '#1E3A8A', label: 'CCTV System',   
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-              <div className="p-3 rounded-xl bg-white border border-slate-200/80 shadow-2xs">
+              <div className={`p-3 rounded-xl border shadow-2xs ${dark ? 'bg-[#0D1527] border-slate-800' : 'bg-white border-slate-200/80'}`}>
                 <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Headcount (Actual vs AI)</p>
                 <div className="flex items-baseline gap-2 mt-1">
-                  <span className="text-sm font-black text-slate-800">{totalHeadcount} pax</span>
+                  <span className={`text-sm font-black ${dark ? 'text-slate-100' : 'text-slate-800'}`}>{totalHeadcount} pax</span>
                   <span className="text-[10px] text-slate-400 font-medium line-through">
                     {aiBaseline.manpower?.reduce((acc: number, m: any) => acc + (Number(m.headcount) || 0), 0) || 0} pax
                   </span>
                 </div>
               </div>
 
-              <div className="p-3 rounded-xl bg-white border border-slate-200/80 shadow-2xs">
+              <div className={`p-3 rounded-xl border shadow-2xs ${dark ? 'bg-[#0D1527] border-slate-800' : 'bg-white border-slate-200/80'}`}>
                 <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Man-Days (Actual vs AI)</p>
                 <div className="flex items-baseline gap-2 mt-1">
-                  <span className="text-sm font-black text-slate-800">{totalManDays} days</span>
+                  <span className={`text-sm font-black ${dark ? 'text-slate-100' : 'text-slate-800'}`}>{totalManDays} days</span>
                   <span className="text-[10px] text-slate-400 font-medium line-through">
                     {aiBaseline.manpower?.reduce((acc: number, m: any) => acc + (Number(m.manDays) || 0), 0) || 0} days
                   </span>
                 </div>
               </div>
 
-              <div className="p-3 rounded-xl bg-white border border-slate-200/80 shadow-2xs">
+              <div className={`p-3 rounded-xl border shadow-2xs ${dark ? 'bg-[#0D1527] border-slate-800' : 'bg-white border-slate-200/80'}`}>
                 <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Material Items (Actual vs AI)</p>
                 <div className="flex items-baseline gap-2 mt-1">
-                  <span className="text-sm font-black text-slate-800">{totalMaterialLines} lines</span>
+                  <span className={`text-sm font-black ${dark ? 'text-slate-100' : 'text-slate-800'}`}>{totalMaterialLines} lines</span>
                   <span className="text-[10px] text-slate-400 font-medium line-through">
                     {aiBaseline.consumables?.length || 0} lines
                   </span>
                 </div>
               </div>
 
-              <div className="p-3 rounded-xl bg-white border border-slate-200/80 shadow-2xs">
+              <div className={`p-3 rounded-xl border shadow-2xs ${dark ? 'bg-[#0D1527] border-slate-800' : 'bg-white border-slate-200/80'}`}>
                 <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Ground Justification</p>
                 <div className="mt-1 truncate">
                   <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${
-                    discrepancyJustifications.length > 0 ? 'bg-blue-100 text-blue-800' : 'bg-slate-100 text-slate-600'
+                    discrepancyJustifications.length > 0
+                      ? dark ? 'bg-blue-950/60 text-blue-300' : 'bg-blue-100 text-blue-800'
+                      : dark ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-600'
                   }`}>
                     {discrepancyJustifications.length > 0 ? `${discrepancyJustifications.length} field reason(s) noted` : 'No ground changes'}
                   </span>
@@ -1566,25 +1639,29 @@ CCTV:                { bg: '#EFF6FF', color: '#1E3A8A', label: 'CCTV System',   
         )}
 
         {/* ── Floor Plan Upload Section ── */}
-        <div style={{ ...sectionCard, border: hasFiles ? '1px solid #2563EB' : '1px solid #E2E8F0', background: hasFiles ? '#F8FAFC' : '#FFFFFF' }}>
+        <div style={{
+          ...sectionCard,
+          border: hasFiles ? (dark ? '1px solid #3B82F6' : '1px solid #2563EB') : sectionCard.border,
+          background: hasFiles ? (dark ? '#0D1527' : '#F8FAFC') : sectionCard.background,
+        }}>
           <div className="flex items-center gap-2 mb-4">
-            <div className="w-7 h-7 rounded-lg flex items-center justify-center text-sm" style={{ background: '#EFF6FF', color: '#2563EB' }}>
+            <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-sm ${dark ? 'bg-blue-950/60 text-blue-400' : 'bg-blue-50 text-[#2563EB]'}`}>
               <MapIcon className="w-5 h-5" />
             </div>
-            <h2 className="text-sm font-black text-slate-800 uppercase tracking-tight">Floor Plan Upload</h2>
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 border border-blue-100">
+            <h2 className={`text-sm font-black uppercase tracking-tight ${dark ? 'text-slate-100' : 'text-slate-800'}`}>Floor Plan Upload</h2>
+            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${dark ? 'bg-blue-950/60 text-blue-300 border-blue-900/50' : 'bg-blue-50 text-blue-600 border-blue-100'}`}>
               Powers AI Analysis
             </span>
           </div>
 
           {/* AI Observations & Confidence */}
           {aiObservations && (
-            <div className="mb-4 px-4 py-3 rounded-xl bg-blue-50 border border-blue-100">
+            <div className={`mb-4 px-4 py-3 rounded-xl border ${dark ? 'bg-[#0D1527] border-slate-800' : 'bg-blue-50 border-blue-100'}`}>
               <div className="flex items-center justify-between mb-1">
                 <p className="text-[9px] font-bold uppercase tracking-wider text-blue-400">AI Floor Plan Observations</p>
                 {aiConfidence !== null && (
                   <div className="flex items-center gap-2">
-                    <div className="w-20 h-2 rounded-full bg-blue-200 overflow-hidden">
+                    <div className={`w-20 h-2 rounded-full overflow-hidden ${dark ? 'bg-slate-800' : 'bg-blue-200'}`}>
                       <div
                         className="h-full rounded-full transition-all duration-700"
                         style={{
@@ -1604,18 +1681,20 @@ CCTV:                { bg: '#EFF6FF', color: '#1E3A8A', label: 'CCTV System',   
                   </div>
                 )}
               </div>
-              <p className="text-xs font-semibold text-blue-800">{aiObservations}</p>
+              <p className={`text-xs font-semibold ${dark ? 'text-blue-200' : 'text-blue-800'}`}>{aiObservations}</p>
             </div>
           )}
 
           {/* Error display */}
           {aiError && (
-            <div className="mb-4 px-4 py-3 rounded-xl bg-red-50 border border-red-100 flex items-start gap-2">
+            <div className={`mb-4 px-4 py-3 rounded-xl border flex items-start gap-2 ${
+              dark ? 'bg-red-950/40 border-red-900/50' : 'bg-red-50 border-red-100'
+            }`}>
               <ExclamationTriangle className="w-4 h-4 text-red-500 mt-0.5" />
               <div>
-                <p className="text-xs font-bold text-red-700">{aiError}</p>
+                <p className={`text-xs font-bold ${dark ? 'text-red-300' : 'text-red-700'}`}>{aiError}</p>
                 {aiError.includes('Settings') && (
-                  <p className="text-[11px] text-red-500 mt-1">Contact your administrator to add an API key.</p>
+                  <p className="text-[11px] text-red-400 mt-1">Contact your administrator to add an API key.</p>
                 )}
               </div>
             </div>
@@ -1624,7 +1703,7 @@ CCTV:                { bg: '#EFF6FF', color: '#1E3A8A', label: 'CCTV System',   
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
             {/* Floor Plan Drawings Dropzone & List */}
             <div>
-              <span className="text-[10px] font-black text-blue-600 uppercase tracking-wider mb-2 block">Floor Plan Drawings</span>
+              <span className={`text-[10px] font-black uppercase tracking-wider mb-2 block ${dark ? 'text-blue-400' : 'text-blue-600'}`}>Floor Plan Drawings</span>
               <div
                 onClick={() => fileInputRef.current?.click()}
                 onDragOver={e => { e.preventDefault(); setIsDragOver(true); }}
@@ -1635,14 +1714,14 @@ CCTV:                { bg: '#EFF6FF', color: '#1E3A8A', label: 'CCTV System',   
                   setIsDragOver(false);
                   if (e.dataTransfer.files.length) handleFilesSelect(e.dataTransfer.files);
                 }}
-                className="border-2 border-dashed rounded-2xl flex flex-col items-center justify-center py-8 cursor-pointer transition-all"
+                className="border-2 border-dashed rounded-2xl flex flex-col items-center justify-center py-8 cursor-pointer transition-all duration-200"
                 style={{
-                  borderColor: isDragOver ? '#2563EB' : hasFiles ? '#93C5FD' : '#E2E8F0',
-                  background: isDragOver ? '#EFF6FF' : hasFiles ? '#F8FAFC' : '#F8FAFC',
+                  borderColor: isDragOver ? '#2563EB' : hasFiles ? (dark ? '#3B82F6' : '#93C5FD') : (dark ? '#1E293B' : '#E2E8F0'),
+                  background: isDragOver ? (dark ? 'rgba(37,99,235,0.15)' : '#EFF6FF') : (dark ? '#0D1527' : '#F8FAFC'),
                 }}
               >
-                {hasFiles ? <Plus className="w-8 h-8 text-slate-300 mb-3" /> : <MapIcon className="w-8 h-8 text-slate-300 mb-3" />}
-                <p className="text-xs font-black text-slate-700">
+                {hasFiles ? <Plus className="w-8 h-8 text-slate-400 mb-3" /> : <MapIcon className="w-8 h-8 text-slate-400 mb-3" />}
+                <p className={`text-xs font-black ${dark ? 'text-slate-200' : 'text-slate-700'}`}>
                   {hasFiles ? 'Add more floor plans' : 'Drop floor plans here'}
                 </p>
                 <p className="text-[10px] text-slate-400 mt-1">JPG, PNG or PDF · Multiple files</p>
@@ -1653,23 +1732,29 @@ CCTV:                { bg: '#EFF6FF', color: '#1E3A8A', label: 'CCTV System',   
                   {floorPlanPreviews.map((fp, idx) => (
                     <div
                       key={idx}
-                      className="flex items-center gap-3 px-4 py-2.5 rounded-xl bg-white border border-blue-100"
+                      className={`flex items-center gap-3 px-4 py-2.5 rounded-xl border ${
+                        dark ? 'bg-[#0D1527] border-slate-800' : 'bg-white border-blue-100'
+                      }`}
                     >
                       {fp.url ? (
-                        <img src={fp.url} alt={fp.name} className="w-10 h-8 object-contain rounded border border-slate-200 bg-slate-50 shrink-0" />
+                        <img src={fp.url} alt={fp.name} className={`w-10 h-8 object-contain rounded border shrink-0 ${
+                          dark ? 'border-slate-700 bg-slate-800' : 'border-slate-200 bg-slate-50'
+                        }`} />
                       ) : (
-                        <div className="w-10 h-8 rounded border border-red-100 bg-red-50 flex items-center justify-center shrink-0">
+                        <div className={`w-10 h-8 rounded border flex items-center justify-center shrink-0 ${
+                          dark ? 'border-red-900/50 bg-red-950/40' : 'border-red-100 bg-red-50'
+                        }`}>
                           <Document className="w-3.5 h-3.5 text-red-500" />
                         </div>
                       )}
 
                       <div className="flex-1 min-w-0">
-                        <p className="text-xs font-bold text-slate-700 truncate">{fp.name}</p>
+                        <p className={`text-xs font-bold truncate ${dark ? 'text-slate-200' : 'text-slate-700'}`}>{fp.name}</p>
                         <span
                           className="text-[9px] font-extrabold px-1.5 py-0.5 rounded uppercase tracking-wide"
                           style={fp.type === 'pdf'
-                            ? { background: '#FEF2F2', color: '#DC2626' }
-                            : { background: '#EFF6FF', color: '#2563EB' }
+                            ? { background: dark ? '#7F1D1D40' : '#FEF2F2', color: dark ? '#F87171' : '#DC2626' }
+                            : { background: dark ? '#1E3A8A40' : '#EFF6FF', color: dark ? '#60A5FA' : '#2563EB' }
                           }
                         >
                           {fp.type === 'pdf' ? 'PDF' : 'Image'}
@@ -1678,7 +1763,9 @@ CCTV:                { bg: '#EFF6FF', color: '#1E3A8A', label: 'CCTV System',   
 
                       <button
                         onClick={() => removeFile(idx)}
-                        className="w-5 h-5 rounded-full bg-red-50 hover:bg-red-100 text-red-500 flex items-center justify-center text-xs font-black transition-colors shrink-0"
+                        className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-black transition-colors shrink-0 cursor-pointer ${
+                          dark ? 'bg-red-950/60 hover:bg-red-900 text-red-400' : 'bg-red-50 hover:bg-red-100 text-red-500'
+                        }`}
                       >
                         ×
                       </button>
@@ -1690,24 +1777,25 @@ CCTV:                { bg: '#EFF6FF', color: '#1E3A8A', label: 'CCTV System',   
 
             {/* TOR / Spec Documents Dropzone & List */}
             <div>
-              <span className="text-[10px] font-black text-blue-600 uppercase tracking-wider mb-2 block">Terms of Reference (TOR) Specs (Optional)</span>
+              <span className={`text-[10px] font-black uppercase tracking-wider mb-2 block ${dark ? 'text-blue-400' : 'text-blue-600'}`}>Terms of Reference (TOR) Specs (Optional)</span>
               <div
                 onClick={() => torInputRef.current?.click()}
                 onDragOver={e => { e.preventDefault(); setIsTorDragOver(true); }}
                 onDragLeave={() => setIsTorDragOver(false)}
+                onPaste={e => { e.preventDefault(); }}
                 onDrop={e => {
                   e.preventDefault();
                   setIsTorDragOver(false);
                   if (e.dataTransfer.files.length) handleTorSelect(e.dataTransfer.files);
                 }}
-                className="border-2 border-dashed rounded-2xl flex flex-col items-center justify-center py-8 cursor-pointer transition-all"
+                className="border-2 border-dashed rounded-2xl flex flex-col items-center justify-center py-8 cursor-pointer transition-all duration-200"
                 style={{
-                  borderColor: isTorDragOver ? '#2563EB' : torFiles.length > 0 ? '#93C5FD' : '#E2E8F0',
-                  background: isTorDragOver ? '#EFF6FF' : torFiles.length > 0 ? '#FAFAFE' : '#F8FAFC',
+                  borderColor: isTorDragOver ? '#2563EB' : torFiles.length > 0 ? (dark ? '#3B82F6' : '#93C5FD') : (dark ? '#1E293B' : '#E2E8F0'),
+                  background: isTorDragOver ? (dark ? 'rgba(37,99,235,0.15)' : '#EFF6FF') : (dark ? '#0D1527' : '#F8FAFC'),
                 }}
               >
-                {torFiles.length > 0 ? <Plus className="w-8 h-8 text-slate-300 mb-3" /> : <Document className="w-8 h-8 text-slate-300 mb-3" />}
-                <p className="text-xs font-black text-slate-700">
+                {torFiles.length > 0 ? <Plus className="w-8 h-8 text-slate-400 mb-3" /> : <Document className="w-8 h-8 text-slate-400 mb-3" />}
+                <p className={`text-xs font-black ${dark ? 'text-slate-200' : 'text-slate-700'}`}>
                   {torFiles.length > 0 ? 'Add more TOR files' : 'Drop TOR / Spec files here'}
                 </p>
                 <p className="text-[10px] text-slate-400 mt-1">Excel, Word, Text or PDF · Multiple files</p>
@@ -1718,22 +1806,30 @@ CCTV:                { bg: '#EFF6FF', color: '#1E3A8A', label: 'CCTV System',   
                   {torFiles.map((tf, idx) => (
                     <div
                       key={idx}
-                      className="flex items-center gap-3 px-4 py-2.5 rounded-xl bg-white border border-blue-100"
+                      className={`flex items-center gap-3 px-4 py-2.5 rounded-xl border ${
+                        dark ? 'bg-[#0D1527] border-slate-800' : 'bg-white border-blue-100'
+                      }`}
                     >
-                      <div className="w-10 h-8 rounded border border-blue-100 bg-blue-50 flex items-center justify-center shrink-0">
-                        <Document className="w-3.5 h-3.5 text-blue-600" />
+                      <div className={`w-10 h-8 rounded border flex items-center justify-center shrink-0 ${
+                        dark ? 'border-blue-900/50 bg-blue-950/40 text-blue-400' : 'border-blue-100 bg-blue-50 text-blue-600'
+                      }`}>
+                        <Document className="w-3.5 h-3.5" />
                       </div>
 
                       <div className="flex-1 min-w-0">
-                        <p className="text-xs font-bold text-slate-700 truncate">{tf.name}</p>
-                        <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 uppercase tracking-wide">
+                        <p className={`text-xs font-bold truncate ${dark ? 'text-slate-200' : 'text-slate-700'}`}>{tf.name}</p>
+                        <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded uppercase tracking-wide ${
+                          dark ? 'bg-blue-950/60 text-blue-300' : 'bg-blue-100 text-blue-800'
+                        }`}>
                           TOR Specs
                         </span>
                       </div>
 
                       <button
                         onClick={() => removeTorFile(idx)}
-                        className="w-5 h-5 rounded-full bg-red-50 hover:bg-red-100 text-red-500 flex items-center justify-center text-xs font-black transition-colors shrink-0"
+                        className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-black transition-colors shrink-0 cursor-pointer ${
+                          dark ? 'bg-red-950/60 hover:bg-red-900 text-red-400' : 'bg-red-50 hover:bg-red-100 text-red-500'
+                        }`}
                       >
                         ×
                       </button>
@@ -1785,12 +1881,12 @@ CCTV:                { bg: '#EFF6FF', color: '#1E3A8A', label: 'CCTV System',   
         <div style={sectionCard}>
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-lg flex items-center justify-center bg-blue-50 text-[#1E3A8A]"><UserIcon className="w-5 h-5" /></div>
-              <h2 className="text-xs font-black text-slate-800 uppercase tracking-wider">MANPOWER BREAKDOWN</h2>
+              <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${dark ? 'bg-blue-950/60 text-blue-400' : 'bg-blue-50 text-[#1E3A8A]'}`}><UserIcon className="w-5 h-5" /></div>
+              <h2 className={`text-xs font-black uppercase tracking-wider ${dark ? 'text-slate-100' : 'text-slate-800'}`}>MANPOWER BREAKDOWN</h2>
             </div>
             <div className="flex items-center gap-3">
               {totalManDays > 0 && (
-                <span className="text-[10px] font-bold text-slate-400 px-2 py-0.5 rounded-full bg-slate-100">
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${dark ? 'bg-slate-800 text-slate-300' : 'bg-slate-100 text-slate-400'}`}>
                   {totalManDays} total man-days
                 </span>
               )}
@@ -1800,7 +1896,7 @@ CCTV:                { bg: '#EFF6FF', color: '#1E3A8A', label: 'CCTV System',   
           <div className="overflow-x-auto no-scrollbar">
             <table className="w-full text-xs">
               <thead>
-                <tr className="border-b border-slate-100">
+                <tr className={`border-b ${dark ? 'border-slate-800' : 'border-slate-100'}`}>
                   {(showPrices 
                     ? ['Role', 'Headcount', 'Hours', 'Man-Days', 'Day Rate (₱)', 'Total Cost (₱)', '']
                     : ['Role', 'Headcount', 'Hours', 'Man-Days', '']
@@ -1811,7 +1907,7 @@ CCTV:                { bg: '#EFF6FF', color: '#1E3A8A', label: 'CCTV System',   
               </thead>
               <tbody>
                 {manpower.map(m => (
-                  <tr key={m.id} className="border-b border-slate-50 hover:bg-slate-50/50">
+                  <tr key={m.id} className={`border-b transition-colors ${dark ? 'border-slate-800/60 hover:bg-slate-800/30' : 'border-slate-50 hover:bg-slate-50/50'}`}>
                     <td className="py-2.5 pr-2">
                       <input value={m.role} onChange={e => updateManpower(m.id, 'role', e.target.value)} placeholder="e.g. Lead Security Engineer"
                         style={{ ...inputStyle, width: '220px', fontWeight: '600' }} />
@@ -1825,7 +1921,7 @@ CCTV:                { bg: '#EFF6FF', color: '#1E3A8A', label: 'CCTV System',   
                         style={{ ...inputStyle, width: '70px', textAlign: 'center' }} />
                     </td>
                     <td className="py-2.5 pr-2 text-center">
-                      <span className="text-xs font-black text-blue-600 px-2 py-1 rounded-lg bg-blue-50">{m.manDays}</span>
+                      <span className={`text-xs font-black px-2 py-1 rounded-lg ${dark ? 'bg-blue-950/60 text-blue-300' : 'bg-blue-50 text-blue-600'}`}>{m.manDays}</span>
                     </td>
                     {showPrices && (
                       <>
@@ -1834,7 +1930,7 @@ CCTV:                { bg: '#EFF6FF', color: '#1E3A8A', label: 'CCTV System',   
                             placeholder="1000" style={{ ...inputStyle, width: '90px', textAlign: 'right' }} />
                         </td>
                         <td className="py-2.5 pr-2 text-right">
-                          <span className="text-xs font-black text-slate-900">₱{((m.totalCost || (m.dayRate || 0) * m.manDays)).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                          <span className={`text-xs font-black ${dark ? 'text-slate-100' : 'text-slate-900'}`}>₱{((m.totalCost || (m.dayRate || 0) * m.manDays)).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                         </td>
                       </>
                     )}
@@ -1842,10 +1938,10 @@ CCTV:                { bg: '#EFF6FF', color: '#1E3A8A', label: 'CCTV System',   
                   </tr>
                 ))}
                 {showPrices && manpower.length > 0 && (
-                  <tr className="border-t-2 border-slate-100 bg-slate-50/70">
-                    <td colSpan={5} className="py-2.5 text-right text-xs font-bold text-slate-700 pr-3">Total Manpower Cost:</td>
+                  <tr className={`border-t-2 ${dark ? 'border-slate-800 bg-[#0D1527]/70' : 'border-slate-100 bg-slate-50/70'}`}>
+                    <td colSpan={5} className={`py-2.5 text-right text-xs font-bold pr-3 ${dark ? 'text-slate-300' : 'text-slate-700'}`}>Total Manpower Cost:</td>
                     <td className="py-2.5 pr-2 text-right">
-                      <span className="text-sm font-black text-blue-700">
+                      <span className={`text-sm font-black ${dark ? 'text-blue-400' : 'text-blue-700'}`}>
                         ₱{manpower.reduce((sum, m) => sum + (m.totalCost || ((m.dayRate || 1000) * m.manDays)), 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </span>
                     </td>
@@ -1866,24 +1962,24 @@ CCTV:                { bg: '#EFF6FF', color: '#1E3A8A', label: 'CCTV System',   
         <div style={sectionCard}>
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-lg flex items-center justify-center bg-amber-50 text-amber-600"><PackageIcon className="w-5 h-5" /></div>
-              <h2 className="text-xs font-black text-slate-800 uppercase tracking-wider">BILL OF MATERIALS</h2>
+              <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${dark ? 'bg-amber-950/60 text-amber-400' : 'bg-amber-50 text-amber-600'}`}><PackageIcon className="w-5 h-5" /></div>
+              <h2 className={`text-xs font-black uppercase tracking-wider ${dark ? 'text-slate-100' : 'text-slate-800'}`}>BILL OF MATERIALS</h2>
             </div>
             <div className="flex items-center gap-3">
               {consumables.length > 0 && (
-                <span className="text-[10px] font-bold text-slate-400 px-2 py-0.5 rounded-full bg-slate-100">
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${dark ? 'bg-slate-800 text-slate-300' : 'bg-slate-100 text-slate-400'}`}>
                   {consumables.length} Line Items
                 </span>
               )}
               {showPrices && (
-                <div className="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-xl p-1">
+                <div className={`flex items-center gap-1 border rounded-xl p-1 ${dark ? 'bg-[#0D1527] border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
                   {(['srp', 'contractorPrice', 'dealerPrice'] as const).map(tier => (
                     <button
                       key={tier}
                       onClick={() => setPriceTier(tier)}
-                      className="px-3 py-1 rounded-lg text-[10px] font-black transition-all"
+                      className="px-3 py-1 rounded-lg text-[10px] font-black transition-all cursor-pointer"
                       style={{
-                        background: priceTier === tier ? '#1E3A8A' : 'transparent',
+                        background: priceTier === tier ? (dark ? '#2563EB' : '#1E3A8A') : 'transparent',
                         color: priceTier === tier ? '#FFFFFF' : '#94A3B8',
                       }}
                     >
@@ -1898,7 +1994,7 @@ CCTV:                { bg: '#EFF6FF', color: '#1E3A8A', label: 'CCTV System',   
           <div className="overflow-x-auto no-scrollbar">
             <table className="w-full text-xs">
               <thead>
-                <tr className="border-b border-slate-100">
+                <tr className={`border-b ${dark ? 'border-slate-800' : 'border-slate-100'}`}>
                   {(showPrices
                     ? ['Item / Specification', 'Category', 'Qty', 'Unit', 'Unit Price (₱)', 'Total Price (₱)', '']
                     : ['Item / Specification', 'Category', 'Qty', 'Unit', '']
@@ -1909,7 +2005,7 @@ CCTV:                { bg: '#EFF6FF', color: '#1E3A8A', label: 'CCTV System',   
               </thead>
               <tbody>
                 {consumables.map(c => (
-                  <tr key={c.id} className="border-b border-slate-50 hover:bg-slate-50/50">
+                  <tr key={c.id} className={`border-b transition-colors ${dark ? 'border-slate-800/60 hover:bg-slate-800/30' : 'border-slate-50 hover:bg-slate-50/50'}`}>
                     <td className="py-2.5 pr-2">
                       <input
                         value={c.name}
@@ -1919,7 +2015,7 @@ CCTV:                { bg: '#EFF6FF', color: '#1E3A8A', label: 'CCTV System',   
                       />
                     </td>
                     <td className="py-2.5 pr-2">
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${dark ? 'bg-slate-800 text-slate-300' : 'bg-slate-100 text-slate-600'}`}>
                         {c.category || 'Hardware'}
                       </span>
                     </td>
@@ -1937,7 +2033,7 @@ CCTV:                { bg: '#EFF6FF', color: '#1E3A8A', label: 'CCTV System',   
                           <input type="number" min={0} value={c.unitPrice || ''} onChange={e => updateConsumable(c.id, 'unitPrice', Number(e.target.value))}
                             placeholder="0" style={{ ...inputStyle, width: '90px', textAlign: 'right' }} />
                         </td>
-                        <td className="py-2.5 pr-2 text-right font-black text-slate-900">
+                        <td className={`py-2.5 pr-2 text-right font-black ${dark ? 'text-slate-100' : 'text-slate-900'}`}>
                           ₱{(c.totalPrice || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </td>
                       </>
@@ -1946,10 +2042,10 @@ CCTV:                { bg: '#EFF6FF', color: '#1E3A8A', label: 'CCTV System',   
                   </tr>
                 ))}
                 {showPrices && consumables.length > 0 && (
-                  <tr className="border-t-2 border-slate-100 bg-slate-50/70">
-                    <td colSpan={5} className="py-2.5 text-right text-xs font-bold text-slate-700 pr-3">Total Materials Price:</td>
+                  <tr className={`border-t-2 ${dark ? 'border-slate-800 bg-[#0D1527]/70' : 'border-slate-100 bg-slate-50/70'}`}>
+                    <td colSpan={5} className={`py-2.5 text-right text-xs font-bold pr-3 ${dark ? 'text-slate-300' : 'text-slate-700'}`}>Total Materials Price:</td>
                     <td className="py-2.5 pr-2 text-right">
-                      <span className="text-sm font-black text-emerald-700">
+                      <span className={`text-sm font-black ${dark ? 'text-emerald-400' : 'text-emerald-700'}`}>
                         ₱{consumables.reduce((sum, c) => sum + (c.totalPrice || 0), 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </span>
                     </td>
@@ -1965,18 +2061,18 @@ CCTV:                { bg: '#EFF6FF', color: '#1E3A8A', label: 'CCTV System',   
         <div style={sectionCard}>
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-lg flex items-center justify-center bg-rose-50 text-rose-500">
+              <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${dark ? 'bg-rose-950/60 text-rose-400' : 'bg-rose-50 text-rose-500'}`}>
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 18.75a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m3 0h6m-9 0H3.375a1.125 1.125 0 0 1-1.125-1.125V14.25m17.25 4.5a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m3 0h1.125c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9H9a2.25 2.25 0 0 0-2.25 2.25v3.75m0 0h15" />
                 </svg>
               </div>
-              <h2 className="text-xs font-black text-slate-800 uppercase tracking-wider">ADDITIONAL FEES</h2>
+              <h2 className={`text-xs font-black uppercase tracking-wider ${dark ? 'text-slate-100' : 'text-slate-800'}`}>ADDITIONAL FEES</h2>
             </div>
             {addBtn('Add Fee', () => setFees(prev => [...prev, createFee()]))}
           </div>
           <div className="space-y-2">
             {fees.map(f => (
-              <div key={f.id} className="flex items-center justify-between py-2 border-b border-slate-100">
+              <div key={f.id} className={`flex items-center justify-between py-2 border-b ${dark ? 'border-slate-800' : 'border-slate-100'}`}>
                 <div className="flex items-center gap-3">
                   <select value={f.type} onChange={e => updateFee(f.id, 'type', e.target.value)}
                     style={{ ...inputStyle, width: '160px', cursor: 'pointer', fontWeight: 'bold' }}>
@@ -2016,28 +2112,32 @@ CCTV:                { bg: '#EFF6FF', color: '#1E3A8A', label: 'CCTV System',   
           const grandTotal = totalLabor + totalMaterials + totalFees;
 
           return (
-            <div className="rounded-2xl border-2 border-blue-200 bg-gradient-to-br from-blue-50/60 via-white to-slate-50 p-5 shadow-sm space-y-3 mb-5">
-              <div className="flex items-center justify-between border-b border-blue-100 pb-3">
-                <span className="text-xs font-black text-blue-950 uppercase tracking-wider">OVERALL BOQ ESTIMATION SUMMARY</span>
+            <div className={`rounded-2xl border-2 p-5 shadow-sm space-y-3 mb-5 ${
+              dark
+                ? 'border-blue-900/50 bg-[#0D1527]'
+                : 'border-blue-200 bg-gradient-to-br from-blue-50/60 via-white to-slate-50'
+            }`}>
+              <div className={`flex items-center justify-between border-b pb-3 ${dark ? 'border-slate-800' : 'border-blue-100'}`}>
+                <span className={`text-xs font-black uppercase tracking-wider ${dark ? 'text-blue-300' : 'text-blue-950'}`}>OVERALL BOQ ESTIMATION SUMMARY</span>
                 <span className="text-[10px] font-extrabold px-2.5 py-1 rounded-full bg-blue-600 text-white uppercase tracking-wider">Grand Total</span>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
-                <div className="p-3.5 rounded-xl bg-white border border-slate-100 shadow-2xs">
+                <div className={`p-3.5 rounded-xl border shadow-2xs ${dark ? 'bg-[#131B2E] border-slate-800' : 'bg-white border-slate-100'}`}>
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">MANPOWER TOTAL</span>
-                  <p className="text-base font-black text-blue-700 mt-0.5">₱{totalLabor.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</p>
+                  <p className={`text-base font-black mt-0.5 ${dark ? 'text-blue-400' : 'text-blue-700'}`}>₱{totalLabor.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</p>
                 </div>
-                <div className="p-3.5 rounded-xl bg-white border border-slate-100 shadow-2xs">
+                <div className={`p-3.5 rounded-xl border shadow-2xs ${dark ? 'bg-[#131B2E] border-slate-800' : 'bg-white border-slate-100'}`}>
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">MATERIALS TOTAL</span>
-                  <p className="text-base font-black text-emerald-700 mt-0.5">₱{totalMaterials.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</p>
+                  <p className={`text-base font-black mt-0.5 ${dark ? 'text-emerald-400' : 'text-emerald-700'}`}>₱{totalMaterials.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</p>
                 </div>
-                <div className="p-3.5 rounded-xl bg-white border border-slate-100 shadow-2xs">
+                <div className={`p-3.5 rounded-xl border shadow-2xs ${dark ? 'bg-[#131B2E] border-slate-800' : 'bg-white border-slate-100'}`}>
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">ADDITIONAL FEES</span>
-                  <p className="text-base font-black text-slate-700 mt-0.5">₱{totalFees.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</p>
+                  <p className={`text-base font-black mt-0.5 ${dark ? 'text-slate-200' : 'text-slate-700'}`}>₱{totalFees.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</p>
                 </div>
               </div>
-              <div className="flex items-center justify-between pt-3 border-t border-blue-100">
-                <span className="text-sm font-extrabold text-slate-800">Grand Total BOQ Estimation:</span>
-                <span className="text-2xl font-black text-blue-700">₱{grandTotal.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
+              <div className={`flex items-center justify-between pt-3 border-t ${dark ? 'border-slate-800' : 'border-blue-100'}`}>
+                <span className={`text-sm font-extrabold ${dark ? 'text-slate-200' : 'text-slate-800'}`}>Grand Total BOQ Estimation:</span>
+                <span className={`text-2xl font-black ${dark ? 'text-blue-400' : 'text-blue-700'}`}>₱{grandTotal.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
               </div>
             </div>
           );
@@ -2047,11 +2147,11 @@ CCTV:                { bg: '#EFF6FF', color: '#1E3A8A', label: 'CCTV System',   
         <div style={sectionCard}>
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-lg flex items-center justify-center bg-indigo-50 text-indigo-700">
+              <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${dark ? 'bg-indigo-950/60 text-indigo-400' : 'bg-indigo-50 text-indigo-700'}`}>
                 <Document className="w-5 h-5" />
               </div>
               <div>
-                <h2 className="text-xs font-black text-slate-800 uppercase tracking-wider">Scope of Works &amp; Deliverables (Section B)</h2>
+                <h2 className={`text-xs font-black uppercase tracking-wider ${dark ? 'text-slate-100' : 'text-slate-800'}`}>Scope of Works &amp; Deliverables (Section B)</h2>
                 <p className="text-[10px] text-slate-400 font-semibold">Specific procedural steps, cleaning, testing, and testing certificates</p>
               </div>
             </div>
@@ -2071,8 +2171,8 @@ CCTV:                { bg: '#EFF6FF', color: '#1E3A8A', label: 'CCTV System',   
               </thead>
               <tbody>
                 {scopeOfWorks.map((s, idx) => (
-                  <tr key={s.id} className="border-b border-slate-100">
-                    <td className="py-2.5 pr-2 text-center font-bold text-xs text-slate-700">
+                  <tr key={s.id} className={`border-b ${dark ? 'border-slate-800' : 'border-slate-100'}`}>
+                    <td className={`py-2.5 pr-2 text-center font-bold text-xs ${dark ? 'text-slate-300' : 'text-slate-700'}`}>
                       {idx + 1}
                     </td>
                     <td className="py-2.5 pr-2">
@@ -2084,7 +2184,7 @@ CCTV:                { bg: '#EFF6FF', color: '#1E3A8A', label: 'CCTV System',   
                         }}
                         placeholder="SYSTEM / EQUIPMENT NAME&#10;General Cleaning&#10;1. Step one...&#10;2. Step two..."
                         rows={Math.max(2, s.description.split('\n').length)}
-                        className="w-full resize-y rounded-xl text-xs outline-none focus:border-[#1E3A8A] font-sans leading-relaxed"
+                        className={`w-full resize-y rounded-xl text-xs outline-none focus:border-blue-500 font-sans leading-relaxed ${dark ? 'text-slate-100 bg-[#0D1527]' : 'text-slate-700 bg-white'}`}
                         style={{ ...inputStyle, padding: '8px 10px' }}
                       />
                     </td>
@@ -2135,13 +2235,13 @@ CCTV:                { bg: '#EFF6FF', color: '#1E3A8A', label: 'CCTV System',   
         <div style={sectionCard}>
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
             <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-lg flex items-center justify-center bg-blue-50 text-blue-600">
+              <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${dark ? 'bg-blue-950/60 text-blue-400' : 'bg-blue-50 text-blue-600'}`}>
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                 </svg>
               </div>
               <div>
-                <h2 className="text-xs font-black text-slate-800 uppercase tracking-wider">
+                <h2 className={`text-xs font-black uppercase tracking-wider ${dark ? 'text-slate-100' : 'text-slate-800'}`}>
                   TECHNICIAN FIELD NOTES &amp; GROUND OVERRIDE REASONS
                 </h2>
                 <p className="text-[10px] text-slate-400 font-medium">
@@ -2177,6 +2277,8 @@ CCTV:                { bg: '#EFF6FF', color: '#1E3A8A', label: 'CCTV System',   
                     className={`px-3 py-1 rounded-full text-[11px] font-bold border transition-all cursor-pointer ${
                       isSelected
                         ? 'bg-blue-600 border-blue-600 text-white shadow-xs'
+                        : dark
+                        ? 'bg-[#0D1527] border-slate-800 text-slate-300 hover:bg-slate-800 hover:border-slate-700'
                         : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100 hover:border-slate-300'
                     }`}
                   >
@@ -2192,7 +2294,7 @@ CCTV:                { bg: '#EFF6FF', color: '#1E3A8A', label: 'CCTV System',   
             onChange={e => setTechnicianNotes(e.target.value)}
             rows={3}
             placeholder="Type additional technician observations, site inspection remarks, or specific agreements made with the client on site..."
-            className="w-full rounded-xl text-xs outline-none focus:border-[#1E3A8A] leading-relaxed text-slate-700 bg-white"
+            className={`w-full rounded-xl text-xs outline-none focus:border-blue-500 leading-relaxed ${dark ? 'text-slate-100 bg-[#0D1527]' : 'text-slate-700 bg-white'}`}
             style={{ ...inputStyle, padding: '12px' }}
           />
         </div>
@@ -2200,13 +2302,13 @@ CCTV:                { bg: '#EFF6FF', color: '#1E3A8A', label: 'CCTV System',   
         {/* ── Installation Notes & Constraints (Matches Reference Screenshot) ── */}
         <div style={sectionCard}>
           <div className="flex items-center gap-2 mb-4">
-            <div className="w-7 h-7 rounded-lg flex items-center justify-center bg-emerald-50 text-emerald-600">
+            <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${dark ? 'bg-emerald-950/60 text-emerald-400' : 'bg-emerald-50 text-emerald-600'}`}>
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <circle cx="12" cy="12" r="10" />
                 <path strokeLinecap="round" d="M12 16v-4M12 8h.01" />
               </svg>
             </div>
-            <h2 className="text-xs font-black text-slate-800 uppercase tracking-wider">INSTALLATION NOTES &amp; CONSTRAINTS</h2>
+            <h2 className={`text-xs font-black uppercase tracking-wider ${dark ? 'text-slate-100' : 'text-slate-800'}`}>INSTALLATION NOTES &amp; CONSTRAINTS</h2>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {([
@@ -2221,7 +2323,7 @@ CCTV:                { bg: '#EFF6FF', color: '#1E3A8A', label: 'CCTV System',   
                   onChange={e => setConstraints(prev => ({ ...prev, [c.key]: e.target.value }))}
                   rows={4}
                   placeholder={c.placeholder}
-                  className="w-full resize-none rounded-xl text-xs outline-none focus:border-[#1E3A8A] leading-relaxed text-slate-700 bg-white"
+                  className={`w-full resize-none rounded-xl text-xs outline-none focus:border-blue-500 leading-relaxed ${dark ? 'text-slate-100 bg-[#0D1527]' : 'text-slate-700 bg-white'}`}
                   style={{ ...inputStyle, padding: '10px 12px' }}
                 />
               </div>
@@ -2231,7 +2333,9 @@ CCTV:                { bg: '#EFF6FF', color: '#1E3A8A', label: 'CCTV System',   
 
         {/* Bottom Actions */}
         <div className="flex flex-wrap items-center justify-between gap-3 mt-8">
-          <button onClick={onBack} className="px-6 py-3 rounded-xl text-xs font-bold bg-white text-slate-500 border border-slate-200 hover:text-slate-800 transition-colors">
+          <button onClick={onBack} className={`px-6 py-3 rounded-xl text-xs font-bold border transition-colors cursor-pointer ${
+            dark ? 'bg-[#131B2E] text-slate-300 border-slate-700 hover:text-white hover:bg-slate-800' : 'bg-white text-slate-500 border-slate-200 hover:text-slate-800'
+          }`}>
             Back to Project
           </button>
           
@@ -2239,7 +2343,9 @@ CCTV:                { bg: '#EFF6FF', color: '#1E3A8A', label: 'CCTV System',   
             {showPrices && (
               <button
                 onClick={() => setShowQuotationModal(true)}
-                className="px-6 py-3 rounded-xl text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 transition-all flex items-center gap-2 shadow-sm"
+                className={`px-6 py-3 rounded-xl text-xs font-bold border transition-all flex items-center gap-2 shadow-sm cursor-pointer ${
+                  dark ? 'text-indigo-300 bg-indigo-950/50 hover:bg-indigo-900/60 border-indigo-800' : 'text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border-indigo-200'
+                }`}
               >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -2283,8 +2389,7 @@ CCTV:                { bg: '#EFF6FF', color: '#1E3A8A', label: 'CCTV System',   
 
                 onBack();
               }}
-              className="px-8 py-3 rounded-xl text-xs font-bold text-white transition-all shadow-sm hover:opacity-95"
-              style={{ background: '#1E3A8A' }}
+              className="px-8 py-3 rounded-xl text-xs font-bold text-white transition-all shadow-sm hover:opacity-95 bg-blue-600 hover:bg-blue-700 cursor-pointer"
             >
               Save Estimation
             </button>
@@ -2308,6 +2413,7 @@ CCTV:                { bg: '#EFF6FF', color: '#1E3A8A', label: 'CCTV System',   
             showEditQuotation={showEditQuotation}
             setShowEditQuotation={setShowEditQuotation}
             onClose={() => setShowQuotationModal(false)}
+            isDark={dark}
           />
         )}
 
@@ -2316,11 +2422,17 @@ CCTV:                { bg: '#EFF6FF', color: '#1E3A8A', label: 'CCTV System',   
       {/* AI Scan Modal */}
       {isAiEstimating && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="w-full max-w-md bg-white rounded-3xl border border-slate-200 shadow-2xl p-6 text-center overflow-hidden relative">
+          <div className={`w-full max-w-md rounded-3xl border shadow-2xl p-6 text-center overflow-hidden relative ${
+            dark ? 'bg-[#131B2E] border-[#1E293B]' : 'bg-white border-slate-200'
+          }`}>
             {/* Close Button */}
             <button
               onClick={() => setIsAiEstimating(false)}
-              className="absolute top-4 right-4 z-20 w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 flex items-center justify-center transition-colors cursor-pointer"
+              className={`absolute top-4 right-4 z-20 w-8 h-8 rounded-full flex items-center justify-center transition-colors cursor-pointer ${
+                dark
+                  ? 'bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white'
+                  : 'bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800'
+              }`}
               title="Close modal"
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -2331,21 +2443,25 @@ CCTV:                { bg: '#EFF6FF', color: '#1E3A8A', label: 'CCTV System',   
             <div className="absolute -top-12 -left-12 w-32 h-32 rounded-full blur-2xl opacity-40 animate-pulse" style={{ background: '#2563EB' }}></div>
             <div className="absolute -bottom-12 -right-12 w-32 h-32 rounded-full blur-2xl opacity-30 animate-pulse" style={{ background: '#3B82F6' }}></div>
 
-            <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 bg-slate-50 border border-slate-200 relative z-10">
+            <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 border relative z-10 ${
+              dark ? 'bg-[#0D1527] border-[#1E293B]' : 'bg-slate-50 border-slate-200'
+            }`}>
               <svg className="w-8 h-8 animate-pulse text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 0 0-2.455 2.456Z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0 3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0-2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 0 0-2.455 2.456ZM16.894 17.788 16.5 19.5l-.394-1.712a3 3 0 0 0-2.394-2.394L12 15l1.712-.394a3 3 0 0 0 2.394-2.394L16.5 10.5l.394 1.712a3 3 0 0 0 2.394 2.394l1.712.394-1.712.394a3 3 0 0 0-2.394 2.394Z" />
               </svg>
             </div>
 
-            <h3 className="text-sm font-black text-slate-800 uppercase tracking-wider relative z-10">AA2000 CONNECT</h3>
+            <h3 className={`text-sm font-black uppercase tracking-wider relative z-10 ${dark ? 'text-slate-100' : 'text-slate-800'}`}>AA2000 CONNECT</h3>
             <p className="text-[10px] font-bold uppercase tracking-widest mt-0.5 relative z-10 text-blue-600">
               {hasFiles ? 'Mistral Vision Floor Plan Analysis' : 'AI Neural Estimation Scan'}
             </p>
 
             {aiError ? (
-              <div className="my-6 text-left bg-red-50 border border-red-200 rounded-2xl p-4 relative z-10">
-                <span className="text-[10px] font-black text-red-600 uppercase tracking-wider mb-1 block">Scan Failed</span>
-                <p className="text-xs font-bold text-red-700 leading-relaxed mb-4">{aiError}</p>
+              <div className={`my-6 text-left border rounded-2xl p-4 relative z-10 ${
+                dark ? 'bg-red-950/40 border-red-900/50' : 'bg-red-50 border-red-200'
+              }`}>
+                <span className="text-[10px] font-black text-red-500 uppercase tracking-wider mb-1 block">Scan Failed</span>
+                <p className={`text-xs font-bold leading-relaxed mb-4 ${dark ? 'text-red-300' : 'text-red-700'}`}>{aiError}</p>
                 <button
                   onClick={() => { setAiError(null); setIsAiEstimating(false); }}
                   className="w-full py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-xl transition-all shadow-sm cursor-pointer"
@@ -2358,14 +2474,20 @@ CCTV:                { bg: '#EFF6FF', color: '#1E3A8A', label: 'CCTV System',   
                 {hasFiles && (
                   <div className="mt-3 relative z-10 flex flex-wrap gap-1.5 justify-center">
                     {floorPlanPreviews.map((fp, idx) => (
-                      <span key={idx} className="text-[9px] font-bold px-2.5 py-1 rounded-full bg-blue-50 text-blue-600 border border-blue-100">
+                      <span key={idx} className={`text-[9px] font-bold px-2.5 py-1 rounded-full border ${
+                        dark
+                          ? 'bg-blue-950/60 text-blue-300 border-blue-900/50'
+                          : 'bg-blue-50 text-blue-600 border-blue-100'
+                      }`}>
                         {fp.type === 'pdf' ? <Document className="w-4 h-4" /> : <MagnifyingGlass className="w-4 h-4" />} {fp.name.length > 20 ? fp.name.slice(0, 18) + '…' : fp.name}
                       </span>
                     ))}
                   </div>
                 )}
 
-                <div className="my-6 text-left space-y-2.5 bg-slate-50 border border-slate-200 rounded-2xl p-4 relative z-10">
+                <div className={`my-6 text-left space-y-2.5 border rounded-2xl p-4 relative z-10 ${
+                  dark ? 'bg-[#0D1527] border-[#1E293B]' : 'bg-slate-50 border-slate-200'
+                }`}>
                   {AI_STEPS.map((stepText, idx) => {
                     const isDone = aiStep > idx;
                     const isCurrent = aiStep === idx;
@@ -2377,10 +2499,16 @@ CCTV:                { bg: '#EFF6FF', color: '#1E3A8A', label: 'CCTV System',   
                           ) : isCurrent ? (
                             <span className="h-2 w-2 rounded-full animate-ping bg-blue-600" />
                           ) : (
-                            <span className="h-2 w-2 rounded-full bg-slate-200" />
+                            <span className={`h-2 w-2 rounded-full ${dark ? 'bg-slate-700' : 'bg-slate-200'}`} />
                           )}
                         </span>
-                        <span className={`font-bold transition-colors ${isDone ? 'text-slate-400' : isCurrent ? 'text-slate-800' : 'text-slate-300'}`}>
+                        <span className={`font-bold transition-colors ${
+                          isDone
+                            ? (dark ? 'text-slate-500' : 'text-slate-400')
+                            : isCurrent
+                            ? (dark ? 'text-slate-100' : 'text-slate-800')
+                            : (dark ? 'text-slate-600' : 'text-slate-300')
+                        }`}>
                           {stepText}
                         </span>
                       </div>
@@ -2388,7 +2516,7 @@ CCTV:                { bg: '#EFF6FF', color: '#1E3A8A', label: 'CCTV System',   
                   })}
                 </div>
 
-                <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden relative z-10">
+                <div className={`w-full h-1.5 rounded-full overflow-hidden relative z-10 ${dark ? 'bg-slate-800' : 'bg-slate-100'}`}>
                   <div
                     className="h-full rounded-full transition-all duration-300 bg-blue-600"
                     style={{

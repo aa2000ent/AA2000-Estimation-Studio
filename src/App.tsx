@@ -196,23 +196,52 @@ export default function App() {
   const [currentCompanyProject, setCurrentCompanyProject] = useState<Project | null>(null);
   const [aiScans, setAiScans] = useState<AIScanGroup[]>(() => loadFromStorage<AIScanGroup[]>(STORAGE_KEYS.aiScans, []));
   const [isDark, setIsDark] = useState<boolean>(() => {
-    try { return localStorage.getItem('aa2000_theme') === 'dark'; } catch { return false; }
+    try {
+      const theme = localStorage.getItem('aa2000_theme');
+      if (theme) return theme === 'dark';
+      if (typeof document !== 'undefined') return document.documentElement.classList.contains('dark');
+      return false;
+    } catch { return false; }
   });
 
-  // Keep isDark in sync when Dashboard toggles it via localStorage
+  const toggleDark = useCallback(() => {
+    setIsDark(prev => {
+      const next = !prev;
+      try {
+        if (next) {
+          document.documentElement.classList.add('dark');
+          document.documentElement.setAttribute('data-theme', 'dark');
+          localStorage.setItem('aa2000_theme', 'dark');
+        } else {
+          document.documentElement.classList.remove('dark');
+          document.documentElement.setAttribute('data-theme', 'light');
+          localStorage.setItem('aa2000_theme', 'light');
+        }
+      } catch {}
+      return next;
+    });
+  }, []);
+
+  // Keep isDark in sync when theme is toggled or updated in localStorage / DOM
   useEffect(() => {
     const onStorage = (e: StorageEvent) => {
       if (e.key === 'aa2000_theme') setIsDark(e.newValue === 'dark');
     };
     window.addEventListener('storage', onStorage);
-    // Also poll once on mount in case the event doesn't fire in the same tab
-    const interval = setInterval(() => {
+
+    const checkDom = () => {
       try {
-        const val = localStorage.getItem('aa2000_theme') === 'dark';
-        setIsDark(prev => (prev !== val ? val : prev));
+        const isThemeDark = localStorage.getItem('aa2000_theme') === 'dark' ||
+          document.documentElement.classList.contains('dark');
+        setIsDark(prev => (prev !== isThemeDark ? isThemeDark : prev));
       } catch {}
-    }, 300);
-    return () => { window.removeEventListener('storage', onStorage); clearInterval(interval); };
+    };
+
+    const interval = setInterval(checkDom, 400);
+    return () => {
+      window.removeEventListener('storage', onStorage);
+      clearInterval(interval);
+    };
   }, []);
 
   useEffect(() => {
@@ -564,7 +593,7 @@ export default function App() {
 
     return (
       <ErrorBoundary>
-        <div className="min-h-screen flex">
+        <div className="min-h-screen flex" style={{ background: isDark ? '#0B0F19' : '#F8FAFC' }}>
           <Dashboard
             user={user}
             onLogout={handleLogout}
@@ -594,6 +623,7 @@ export default function App() {
                 initialClientEmail={companyProject?.clientEmail}
                 initialClientContactNumber={companyProject?.clientPhone}
                 initialSystemTypes={companyProject?.systemTypes as any}
+                isDark={isDark}
               />
             }
           />
@@ -649,6 +679,8 @@ export default function App() {
             onDeleteProject={handleDeleteProject}
             onUpdateProject={handleUpdateProject}
             onExitOverride={handleBackToDashboard}
+            isDark={isDark}
+            onToggleDark={toggleDark}
             contentOverride={
               <ProjectDetail
                 user={user}
@@ -689,6 +721,8 @@ export default function App() {
             onMarkNotificationsAsRead={handleMarkNotificationsAsRead}
             onDeleteProject={handleDeleteProject}
             onUpdateProject={handleUpdateProject}
+            isDark={isDark}
+            onToggleDark={toggleDark}
           />
         </ErrorBoundary>
       );
@@ -696,7 +730,7 @@ export default function App() {
 
     return (
       <ErrorBoundary>
-        <div className="min-h-screen flex" style={{ background: '#F8FAFC' }}>
+        <div className="min-h-screen flex" style={{ background: isDark ? '#0B0F19' : '#F8FAFC' }}>
           <Dashboard
             user={user}
             onLogout={handleLogout}
@@ -712,12 +746,15 @@ export default function App() {
             onDeleteProject={handleDeleteProject}
             onUpdateProject={handleUpdateProject}
             onExitOverride={handleBackToDashboard}
+            isDark={isDark}
+            onToggleDark={toggleDark}
             contentOverride={
               <SurveyWizard
                 projectId={currentProject.id}
                 surveyType={derivedSurveyType}
                 onComplete={handleSurveyComplete}
                 onBack={() => navigateToScreen('project-detail')}
+                isDark={isDark}
               />
             }
           />
@@ -729,7 +766,7 @@ export default function App() {
   if (screen === 'estimation' && currentProject) {
     return (
       <ErrorBoundary>
-        <div className="min-h-screen flex" style={{ background: '#F8FAFC' }}>
+        <div className="min-h-screen flex" style={{ background: isDark ? '#0B0F19' : '#F8FAFC' }}>
           <Dashboard
             user={user}
             onLogout={handleLogout}
@@ -745,12 +782,15 @@ export default function App() {
             onDeleteProject={handleDeleteProject}
             onUpdateProject={handleUpdateProject}
             onExitOverride={handleBackToDashboard}
+            isDark={isDark}
+            onToggleDark={toggleDark}
             contentOverride={
               <EstimationSummary
                 project={currentProject}
                 user={user}
                 onBack={() => navigateToScreen('project-detail')}
                 onUpdateStatus={handleUpdateProjectStatus}
+                isDark={isDark}
               />
             }
           />
@@ -762,7 +802,7 @@ export default function App() {
   if (screen === 'survey-summary' && currentProject) {
     return (
       <ErrorBoundary>
-        <div className="min-h-screen flex" style={{ background: '#F8FAFC' }}>
+        <div className="min-h-screen flex" style={{ background: isDark ? '#0B0F19' : '#F8FAFC' }}>
           <Dashboard
             user={user}
             onLogout={handleLogout}
@@ -778,12 +818,15 @@ export default function App() {
             onDeleteProject={handleDeleteProject}
             onUpdateProject={handleUpdateProject}
             onExitOverride={handleGoBack}
+            isDark={isDark}
+            onToggleDark={toggleDark}
             contentOverride={
               <SurveySummary
                 project={currentProject}
                 user={user}
                 onBack={handleGoBack}
                 onViewEstimation={handleViewEstimation}
+                isDark={isDark}
               />
             }
           />
@@ -828,6 +871,8 @@ export default function App() {
         onRenameAIScan={handleRenameAIScan}
         onDeleteAIScan={handleDeleteAIScan}
         onUpdateAIScan={handleUpdateAIScan}
+        isDark={isDark}
+        onToggleDark={toggleDark}
       />
     </ErrorBoundary>
   );
