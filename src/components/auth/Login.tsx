@@ -132,7 +132,7 @@ export default function Login({ onLogin }: Props) {
 
   return (
     <div
-      className="h-screen overflow-hidden grid lg:grid-cols-2"
+      className="min-h-screen overflow-y-auto grid lg:grid-cols-2"
       style={{
         background:
           "radial-gradient(ellipse at 70% 20%, rgba(191,219,254,0.35) 0%, #EEF5FF 50%, #F8FAFC 100%)",
@@ -292,9 +292,10 @@ export default function Login({ onLogin }: Props) {
                   value={employeeId}
                   onChange={(e) => handleEmployeeIdChange(e.target.value)}
                   placeholder="Enter your Employee ID"
-                  className="search-input w-full pl-10 pr-4 py-3.5 rounded-xl text-sm font-medium bg-slate-50 border outline-none text-slate-700 focus:bg-white focus:ring-2 transition-all"
+                  className="search-input w-full pl-11 pr-4 py-3.5 rounded-xl text-sm font-medium bg-slate-50 border outline-none text-slate-700 focus:bg-white focus:ring-2 transition-all"
                   style={{
                     borderColor: fieldErrors.employeeId ? "#EF4444" : "#E2E8F0",
+                    paddingLeft: "2.75rem",
                     ["--tw-ring-color" as string]: `${BRAND.primary}40`,
                   }}
                   autoComplete="off"
@@ -336,10 +337,11 @@ export default function Login({ onLogin }: Props) {
                     setError("");
                   }}
                   placeholder="Enter PIN"
-                  className="search-input w-full pl-10 pr-10 py-3.5 rounded-xl text-sm font-medium bg-slate-50 border outline-none text-slate-700 focus:bg-white focus:ring-2 transition-all"
+                  className="search-input w-full pl-11 pr-10 py-3.5 rounded-xl text-sm font-medium bg-slate-50 border outline-none text-slate-700 focus:bg-white focus:ring-2 transition-all"
                   style={{
                     borderColor: fieldErrors.pin ? "#EF4444" : "#E2E8F0",
-                    letterSpacing: showPin ? "normal" : "0.25em",
+                    paddingLeft: "2.75rem",
+                    letterSpacing: (pin && !showPin) ? "0.25em" : "normal",
                     ["--tw-ring-color" as string]: `${BRAND.primary}40`,
                   }}
                 />
