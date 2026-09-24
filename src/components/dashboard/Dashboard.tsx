@@ -162,8 +162,8 @@ const typeConfig = {
   finalize: { color: '#059669', bg: 'rgba(5,150,105,0.08)', label: 'Finalize', dot: '#059669' },
 };
 
-// Status Overview Banner matching exact layout from user with Minimalistic Donut / Pie Graph & Smooth Animations
-function StatusOverviewBanner({
+// Progress Donut Card matching exact layout from user
+function ProgressDonutCard({
   totalProjects,
   inProgressCount,
   pendingCount,
@@ -177,7 +177,7 @@ function StatusOverviewBanner({
   const [hoveredStatus, setHoveredStatus] = React.useState<string | null>(null);
 
   const r = 38;
-  const C = 2 * Math.PI * r; // ~238.76
+  const C = 2 * Math.PI * r;
 
   const inProgLen = totalProjects > 0 ? (inProgressCount / totalProjects) * C : 0;
   const pendingLen = totalProjects > 0 ? (pendingCount / totalProjects) * C : 0;
@@ -188,165 +188,171 @@ function StatusOverviewBanner({
   const compOffset = -(inProgLen + pendingLen);
 
   return (
-    <div className="bg-white dark:bg-[#131B2E] rounded-3xl p-6 sm:p-7 border border-blue-100/80 dark:border-slate-800 shadow-sm hover:shadow-md transition-all duration-300 flex flex-col sm:flex-row items-center justify-between gap-8 animate-fade-in-up">
-      {/* Left: Minimalistic Pie / Donut Chart with total projects & interactive animations */}
-      <div className="flex items-center gap-6">
-        <div className="relative w-32 h-32 sm:w-36 sm:h-36 flex items-center justify-center shrink-0 group/donut transition-transform duration-300 hover:scale-105">
-          <svg className="w-full h-full transform -rotate-90 filter drop-shadow-xs" viewBox="0 0 96 96">
-            {/* Background track */}
+    <div className="bg-white dark:bg-[#131B2E] rounded-3xl p-6 sm:p-7 border border-blue-100/80 dark:border-slate-800 shadow-sm hover:shadow-md transition-all duration-300 flex items-center justify-center animate-fade-in-up">
+      <div className="relative w-36 h-36 sm:w-40 sm:h-40 flex items-center justify-center shrink-0 group/donut transition-transform duration-300 hover:scale-105">
+        <svg className="w-full h-full transform -rotate-90 filter drop-shadow-xs" viewBox="0 0 96 96">
+          <circle
+            cx="48"
+            cy="48"
+            r={r}
+            stroke="currentColor"
+            className="text-slate-100 dark:text-slate-800"
+            strokeWidth="8"
+            fill="none"
+          />
+
+          {totalProjects === 0 ? (
             <circle
               cx="48"
               cy="48"
               r={r}
-              stroke="currentColor"
-              className="text-slate-100 dark:text-slate-800"
+              stroke="#DBEAFE"
               strokeWidth="8"
               fill="none"
+              strokeDasharray={`${C * 0.2} ${C}`}
+              strokeLinecap="round"
+              className="animate-donut-draw"
             />
+          ) : (
+            <>
+              {inProgressCount > 0 && (
+                <circle
+                  cx="48"
+                  cy="48"
+                  r={r}
+                  stroke="#2563EB"
+                  strokeWidth={hoveredStatus === 'in-progress' ? 10 : 8}
+                  fill="none"
+                  strokeDasharray={`${inProgLen} ${C}`}
+                  strokeDashoffset={inProgOffset}
+                  strokeLinecap="round"
+                  className="transition-all duration-500 animate-donut-draw cursor-pointer"
+                  style={{
+                    opacity: hoveredStatus && hoveredStatus !== 'in-progress' ? 0.35 : 1,
+                  }}
+                  onMouseEnter={() => setHoveredStatus('in-progress')}
+                  onMouseLeave={() => setHoveredStatus(null)}
+                />
+              )}
+              {pendingCount > 0 && (
+                <circle
+                  cx="48"
+                  cy="48"
+                  r={r}
+                  stroke="#F59E0B"
+                  strokeWidth={hoveredStatus === 'pending' ? 10 : 8}
+                  fill="none"
+                  strokeDasharray={`${pendingLen} ${C}`}
+                  strokeDashoffset={pendingOffset}
+                  strokeLinecap="round"
+                  className="transition-all duration-500 animate-donut-draw cursor-pointer"
+                  style={{
+                    opacity: hoveredStatus && hoveredStatus !== 'pending' ? 0.35 : 1,
+                  }}
+                  onMouseEnter={() => setHoveredStatus('pending')}
+                  onMouseLeave={() => setHoveredStatus(null)}
+                />
+              )}
+              {completedCount > 0 && (
+                <circle
+                  cx="48"
+                  cy="48"
+                  r={r}
+                  stroke="#10B981"
+                  strokeWidth={hoveredStatus === 'completed' ? 10 : 8}
+                  fill="none"
+                  strokeDasharray={`${compLen} ${C}`}
+                  strokeDashoffset={compOffset}
+                  strokeLinecap="round"
+                  className="transition-all duration-500 animate-donut-draw cursor-pointer"
+                  style={{
+                    opacity: hoveredStatus && hoveredStatus !== 'completed' ? 0.35 : 1,
+                  }}
+                  onMouseEnter={() => setHoveredStatus('completed')}
+                  onMouseLeave={() => setHoveredStatus(null)}
+                />
+              )}
+            </>
+          )}
+        </svg>
 
-            {totalProjects === 0 ? (
-              <circle
-                cx="48"
-                cy="48"
-                r={r}
-                stroke="#DBEAFE"
-                strokeWidth="8"
-                fill="none"
-                strokeDasharray={`${C * 0.2} ${C}`}
-                strokeLinecap="round"
-                className="animate-donut-draw"
-              />
-            ) : (
-              <>
-                {/* In Progress Segment (AA2000 Blue) */}
-                {inProgressCount > 0 && (
-                  <circle
-                    cx="48"
-                    cy="48"
-                    r={r}
-                    stroke="#2563EB"
-                    strokeWidth={hoveredStatus === 'in-progress' ? 10 : 8}
-                    fill="none"
-                    strokeDasharray={`${inProgLen} ${C}`}
-                    strokeDashoffset={inProgOffset}
-                    strokeLinecap="round"
-                    className="transition-all duration-500 animate-donut-draw cursor-pointer"
-                    style={{
-                      opacity: hoveredStatus && hoveredStatus !== 'in-progress' ? 0.35 : 1,
-                      filter: hoveredStatus === 'in-progress' ? 'drop-shadow(0 0 6px rgba(37,99,235,0.4))' : undefined,
-                    }}
-                  />
-                )}
-                {/* Pending Segment (Orange / Amber) */}
-                {pendingCount > 0 && (
-                  <circle
-                    cx="48"
-                    cy="48"
-                    r={r}
-                    stroke="#F59E0B"
-                    strokeWidth={hoveredStatus === 'pending' ? 10 : 8}
-                    fill="none"
-                    strokeDasharray={`${pendingLen} ${C}`}
-                    strokeDashoffset={pendingOffset}
-                    strokeLinecap="round"
-                    className="transition-all duration-500 animate-donut-draw cursor-pointer"
-                    style={{
-                      opacity: hoveredStatus && hoveredStatus !== 'pending' ? 0.35 : 1,
-                      filter: hoveredStatus === 'pending' ? 'drop-shadow(0 0 6px rgba(245,158,11,0.4))' : undefined,
-                    }}
-                  />
-                )}
-                {/* Completed Segment (Emerald / Green) */}
-                {completedCount > 0 && (
-                  <circle
-                    cx="48"
-                    cy="48"
-                    r={r}
-                    stroke="#10B981"
-                    strokeWidth={hoveredStatus === 'completed' ? 10 : 8}
-                    fill="none"
-                    strokeDasharray={`${compLen} ${C}`}
-                    strokeDashoffset={compOffset}
-                    strokeLinecap="round"
-                    className="transition-all duration-500 animate-donut-draw cursor-pointer"
-                    style={{
-                      opacity: hoveredStatus && hoveredStatus !== 'completed' ? 0.35 : 1,
-                      filter: hoveredStatus === 'completed' ? 'drop-shadow(0 0 6px rgba(16,185,129,0.4))' : undefined,
-                    }}
-                  />
-                )}
-              </>
-            )}
-          </svg>
-
-          {/* Center Value */}
-          <div className="absolute inset-0 flex flex-col items-center justify-center text-center select-none pointer-events-none transition-transform duration-300 group-hover/donut:scale-110">
-            <span className="text-3xl sm:text-4xl font-black text-slate-900 dark:text-white leading-none animate-count">
-              {totalProjects}
-            </span>
-            <span className="text-[9px] sm:text-[10px] font-black text-blue-600 dark:text-blue-400 uppercase tracking-widest mt-1.5">
-              PROJECTS
-            </span>
-          </div>
+        <div className="absolute inset-0 flex flex-col items-center justify-center text-center select-none pointer-events-none transition-transform duration-300 group-hover/donut:scale-110">
+          <span className="text-3xl sm:text-4xl font-black text-slate-900 dark:text-white leading-none animate-count">
+            {totalProjects}
+          </span>
+          <span className="text-[9px] sm:text-[10px] font-black text-blue-600 dark:text-blue-400 uppercase tracking-widest mt-1.5">
+            PROGRESS
+          </span>
         </div>
       </div>
+    </div>
+  );
+}
 
-      {/* Right: Status Overview Breakdown with interactive hover */}
-      <div className="w-full sm:w-auto flex flex-col gap-2 sm:min-w-[220px]">
-        <span className="text-[11px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-0.5">
-          STATUS OVERVIEW
+// Status Overview Card matching exact layout from user
+function StatusOverviewCard({
+  inProgressCount,
+  pendingCount,
+  completedCount,
+}: {
+  inProgressCount: number;
+  pendingCount: number;
+  completedCount: number;
+}) {
+  const [hoveredStatus, setHoveredStatus] = React.useState<string | null>(null);
+
+  return (
+    <div className="bg-white dark:bg-[#131B2E] rounded-3xl p-6 sm:p-7 border border-blue-100/80 dark:border-slate-800 shadow-sm hover:shadow-md transition-all duration-300 flex flex-col justify-center gap-3 animate-fade-in-up">
+      <span className="text-[11px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
+        STATUS OVERVIEW
+      </span>
+
+      <div
+        onMouseEnter={() => setHoveredStatus('in-progress')}
+        onMouseLeave={() => setHoveredStatus(null)}
+        className="flex items-center justify-between gap-8 text-xs sm:text-sm px-3 py-2 rounded-xl transition-all duration-200 cursor-pointer hover:bg-blue-50/70 dark:hover:bg-blue-950/40"
+      >
+        <span className="flex items-center gap-3 font-bold text-slate-700 dark:text-slate-300">
+          <span className="relative flex h-3 w-3 items-center justify-center">
+            {inProgressCount > 0 && (
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
+            )}
+            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-blue-600" />
+          </span>
+          In Progress
         </span>
+        <span className="font-black text-slate-900 dark:text-white text-sm sm:text-base">{inProgressCount}</span>
+      </div>
 
-        {/* In Progress Row */}
-        <div
-          onMouseEnter={() => setHoveredStatus('in-progress')}
-          onMouseLeave={() => setHoveredStatus(null)}
-          className="flex items-center justify-between gap-8 text-xs sm:text-sm px-2.5 py-1.5 rounded-xl transition-all duration-200 cursor-pointer hover:bg-blue-50/70 dark:hover:bg-blue-950/40"
-        >
-          <span className="flex items-center gap-2.5 font-bold text-slate-700 dark:text-slate-300">
-            <span className="relative flex h-3 w-3 items-center justify-center">
-              {inProgressCount > 0 && (
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
-              )}
-              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-blue-600" />
-            </span>
-            In Progress
+      <div
+        onMouseEnter={() => setHoveredStatus('pending')}
+        onMouseLeave={() => setHoveredStatus(null)}
+        className="flex items-center justify-between gap-8 text-xs sm:text-sm px-3 py-2 rounded-xl transition-all duration-200 cursor-pointer hover:bg-amber-50/70 dark:hover:bg-amber-950/40"
+      >
+        <span className="flex items-center gap-3 font-bold text-slate-700 dark:text-slate-300">
+          <span className="relative flex h-3 w-3 items-center justify-center">
+            {pendingCount > 0 && (
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
+            )}
+            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500" />
           </span>
-          <span className="font-black text-slate-900 dark:text-white text-sm sm:text-base">{inProgressCount}</span>
-        </div>
+          Pending
+        </span>
+        <span className="font-black text-amber-600 dark:text-amber-400 text-sm sm:text-base">{pendingCount}</span>
+      </div>
 
-        {/* Pending Row */}
-        <div
-          onMouseEnter={() => setHoveredStatus('pending')}
-          onMouseLeave={() => setHoveredStatus(null)}
-          className="flex items-center justify-between gap-8 text-xs sm:text-sm px-2.5 py-1.5 rounded-xl transition-all duration-200 cursor-pointer hover:bg-amber-50/70 dark:hover:bg-amber-950/40"
-        >
-          <span className="flex items-center gap-2.5 font-bold text-slate-700 dark:text-slate-300">
-            <span className="relative flex h-3 w-3 items-center justify-center">
-              {pendingCount > 0 && (
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
-              )}
-              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500" />
-            </span>
-            Pending
+      <div
+        onMouseEnter={() => setHoveredStatus('completed')}
+        onMouseLeave={() => setHoveredStatus(null)}
+        className="flex items-center justify-between gap-8 text-xs sm:text-sm px-3 py-2 rounded-xl transition-all duration-200 cursor-pointer hover:bg-emerald-50/70 dark:hover:bg-emerald-950/40"
+      >
+        <span className="flex items-center gap-3 font-bold text-slate-700 dark:text-slate-300">
+          <span className="relative flex h-3 w-3 items-center justify-center">
+            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500" />
           </span>
-          <span className="font-black text-amber-600 dark:text-amber-400 text-sm sm:text-base">{pendingCount}</span>
-        </div>
-
-        {/* Completed Row */}
-        <div
-          onMouseEnter={() => setHoveredStatus('completed')}
-          onMouseLeave={() => setHoveredStatus(null)}
-          className="flex items-center justify-between gap-8 text-xs sm:text-sm px-2.5 py-1.5 rounded-xl transition-all duration-200 cursor-pointer hover:bg-emerald-50/70 dark:hover:bg-emerald-950/40"
-        >
-          <span className="flex items-center gap-2.5 font-bold text-slate-700 dark:text-slate-300">
-            <span className="relative flex h-3 w-3 items-center justify-center">
-              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500" />
-            </span>
-            Completed
-          </span>
-          <span className="font-black text-emerald-600 dark:text-emerald-400 text-sm sm:text-base">{completedCount}</span>
-        </div>
+          Completed
+        </span>
+        <span className="font-black text-emerald-600 dark:text-emerald-400 text-sm sm:text-base">{completedCount}</span>
       </div>
     </div>
   );
@@ -1104,7 +1110,7 @@ export default function Dashboard({
               {/* Dashboard view: title + stats */}
               {view === 'dashboard' && (
                 <>
-                  {/* Clean Header with Enriched Large Dynamic Time-Based Greeting */}
+                  {/* Clean Header with Enriched Large Dynamic Time-Based Greeting & Top Action Buttons */}
                   <div className="px-6 pt-6 animate-fade-in-up">
                     <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
                       <div className="max-w-3xl">
@@ -1120,18 +1126,50 @@ export default function Dashboard({
                           Welcome to the system control center. Create estimation projects, assign technical teams, review surveys, and approve final equipment pricing estimates.
                         </p>
                       </div>
+
+                      {/* Top Right Action Buttons */}
+                      <div className="flex items-center gap-3 shrink-0">
+                        <button
+                          onClick={() => { setIsCompanyMode(false); setShowCreate(true); }}
+                          className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-white dark:bg-[#131B2E] border border-blue-200/80 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 text-xs font-bold transition-all shadow-2xs cursor-pointer"
+                        >
+                          <svg className="w-4 h-4 text-blue-600 dark:text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                          </svg>
+                          <span>New Survey</span>
+                        </button>
+                        <button
+                          onClick={() => navigate('estimation-hub')}
+                          className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-all shadow-md shadow-blue-500/20 cursor-pointer"
+                        >
+                          <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                          </svg>
+                          <span>New Estimate</span>
+                        </button>
+                      </div>
                     </div>
                   </div>
 
-                  {/* Status Overview & Stat Cards (2x2 Grid) */}
-                  <div className="px-6 pt-6 space-y-4">
-                    <StatusOverviewBanner
-                      totalProjects={totalProjects}
-                      inProgressCount={inProgressCount}
-                      pendingCount={pendingCount}
-                      completedCount={completedCount}
-                    />
+                  {/* Progress Donut & Status Overview Side-by-Side Cards */}
+                  <div className="px-6 pt-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <ProgressDonutCard
+                        totalProjects={totalProjects}
+                        inProgressCount={inProgressCount}
+                        pendingCount={pendingCount}
+                        completedCount={completedCount}
+                      />
+                      <StatusOverviewCard
+                        inProgressCount={inProgressCount}
+                        pendingCount={pendingCount}
+                        completedCount={completedCount}
+                      />
+                    </div>
+                  </div>
 
+                  {/* Sparkline Stat Cards (2x2 Grid) */}
+                  <div className="px-6 pt-4">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <SparklineCard
                         label="PROJECTS"
@@ -1178,10 +1216,10 @@ export default function Dashboard({
 
                   {/* Pending Surveys & Active Projects */}
                   <div className="px-6 pt-6">
-                    <div className="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-sm animate-fade-in-up flex flex-col flex-1">
-                      <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
+                    <div className="bg-white dark:bg-[#131B2E] rounded-2xl p-6 border border-slate-200/80 dark:border-slate-800 shadow-sm animate-fade-in-up flex flex-col flex-1 relative min-h-[220px]">
+                      <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100 dark:border-slate-800">
                         <div>
-                          <h3 className="text-sm font-black tracking-wider text-slate-800 uppercase flex items-center gap-2">
+                          <h3 className="text-sm font-black tracking-wider text-slate-800 dark:text-white uppercase flex items-center gap-2">
                             <span>Pending Surveys &amp; Active Projects</span>
                             {pendingCount > 0 && (
                               <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500 text-white">
@@ -1189,13 +1227,13 @@ export default function Dashboard({
                               </span>
                             )}
                           </h3>
-                          <p className="text-[11px] font-medium text-slate-500 mt-0.5">
+                          <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mt-0.5">
                             Click any project below to open site survey, upload floor plan, or build BOQ
                           </p>
                         </div>
                         <button
                           onClick={() => navigate('workspace')}
-                          className="text-xs font-bold text-blue-700 hover:text-blue-900 transition-colors"
+                          className="text-xs font-bold text-blue-700 dark:text-blue-400 hover:text-blue-900 dark:hover:text-blue-300 transition-colors"
                         >
                           View All Workspace →
                         </button>
@@ -1203,7 +1241,7 @@ export default function Dashboard({
 
                       {/* Project Cards Grid */}
                       {actualProjects.length > 0 ? (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 mb-16">
                           {actualProjects.slice(0, 6).map((p, index) => {
                             const isPending = p.status === 'Pending';
                             const isAwaitingApproval = p.status === 'Finalized';
@@ -1302,23 +1340,28 @@ export default function Dashboard({
                         </div>
                       ) : (
                         <div className="py-12 text-center flex flex-col items-center justify-center">
-                          <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center mb-3">
+                          <div className="w-12 h-12 rounded-2xl bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 flex items-center justify-center mb-3">
                             <StatClipboard className="w-6 h-6" />
                           </div>
-                          <h4 className="text-sm font-black text-slate-800 mb-1">No site surveys created yet</h4>
-                          <p className="text-xs text-slate-500 max-w-sm mb-4">
-                            {isAdmin ? 'Click below to start your first survey and build low-voltage estimations.' : 'No active site surveys have been assigned or submitted yet.'}
+                          <h4 className="text-sm font-black text-slate-800 dark:text-white mb-1">No site surveys created yet</h4>
+                          <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mb-4">
+                            No active site surveys have been assigned or submitted yet.
                           </p>
-                          {isAdmin && (
-                            <button
-                              onClick={onNavigateToCreate}
-                              className="px-5 py-2.5 rounded-xl font-black text-xs text-white bg-blue-700 hover:bg-blue-800 shadow-md transition-all cursor-pointer"
-                            >
-                              Start New Survey
-                            </button>
-                          )}
                         </div>
                       )}
+
+                      {/* AI Estimator Button at bottom right */}
+                      <div className="absolute right-6 bottom-6">
+                        <button
+                          onClick={() => navigate('estimation-hub')}
+                          className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-all shadow-md shadow-blue-500/25 cursor-pointer"
+                        >
+                          <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
+                          </svg>
+                          <span>AI Estimator</span>
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </>
