@@ -828,7 +828,7 @@ export default function Dashboard({
     >
       {/* Desktop Sidebar (Only rendered when not mobile) */}
       {!isMobile && (
-        <div className="h-screen sticky top-0 z-40 shrink-0">
+        <div className="h-screen sticky top-0 z-50 shrink-0">
           <Sidebar
             isMobile={false}
             user={user}
