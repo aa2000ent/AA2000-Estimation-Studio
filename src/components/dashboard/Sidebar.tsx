@@ -432,76 +432,33 @@ export default function Sidebar({ user, currentView, onNavigate, notifications, 
         fontFamily: "'Outfit', sans-serif",
       }}
     >
-      {/* ── Brand Logo / Back + Collapse toggle ── */}
-      <div
-        className="px-4 h-16 flex items-center justify-between shrink-0"
-        style={{ borderBottom: `1px solid ${theme.sidebarBorder}` }}
-      >
-        {isNotificationView ? (
-          <button
-            onClick={() => onNavigate('dashboard')}
-            className="flex items-center gap-2 font-bold text-xs transition-colors"
-            style={{ color: '#64748B' }}
-            onMouseEnter={e => (e.currentTarget.style.color = '#2563EB')}
-            onMouseLeave={e => (e.currentTarget.style.color = '#64748B')}
-          >
-            <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-            </svg>
-            {!collapsed && <span>Back to Dashboard</span>}
-          </button>
-        ) : (
-          <div
-            className="flex items-center gap-2.5 cursor-pointer hover:opacity-85 transition-opacity min-w-0"
-            onClick={() => onNavigate('dashboard')}
-          >
-            <img
-              src={logo}
-              alt="AA2000 Logo"
-              className="w-11 h-11 rounded-xl shrink-0 transition-transform hover:scale-105 object-contain"
-            />
+      {/* ── Top Brand Header Card matching screenshot ── */}
+      <div className="px-3 pt-4 pb-2 shrink-0">
+        <div className="flex items-center justify-between p-3 rounded-2xl bg-blue-600 text-white shadow-md">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center text-white shrink-0 shadow-xs">
+              <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+              </svg>
+            </div>
             {!collapsed && (
-              <div className="min-w-0 overflow-hidden">
-                <span
-                  className="text-2xl font-bold leading-none block select-none"
-                  style={{
-                    fontFamily: "'Outfit', sans-serif",
-                    letterSpacing: '0',
-                    color: '#2563EB',
-                    lineHeight: 1,
-                  }}
-                >
-                  AA2000
-                </span>
-                <p className="text-[11px] font-normal leading-tight text-[#94A3B8]" style={{ marginTop: '2px' }}>
-                  Security and Technology Solutions Inc.
-                </p>
+              <div className="min-w-0">
+                <h2 className="text-xs font-black tracking-tight text-white leading-tight truncate">AI Chat Quotation</h2>
               </div>
             )}
           </div>
-        )}
-
-        {/* Collapse toggle (Desktop only) */}
-        {!isMobile && (
-          <button
-            onClick={() => setCollapsed(c => !c)}
-            className="p-1 rounded-md transition-colors shrink-0 ml-auto cursor-pointer"
-            style={{ color: '#94A3B8' }}
-            onMouseEnter={e => ((e.currentTarget as HTMLElement).style.color = '#2563EB')}
-            onMouseLeave={e => ((e.currentTarget as HTMLElement).style.color = '#94A3B8')}
-            title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          >
-            {collapsed ? (
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+          {!isMobile && (
+            <button
+              onClick={() => setCollapsed(c => !c)}
+              className="p-1.5 rounded-lg hover:bg-white/20 text-white/95 transition-colors shrink-0 cursor-pointer"
+              title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h7" />
               </svg>
-            ) : (
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-              </svg>
-            )}
-          </button>
-        )}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* ── "+ New Survey" Action Button (Below AA2000 Branding) — Admin only ── */}
