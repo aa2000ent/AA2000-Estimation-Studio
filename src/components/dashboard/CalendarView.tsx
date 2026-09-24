@@ -24,6 +24,9 @@ export default function CalendarView({ projects, onSelectProject, userRole, isDa
   const [selectedStatus, setSelectedStatus] = useState<string>('ALL');
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [selectedDayProjects, setSelectedDayProjects] = useState<{ date: string; projects: Project[] } | null>(null);
+  const [agendaSearch, setAgendaSearch] = useState('');
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [jumpDate, setJumpDate] = useState('');
 
   const actualProjects = useMemo(() => {
     return projects.filter(p => p.buildingType !== 'Other');
@@ -46,6 +49,19 @@ export default function CalendarView({ projects, onSelectProject, userRole, isDa
     setCurrentDate(today);
     const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
     setSelectedDate(todayStr);
+  };
+  const handleJumpToDate = (dateString: string) => {
+    if (!dateString) return;
+    const [targetYear, targetMonth, targetDay] = dateString.split('-').map(Number);
+    setCurrentDate(new Date(targetYear, targetMonth - 1, targetDay));
+    setSelectedDate(dateString);
+    setShowDatePicker(false);
+  };
+  const toggleDatePicker = () => {
+    if (!showDatePicker) {
+      setJumpDate(selectedDate || `${year}-${String(month + 1).padStart(2, '0')}-01`);
+    }
+    setShowDatePicker(open => !open);
   };
 
   // Month details
@@ -108,6 +124,16 @@ export default function CalendarView({ projects, onSelectProject, userRole, isDa
     });
   }, [actualProjects, year, month, selectedStatus, selectedDate]);
 
+  const visibleMonthProjects = useMemo(() => {
+    const query = agendaSearch.trim().toLowerCase();
+    if (!query) return monthProjects;
+    return monthProjects.filter(project =>
+      project.name.toLowerCase().includes(query) ||
+      project.clientName.toLowerCase().includes(query) ||
+      project.location.toLowerCase().includes(query)
+    );
+  }, [monthProjects, agendaSearch]);
+
   // Month stats for quick user overview
   const monthStats = useMemo(() => {
     let pending = 0;
@@ -128,13 +154,13 @@ export default function CalendarView({ projects, onSelectProject, userRole, isDa
   }, [actualProjects, year, month]);
 
   return (
-    <div className="px-4 sm:px-6 pt-6 pb-16 space-y-6 max-w-7xl mx-auto w-full">
+    <div className="px-4 sm:px-6 pt-5 pb-16 space-y-5 w-full">
       {/* Header & Quick Filter Pills */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 animate-fade-in-up">
+      <div className="flex flex-wrap items-start justify-between gap-4 animate-fade-in-up">
         <div>
           <div className="flex items-center gap-2">
             <h1
-              className="text-2xl font-black tracking-tight"
+              className="text-3xl font-black tracking-tight"
               style={{ color: isDark ? '#F8FAFC' : '#0F172A', fontFamily: 'Manrope, Inter, sans-serif' }}
             >
               Survey Calendar
@@ -186,24 +212,31 @@ export default function CalendarView({ projects, onSelectProject, userRole, isDa
       </div>
 
       {/* Overview Stat Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <div
           onClick={() => { setSelectedStatus('ALL'); setSelectedDate(null); }}
-          className={`p-3.5 rounded-2xl border transition-all cursor-pointer ${
+          className={`h-24 lg:h-28 xl:h-32 px-5 py-4 rounded-xl border transition-all cursor-pointer flex items-center gap-4 ${
             selectedStatus === 'ALL' && !selectedDate
               ? 'ring-2 ring-blue-500/50 shadow-sm'
               : ''
           } ${
-            isDark ? 'bg-slate-900/60 border-slate-800 text-slate-200' : 'bg-white border-slate-200 text-slate-800 shadow-2xs'
+            isDark ? 'bg-blue-950/20 border-blue-900/40 text-blue-200' : 'bg-blue-50 border-blue-200 text-slate-800'
           }`}
         >
-          <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total Surveys</div>
-          <div className="text-xl font-black mt-0.5">{monthStats.total} <span className="text-xs font-medium text-slate-400">scheduled</span></div>
+          <span className={`w-14 h-14 rounded-xl flex items-center justify-center shrink-0 ${isDark ? 'bg-blue-900/50' : 'bg-white'}`}>
+            <svg className="w-7 h-7 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5.25H6.75A2.25 2.25 0 004.5 7.5v11.25A2.25 2.25 0 006.75 21h10.5a2.25 2.25 0 002.25-2.25V7.5a2.25 2.25 0 00-2.25-2.25H15M9 5.25a3 3 0 006 0M9 5.25a3 3 0 016 0M8.25 12h7.5m-7.5 3.75h5.25" />
+            </svg>
+          </span>
+          <div>
+            <div className="text-[11px] font-bold text-blue-600">Total Surveys</div>
+            <div className="text-2xl font-black mt-1">{monthStats.total} <span className="text-[10px] font-medium text-slate-400">scheduled</span></div>
+          </div>
         </div>
 
         <div
           onClick={() => { setSelectedStatus('Pending'); setSelectedDate(null); }}
-          className={`p-3.5 rounded-2xl border transition-all cursor-pointer ${
+          className={`h-24 lg:h-28 xl:h-32 px-5 py-4 rounded-xl border transition-all cursor-pointer flex items-center gap-4 ${
             selectedStatus === 'Pending'
               ? 'ring-2 ring-amber-500/50 shadow-sm'
               : ''
@@ -211,15 +244,20 @@ export default function CalendarView({ projects, onSelectProject, userRole, isDa
             isDark ? 'bg-amber-950/20 border-amber-900/40 text-amber-300' : 'bg-amber-50/60 border-amber-200 text-amber-900'
           }`}
         >
-          <div className="text-[10px] font-bold uppercase tracking-wider text-amber-600 flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-500" /> Pending
+          <span className={`w-14 h-14 rounded-xl flex items-center justify-center shrink-0 ${isDark ? 'bg-amber-900/40' : 'bg-white'}`}>
+            <svg className="w-7 h-7 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-9A2.25 2.25 0 0017.25 3h-10.5A2.25 2.25 0 004.5 5.25v13.5A2.25 2.25 0 006.75 21h6.75M8.25 7.5h7.5m-7.5 3h5.25m4.5 6v2.25m0 0V21m0-2.25h2.25m-2.25 0h-2.25" />
+            </svg>
+          </span>
+          <div>
+            <div className="text-[11px] font-bold text-amber-600">Pending</div>
+            <div className="text-2xl font-black mt-1">{monthStats.pending} <span className="text-[10px] font-semibold text-amber-600/80">awaiting</span></div>
           </div>
-          <div className="text-xl font-black mt-0.5">{monthStats.pending} <span className="text-xs font-semibold text-amber-600/80">awaiting</span></div>
         </div>
 
         <div
           onClick={() => { setSelectedStatus('In Progress'); setSelectedDate(null); }}
-          className={`p-3.5 rounded-2xl border transition-all cursor-pointer ${
+          className={`h-24 lg:h-28 xl:h-32 px-5 py-4 rounded-xl border transition-all cursor-pointer flex items-center gap-4 ${
             selectedStatus === 'In Progress'
               ? 'ring-2 ring-blue-500/50 shadow-sm'
               : ''
@@ -227,15 +265,20 @@ export default function CalendarView({ projects, onSelectProject, userRole, isDa
             isDark ? 'bg-blue-950/20 border-blue-900/40 text-blue-300' : 'bg-blue-50/60 border-blue-200 text-blue-900'
           }`}
         >
-          <div className="text-[10px] font-bold uppercase tracking-wider text-blue-600 flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" /> In Progress
+          <span className={`w-14 h-14 rounded-xl flex items-center justify-center shrink-0 ${isDark ? 'bg-blue-900/50' : 'bg-white'}`}>
+            <svg className="w-7 h-7 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5M16.5 3L21 7.5m0 0L16.5 12M21 7.5H7.5" />
+            </svg>
+          </span>
+          <div>
+            <div className="text-[11px] font-bold text-blue-600">In Progress</div>
+            <div className="text-2xl font-black mt-1">{monthStats.inProgress} <span className="text-[10px] font-semibold text-blue-600/80">on-site</span></div>
           </div>
-          <div className="text-xl font-black mt-0.5">{monthStats.inProgress} <span className="text-xs font-semibold text-blue-600/80">on-site</span></div>
         </div>
 
         <div
           onClick={() => { setSelectedStatus('Completed'); setSelectedDate(null); }}
-          className={`p-3.5 rounded-2xl border transition-all cursor-pointer ${
+          className={`h-24 lg:h-28 xl:h-32 px-5 py-4 rounded-xl border transition-all cursor-pointer flex items-center gap-4 ${
             selectedStatus === 'Completed'
               ? 'ring-2 ring-emerald-500/50 shadow-sm'
               : ''
@@ -243,16 +286,22 @@ export default function CalendarView({ projects, onSelectProject, userRole, isDa
             isDark ? 'bg-emerald-950/20 border-emerald-900/40 text-emerald-300' : 'bg-emerald-50/60 border-emerald-200 text-emerald-900'
           }`}
         >
-          <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Completed
+          <span className={`w-14 h-14 rounded-xl flex items-center justify-center shrink-0 ${isDark ? 'bg-emerald-900/40' : 'bg-white'}`}>
+            <svg className="w-7 h-7 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75l2.25 2.25L15 9.75m6 2.25a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </span>
+          <div>
+            <div className="text-[11px] font-bold text-emerald-600">Completed</div>
+            <div className="text-2xl font-black mt-1">{monthStats.completed} <span className="text-[10px] font-semibold text-emerald-600/80">finalized</span></div>
           </div>
-          <div className="text-xl font-black mt-0.5">{monthStats.completed} <span className="text-xs font-semibold text-emerald-600/80">finalized</span></div>
         </div>
       </div>
 
-      {/* Main Calendar Card */}
+      {/* Calendar and agenda workspace */}
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,3fr)_minmax(320px,2fr)] gap-4 items-stretch">
       <div
-        className={`rounded-3xl border overflow-hidden transition-all shadow-sm ${
+        className={`h-full rounded-2xl border overflow-hidden transition-all shadow-sm ${
           isDark
             ? 'bg-[#0D1527] border-slate-800'
             : 'bg-white border-slate-200'
@@ -260,16 +309,34 @@ export default function CalendarView({ projects, onSelectProject, userRole, isDa
       >
         {/* Navigation Bar */}
         <div
-          className={`flex flex-wrap items-center justify-between px-6 py-4 border-b gap-3 ${
+          className={`relative z-30 min-h-[62px] flex flex-wrap items-center justify-between px-4 py-3 border-b gap-3 ${
             isDark
               ? 'border-slate-800 bg-slate-900/70'
               : 'border-slate-100 bg-slate-50/60'
           }`}
         >
-          <div className="flex items-center gap-3">
-            <h2 className={`text-xl font-black tracking-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handlePrevMonth}
+              aria-label="Previous month"
+              className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors cursor-pointer ${isDark ? 'text-slate-400 hover:bg-slate-800 hover:text-white' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'}`}
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <h2 className={`text-lg font-black tracking-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>
               {monthName} {year}
             </h2>
+            <button
+              onClick={handleNextMonth}
+              aria-label="Next month"
+              className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors cursor-pointer ${isDark ? 'text-slate-400 hover:bg-slate-800 hover:text-white' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'}`}
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
             <button
               onClick={handleToday}
               className={`px-3 py-1 text-[11px] font-extrabold uppercase rounded-lg border transition-all cursor-pointer ${
@@ -290,44 +357,50 @@ export default function CalendarView({ projects, onSelectProject, userRole, isDa
             )}
           </div>
 
-          {/* Month Controls & Arrows */}
-          <div className="flex items-center gap-3">
-            <div className="flex gap-1.5">
-              <button
-                onClick={handlePrevMonth}
-                aria-label="Previous Month"
-                className={`p-2 rounded-xl border transition-all cursor-pointer flex items-center gap-1.5 text-xs font-bold ${
-                  isDark
-                    ? 'border-slate-800 bg-slate-800/50 hover:bg-slate-800 text-slate-300 hover:text-white'
-                    : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700 shadow-2xs'
-                }`}
-              >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-                </svg>
-                <span className="hidden sm:inline">Prev</span>
-              </button>
-              <button
-                onClick={handleNextMonth}
-                aria-label="Next Month"
-                className={`p-2 rounded-xl border transition-all cursor-pointer flex items-center gap-1.5 text-xs font-bold ${
-                  isDark
-                    ? 'border-slate-800 bg-slate-800/50 hover:bg-slate-800 text-slate-300 hover:text-white'
-                    : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700 shadow-2xs'
-                }`}
-              >
-                <span className="hidden sm:inline">Next</span>
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                </svg>
-              </button>
-            </div>
+          <div className="relative">
+            <button
+              type="button"
+              onClick={toggleDatePicker}
+              aria-expanded={showDatePicker}
+              className={`h-9 px-4 rounded-xl border text-[11px] font-bold flex items-center gap-2 cursor-pointer transition-colors ${isDark ? 'border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
+            >
+              Month
+              <svg className={`w-3.5 h-3.5 transition-transform duration-200 ${showDatePicker ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+
+            {showDatePicker && (
+              <div className={`absolute right-0 top-11 z-50 w-56 rounded-2xl border p-4 shadow-xl animate-scale-in ${isDark ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'}`}>
+                <label className={`block text-[10px] font-black uppercase tracking-wider mb-2 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                  Jump to a date
+                </label>
+                <input
+                  type="date"
+                  value={jumpDate}
+                  onChange={event => setJumpDate(event.target.value)}
+                  className={`w-full h-10 rounded-xl border px-3 text-xs font-semibold outline-none cursor-pointer ${isDark ? 'bg-slate-800 border-slate-700 text-slate-200' : 'bg-slate-50 border-slate-200 text-slate-700'}`}
+                  style={{ colorScheme: isDark ? 'dark' : 'light' }}
+                />
+                <p className="text-[9px] text-slate-400 mt-2 leading-relaxed">
+                  Browse freely, then confirm the exact date below.
+                </p>
+                <button
+                  type="button"
+                  disabled={!jumpDate}
+                  onClick={() => handleJumpToDate(jumpDate)}
+                  className="w-full mt-3 h-9 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white text-[10px] font-black transition-colors cursor-pointer"
+                >
+                  Go to date
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
         {/* Days of Week Header */}
         <div
-          className={`grid grid-cols-7 border-b text-center py-2.5 ${
+          className={`grid grid-cols-7 border-b text-center py-2 ${
             isDark
               ? 'border-slate-800 bg-slate-900/40 text-slate-400'
               : 'border-slate-100 bg-slate-50/90 text-slate-500'
@@ -336,7 +409,7 @@ export default function CalendarView({ projects, onSelectProject, userRole, isDa
           {['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'].map(d => (
             <span
               key={d}
-              className="text-[11px] font-black uppercase tracking-wider"
+              className="text-[9px] font-black uppercase tracking-wider"
             >
               {d}
             </span>
@@ -345,7 +418,7 @@ export default function CalendarView({ projects, onSelectProject, userRole, isDa
 
         {/* Grid Cells */}
         <div
-          className={`grid grid-cols-7 grid-rows-6 divide-x divide-y ${
+          className={`relative z-0 grid grid-cols-7 grid-rows-6 divide-x divide-y ${
             isDark
               ? 'divide-slate-800/70 bg-[#0D1527]'
               : 'divide-slate-100 bg-white'
@@ -377,15 +450,15 @@ export default function CalendarView({ projects, onSelectProject, userRole, isDa
                     setSelectedDayProjects({ date: cell.dateString, projects: filteredProjects });
                   }
                 }}
-                className={`min-h-[110px] sm:min-h-[120px] p-2 flex flex-col justify-between transition-all relative cursor-pointer group ${
+                className={`min-h-[80px] lg:min-h-[74px] p-2 flex flex-col justify-between transition-all relative cursor-pointer group ${
                   !cell.isCurrentMonth
                     ? isDark
-                      ? 'bg-slate-950/40 opacity-30 hover:opacity-50'
-                      : 'bg-slate-50/50 opacity-40 hover:opacity-70'
+                      ? 'bg-slate-950/40 opacity-50 hover:opacity-70'
+                      : 'bg-slate-50/70 hover:bg-slate-100/70'
                     : isSelected
                     ? isDark
-                      ? 'bg-blue-950/40 ring-2 ring-blue-500/60 inset-0'
-                      : 'bg-blue-50/60 ring-2 ring-blue-500/50'
+                      ? 'bg-blue-950/40 ring-2 ring-inset ring-blue-500/60'
+                      : 'bg-blue-50/60 ring-2 ring-inset ring-blue-500/50'
                     : isToday
                     ? isDark
                       ? 'bg-blue-950/20'
@@ -425,7 +498,7 @@ export default function CalendarView({ projects, onSelectProject, userRole, isDa
                 </div>
 
                 {/* Projects Event Badges */}
-                <div className="flex-1 space-y-1 overflow-y-auto max-h-[75px] no-scrollbar">
+                <div className="flex-1 space-y-1 overflow-y-auto max-h-[32px] no-scrollbar">
                   {filteredProjects.map(proj => {
                     const cfg = statusConfig[proj.status] ||
                       Object.entries(statusConfig).find(([key]) => proj.status && proj.status.includes(key))?.[1] || {
@@ -473,18 +546,30 @@ export default function CalendarView({ projects, onSelectProject, userRole, isDa
 
       {/* Monthly Scheduled Surveys Agenda List */}
       <div
-        className={`rounded-3xl border p-6 space-y-4 shadow-sm ${
+        className={`rounded-2xl border p-4 shadow-sm flex flex-col min-h-[560px] lg:h-[560px] ${
           isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-white border-slate-200'
         }`}
       >
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-3 border-slate-100">
-          <div>
-            <h3 className={`text-base font-black ${isDark ? 'text-white' : 'text-slate-900'}`}>
+        <div className={`flex flex-wrap items-start justify-between gap-3 border-b pb-3 ${isDark ? 'border-slate-800' : 'border-slate-100'}`}>
+          <div className="min-w-0 flex-1">
+            <h3 className={`text-sm font-black leading-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>
               {selectedDate ? `Scheduled Surveys for ${selectedDate}` : `All Scheduled Surveys in ${monthName} ${year}`}
             </h3>
-            <p className="text-xs font-semibold text-slate-400">
-              {monthProjects.length} {monthProjects.length === 1 ? 'project survey' : 'project surveys'} found
+            <p className="text-[10px] font-semibold text-slate-400 mt-1">
+              {visibleMonthProjects.length} {visibleMonthProjects.length === 1 ? 'project survey' : 'project surveys'} found
             </p>
+          </div>
+          <div className="relative w-full sm:w-40">
+            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            <input
+              type="search"
+              value={agendaSearch}
+              onChange={event => setAgendaSearch(event.target.value)}
+              placeholder="Search surveys..."
+              className={`w-full h-9 pl-8 pr-3 rounded-xl border text-[10px] outline-none transition-colors ${isDark ? 'bg-slate-800 border-slate-700 text-slate-200 focus:border-blue-500' : 'bg-white border-slate-200 text-slate-700 focus:border-blue-400'}`}
+            />
           </div>
           {selectedDate && (
             <button
@@ -496,13 +581,21 @@ export default function CalendarView({ projects, onSelectProject, userRole, isDa
           )}
         </div>
 
-        {monthProjects.length === 0 ? (
-          <div className="text-center py-8 text-slate-400 text-xs font-medium">
-            No surveys scheduled {selectedDate ? `for ${selectedDate}` : `for ${monthName} with the selected filters`}.
+        {visibleMonthProjects.length === 0 ? (
+          <div className="flex-1 min-h-[300px] flex flex-col items-center justify-center text-center px-6">
+            <span className={`w-14 h-14 rounded-full flex items-center justify-center mb-4 ${isDark ? 'bg-blue-950/50 text-blue-400' : 'bg-blue-50 text-blue-600'}`}>
+              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5A3.375 3.375 0 0010.125 2.25H6.75A2.25 2.25 0 004.5 4.5v15a2.25 2.25 0 002.25 2.25h10.5a2.25 2.25 0 002.25-2.25v-5.25z" />
+              </svg>
+            </span>
+            <p className={`text-sm font-black ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>No surveys scheduled for {monthName}</p>
+            <p className="text-[10px] text-slate-400 mt-2 max-w-xs">
+              {agendaSearch ? 'No surveys match your search.' : `No surveys are scheduled for ${monthName} with the selected filters.`}
+            </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {monthProjects.map(proj => {
+          <div className="space-y-3 mt-4 overflow-y-auto max-h-[400px] pr-1 no-scrollbar">
+            {visibleMonthProjects.map(proj => {
               const cfg = statusConfig[proj.status] || { label: proj.status, color: '#3B82F6', bg: 'rgba(59,130,246,0.12)', dot: '#3B82F6' };
               return (
                 <div
@@ -564,6 +657,7 @@ export default function CalendarView({ projects, onSelectProject, userRole, isDa
             })}
           </div>
         )}
+      </div>
       </div>
 
       {/* Selected Day Quick View Modal */}

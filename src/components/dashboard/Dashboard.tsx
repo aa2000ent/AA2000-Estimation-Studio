@@ -558,7 +558,7 @@ export default function Dashboard({
 }: Props) {
   const [view, setView] = useState<View>('dashboard');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768);
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 1024);
   const [showCreate, setShowCreate] = useState(false);
   const [isCompanyMode, setIsCompanyMode] = useState(false);
   const [activeNotifTab, setActiveNotifTab] = useState<'ongoing' | 'upcoming' | 'missing' | 'approval' | 'finalize'>('ongoing');
@@ -567,7 +567,7 @@ export default function Dashboard({
 
   useEffect(() => {
     const handleResize = () => {
-      const mobile = window.innerWidth < 768;
+      const mobile = window.innerWidth < 1024;
       setIsMobile(mobile);
       if (!mobile) setMobileMenuOpen(false);
     };
@@ -767,8 +767,6 @@ export default function Dashboard({
     setMenuOpen(null);
   };
 
-  const [viewHistory, setViewHistory] = useState<View[]>([]);
-
   const navigate = (v: View) => {
     setMobileMenuOpen(false);
     setSelectedCompanyProject(null);
@@ -777,19 +775,7 @@ export default function Dashboard({
     if (contentOverride && onExitOverride) {
       onExitOverride();
     }
-    setView(prevView => {
-      if (v !== prevView) {
-        setViewHistory(prev => [...prev, prevView]);
-      }
-      return v;
-    });
-  };
-
-  const goBack = () => {
-    if (viewHistory.length === 0) return;
-    const prevView = viewHistory[viewHistory.length - 1];
-    setViewHistory(prev => prev.slice(0, -1));
-    setView(prevView);
+    setView(v);
   };
 
   const navigateNotif = (type: string) => {
@@ -799,12 +785,7 @@ export default function Dashboard({
       missing: 'missing-notif', approval: 'approval-notif', finalize: 'finalize-notif',
     };
     const targetView = m[type] || 'dashboard';
-    setView(prevView => {
-      if (targetView !== prevView) {
-        setViewHistory(prev => [...prev, prevView]);
-      }
-      return targetView as View;
-    });
+    setView(targetView as View);
     if (type === 'notifications' && onMarkNotificationsAsRead) onMarkNotificationsAsRead('all');
   };
 
@@ -894,100 +875,92 @@ export default function Dashboard({
         ══════════════════════════════════════════ */}
         {!contentOverride && (
           <div
-            className={`sticky top-0 z-50 px-4 sm:px-6 h-14 flex items-center justify-between shrink-0 border-b backdrop-blur-md transition-colors ${
-              isDark ? 'bg-[#0B0F19]/90 border-slate-800' : 'bg-white/80 border-slate-200/80'
+            className={`sticky top-0 z-40 px-4 sm:px-6 h-16 flex items-center gap-4 shrink-0 border-b backdrop-blur-md transition-colors ${
+              isDark ? 'bg-[#0D1527]/95 border-slate-800' : 'bg-white/95 border-slate-200'
             }`}
           >
-          {/* Left: Mobile menu toggle + Back button + System status + date */}
-          <div className="flex items-center gap-2 sm:gap-3">
+          {/* Left: Mobile navigation and global search */}
+          <div className="flex flex-1 min-w-0 items-center gap-2 sm:gap-3">
             <button
               onClick={() => setMobileMenuOpen(true)}
-              className="p-1.5 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 md:hidden transition-colors cursor-pointer"
+              className="p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 lg:hidden transition-colors cursor-pointer"
               title="Open navigation menu"
             >
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
               </svg>
             </button>
-            {view !== 'dashboard' && viewHistory.length > 0 && (
-              <button
-                onClick={goBack}
-                className="flex items-center gap-1.5 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition-colors p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
-                title="Go back"
-              >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-                </svg>
-                <span className="text-[10px] font-bold hidden sm:inline">Back</span>
-              </button>
-            )}
-            <div className="flex items-center gap-1.5 bg-slate-50/80 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-full px-3 py-1">
-              <span className="relative flex h-1.5 w-1.5">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500" />
-              </span>
-              <span className="text-[9px] font-bold text-emerald-700 dark:text-emerald-400 tracking-wider">ONLINE</span>
-            </div>
-            <span className="text-[10px] font-medium text-slate-400 hidden sm:block">{todayLabel}</span>
-          </div>
-
-          {/* Right: Search + Dark Mode Toggle + Notifications + Account */}
-          <div className="flex items-center gap-2.5 sm:gap-3 overflow-visible">
-            {/* Search */}
-            <div className="relative hidden sm:block">
+            <div className="relative block flex-1 min-w-0 max-w-lg">
               <svg
-                className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400"
+                className="absolute left-3.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400"
                 fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}
               >
                 <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
               <input
                 type="text"
-                placeholder="Search projects..."
+                placeholder="Search projects, surveys, clients..."
                 value={search}
                 onChange={e => setSearch(e.target.value)}
-                className="search-input w-48 lg:w-56 pl-9 pr-3 py-1.5 rounded-xl text-[11px] font-medium bg-slate-50/80 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 outline-none text-slate-700 dark:text-slate-200 focus:bg-white dark:focus:bg-slate-800 transition-all"
+                className="search-input w-full h-9 pl-10 pr-4 rounded-xl text-[11px] font-medium bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 outline-none text-slate-700 dark:text-slate-200 focus:bg-white dark:focus:bg-slate-800 focus:border-blue-400 transition-all"
               />
             </div>
+          </div>
 
-            {/* Digital Clock */}
+          {/* Right: Time, appearance, notifications, and account */}
+          <div className="flex items-center gap-2 sm:gap-3 overflow-visible shrink-0">
             <div
-              className={`hidden sm:flex items-center gap-2 pl-3 pr-2 py-1.5 rounded-xl border text-[11px] font-black tracking-wider font-mono ${
+              className={`hidden sm:flex h-9 items-center gap-2.5 px-3 rounded-xl border text-[10px] ${
                 isDark
                   ? 'bg-slate-800/80 border-slate-700 text-slate-200'
-                  : 'bg-slate-50/80 border-slate-200 text-slate-700'
+                  : 'bg-white border-slate-200 text-slate-600'
               }`}
               title={now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
             >
-              <svg className="w-3.5 h-3.5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <svg className="w-3.5 h-3.5 text-slate-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              <span>{digitalClock}</span>
+              <span className="font-mono font-black tracking-wide">{digitalClock}</span>
+              <span className="h-4 w-px bg-slate-200 dark:bg-slate-600" />
+              <span className="hidden lg:inline font-bold whitespace-nowrap">{todayLabel}</span>
             </div>
 
-            {/* Dark / Night Mode Toggle */}
-            <button
-              onClick={handleToggleTheme}
-              className="p-1.5 sm:p-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-amber-400 transition-all duration-200 flex items-center justify-center cursor-pointer shadow-2xs group"
-              title={isDark ? 'Switch to Light Mode' : 'Switch to Night Mode'}
-              aria-label="Toggle Night Mode"
-            >
-              {isDark ? (
-                <svg className="w-4 h-4 text-amber-400 transition-transform duration-300 group-hover:rotate-45" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <div className="relative hidden sm:flex w-[68px] h-9 items-center rounded-full border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 p-0.5 shadow-2xs overflow-hidden">
+              <span
+                className={`absolute top-0.5 left-0.5 w-8 h-8 rounded-full bg-blue-600 shadow-sm pointer-events-none transition-transform duration-300 ease-out ${
+                  isDark ? 'translate-x-8' : 'translate-x-0'
+                }`}
+              />
+              <button
+                onClick={() => { if (isDark) handleToggleTheme(); }}
+                className={`relative z-10 w-8 h-8 rounded-full flex items-center justify-center transition-colors duration-300 cursor-pointer ${
+                  !isDark ? 'text-white' : 'text-amber-400'
+                }`}
+                title="Use light mode"
+                aria-label="Use light mode"
+                aria-pressed={!isDark}
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.773-4.227l-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z" />
                 </svg>
-              ) : (
-                <svg className="w-4 h-4 text-slate-600 transition-transform duration-300 group-hover:-rotate-12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              </button>
+              <button
+                onClick={() => { if (!isDark) handleToggleTheme(); }}
+                className={`relative z-10 w-8 h-8 rounded-full flex items-center justify-center transition-colors duration-300 cursor-pointer ${
+                  isDark ? 'text-white' : 'text-slate-500'
+                }`}
+                title="Use dark mode"
+                aria-label="Use dark mode"
+                aria-pressed={isDark}
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z" />
                 </svg>
-              )}
-            </button>
+              </button>
+            </div>
 
             {/* Notification Bell */}
             <NotificationBell notifications={notifications} onViewAll={navigateNotif} />
-
-            {/* Divider */}
-            <div className="w-px h-5 bg-slate-200 dark:bg-slate-700" />
 
             {/* Account dropdown */}
             <AccountDropdown user={user} onLogout={onLogout} onSettings={onSettings} />
