@@ -875,7 +875,7 @@ export default function Dashboard({
         ══════════════════════════════════════════ */}
         {!contentOverride && (
           <div
-            className={`sticky top-0 z-50 px-4 sm:px-6 h-16 flex items-center gap-4 shrink-0 border-b backdrop-blur-md transition-colors ${
+            className={`sticky top-0 z-40 px-4 sm:px-6 h-16 flex items-center gap-4 shrink-0 border-b backdrop-blur-md transition-colors ${
               isDark ? 'bg-[#0D1527]/95 border-slate-800' : 'bg-white/95 border-slate-200'
             }`}
           >
