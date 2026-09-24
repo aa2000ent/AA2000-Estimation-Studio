@@ -11,6 +11,7 @@ import CompanyDetail from '../projects/CompanyDetail';
 import AccountDropdown from './AccountDropdown';
 import { getRoleTheme } from '../../utils/RoleTheme';
 import CalendarView from './CalendarView';
+import ApprovalPipeline from './ApprovalPipeline';
 import { StatBuilding, StatClipboard, StatBolt, StatCalendar, StatCheckCircle, ChartBar, Bell, RoleWrench, RoleChart, RoleComputer } from '../../utils/Icons';
 import AISidebar from '../ai-sidebar/AISidebar';
 import FloorPlanView from '../floor-plan/FloorPlanView';
@@ -138,11 +139,11 @@ function StatusBadge({ status }: { status: string }) {
   const isApproved = status === 'Completed' || status === 'Finalized - Approved';
 
   const label = isReview ? 'Awaiting Approval' : isApproved ? 'Approved' : 'Survey In Progress';
-  const cfg = isReview 
+  const cfg = isReview
     ? { color: '#CA8A04', bg: 'rgba(202,138,4,0.08)' }
-    : isApproved 
-    ? { color: '#16A34A', bg: 'rgba(22,163,74,0.08)' }
-    : { color: '#2563EB', bg: 'rgba(37,99,235,0.08)' };
+    : isApproved
+      ? { color: '#16A34A', bg: 'rgba(22,163,74,0.08)' }
+      : { color: '#2563EB', bg: 'rgba(37,99,235,0.08)' };
 
   return (
     <span
@@ -405,10 +406,10 @@ function SparklineCard({
   const badgeText = label === 'PROJECTS'
     ? `${value} Total`
     : label === 'COMPLETED'
-    ? `${percentage}% Done`
-    : label === 'PENDING'
-    ? `${percentage}% Queue`
-    : `${percentage}% Active`;
+      ? `${percentage}% Done`
+      : label === 'PENDING'
+        ? `${percentage}% Queue`
+        : `${percentage}% Active`;
 
   const { linePath, areaPath, dots } = getSparklineData(value, total);
   const gradId = `spark-grad-${label.toLowerCase().replace(/[^a-z0-9]/g, '-')}-${value}`;
@@ -614,7 +615,7 @@ export default function Dashboard({
             document.documentElement.setAttribute('data-theme', 'light');
             localStorage.setItem('aa2000_theme', 'light');
           }
-        } catch {}
+        } catch { }
         return next;
       });
     }
@@ -631,7 +632,7 @@ export default function Dashboard({
         document.documentElement.setAttribute('data-theme', 'light');
         localStorage.setItem('aa2000_theme', 'light');
       }
-    } catch {}
+    } catch { }
   }, [isDark]);
 
   // Live digital clock
@@ -694,7 +695,7 @@ export default function Dashboard({
   const userGreetingName =
     user.fullName?.split(' ')[0] ||
     (user.role === 'ADMIN' ? 'Admin' :
-     user.role === 'TECHNICIAN' ? 'Technician' : 'Accounting');
+      user.role === 'TECHNICIAN' ? 'Technician' : 'Accounting');
 
   // Derive display status for each company folder (matching Home.tsx logic)
   const folderStatusMap: Record<string, string> = {};
@@ -894,106 +895,104 @@ export default function Dashboard({
         ══════════════════════════════════════════ */}
         {!contentOverride && (
           <div
-            className={`sticky top-0 z-50 px-4 sm:px-6 h-14 flex items-center justify-between shrink-0 border-b backdrop-blur-md transition-colors ${
-              isDark ? 'bg-[#0B0F19]/90 border-slate-800' : 'bg-white/80 border-slate-200/80'
-            }`}
+            className={`sticky top-0 z-50 px-4 sm:px-6 h-14 flex items-center justify-between shrink-0 border-b backdrop-blur-md transition-colors ${isDark ? 'bg-[#0B0F19]/90 border-slate-800' : 'bg-white/80 border-slate-200/80'
+              }`}
           >
-          {/* Left: Mobile menu toggle + Back button + System status + date */}
-          <div className="flex items-center gap-2 sm:gap-3">
-            <button
-              onClick={() => setMobileMenuOpen(true)}
-              className="p-1.5 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 md:hidden transition-colors cursor-pointer"
-              title="Open navigation menu"
-            >
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
-              </svg>
-            </button>
-            {view !== 'dashboard' && viewHistory.length > 0 && (
+            {/* Left: Mobile menu toggle + Back button + System status + date */}
+            <div className="flex items-center gap-2 sm:gap-3">
               <button
-                onClick={goBack}
-                className="flex items-center gap-1.5 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition-colors p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
-                title="Go back"
+                onClick={() => setMobileMenuOpen(true)}
+                className="p-1.5 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 md:hidden transition-colors cursor-pointer"
+                title="Open navigation menu"
               >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
                 </svg>
-                <span className="text-[10px] font-bold hidden sm:inline">Back</span>
               </button>
-            )}
-            <div className="flex items-center gap-1.5 bg-slate-50/80 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-full px-3 py-1">
-              <span className="relative flex h-1.5 w-1.5">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500" />
-              </span>
-              <span className="text-[9px] font-bold text-emerald-700 dark:text-emerald-400 tracking-wider">ONLINE</span>
-            </div>
-            <span className="text-[10px] font-medium text-slate-400 hidden sm:block">{todayLabel}</span>
-          </div>
-
-          {/* Right: Search + Dark Mode Toggle + Notifications + Account */}
-          <div className="flex items-center gap-2.5 sm:gap-3 overflow-visible">
-            {/* Search */}
-            <div className="relative hidden sm:block">
-              <svg
-                className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400"
-                fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
-              <input
-                type="text"
-                placeholder="Search projects..."
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                className="search-input w-48 lg:w-56 pl-9 pr-3 py-1.5 rounded-xl text-[11px] font-medium bg-slate-50/80 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 outline-none text-slate-700 dark:text-slate-200 focus:bg-white dark:focus:bg-slate-800 transition-all"
-              />
+              {view !== 'dashboard' && viewHistory.length > 0 && (
+                <button
+                  onClick={goBack}
+                  className="flex items-center gap-1.5 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition-colors p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                  title="Go back"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                  </svg>
+                  <span className="text-[10px] font-bold hidden sm:inline">Back</span>
+                </button>
+              )}
+              <div className="flex items-center gap-1.5 bg-slate-50/80 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-full px-3 py-1">
+                <span className="relative flex h-1.5 w-1.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500" />
+                </span>
+                <span className="text-[9px] font-bold text-emerald-700 dark:text-emerald-400 tracking-wider">ONLINE</span>
+              </div>
+              <span className="text-[10px] font-medium text-slate-400 hidden sm:block">{todayLabel}</span>
             </div>
 
-            {/* Digital Clock */}
-            <div
-              className={`hidden sm:flex items-center gap-2 pl-3 pr-2 py-1.5 rounded-xl border text-[11px] font-black tracking-wider font-mono ${
-                isDark
+            {/* Right: Search + Dark Mode Toggle + Notifications + Account */}
+            <div className="flex items-center gap-2.5 sm:gap-3 overflow-visible">
+              {/* Search */}
+              <div className="relative hidden sm:block">
+                <svg
+                  className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400"
+                  fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+                <input
+                  type="text"
+                  placeholder="Search projects..."
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  className="search-input w-48 lg:w-56 pl-9 pr-3 py-1.5 rounded-xl text-[11px] font-medium bg-slate-50/80 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 outline-none text-slate-700 dark:text-slate-200 focus:bg-white dark:focus:bg-slate-800 transition-all"
+                />
+              </div>
+
+              {/* Digital Clock */}
+              <div
+                className={`hidden sm:flex items-center gap-2 pl-3 pr-2 py-1.5 rounded-xl border text-[11px] font-black tracking-wider font-mono ${isDark
                   ? 'bg-slate-800/80 border-slate-700 text-slate-200'
                   : 'bg-slate-50/80 border-slate-200 text-slate-700'
-              }`}
-              title={now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-            >
-              <svg className="w-3.5 h-3.5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <span>{digitalClock}</span>
+                  }`}
+                title={now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+              >
+                <svg className="w-3.5 h-3.5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span>{digitalClock}</span>
+              </div>
+
+              {/* Dark / Night Mode Toggle */}
+              <button
+                onClick={handleToggleTheme}
+                className="p-1.5 sm:p-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-amber-400 transition-all duration-200 flex items-center justify-center cursor-pointer shadow-2xs group"
+                title={isDark ? 'Switch to Light Mode' : 'Switch to Night Mode'}
+                aria-label="Toggle Night Mode"
+              >
+                {isDark ? (
+                  <svg className="w-4 h-4 text-amber-400 transition-transform duration-300 group-hover:rotate-45" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.773-4.227l-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z" />
+                  </svg>
+                ) : (
+                  <svg className="w-4 h-4 text-slate-600 transition-transform duration-300 group-hover:-rotate-12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z" />
+                  </svg>
+                )}
+              </button>
+
+              {/* Notification Bell */}
+              <NotificationBell notifications={notifications} onViewAll={navigateNotif} />
+
+              {/* Divider */}
+              <div className="w-px h-5 bg-slate-200 dark:bg-slate-700" />
+
+              {/* Account dropdown */}
+              <AccountDropdown user={user} onLogout={onLogout} onSettings={onSettings} />
             </div>
-
-            {/* Dark / Night Mode Toggle */}
-            <button
-              onClick={handleToggleTheme}
-              className="p-1.5 sm:p-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-amber-400 transition-all duration-200 flex items-center justify-center cursor-pointer shadow-2xs group"
-              title={isDark ? 'Switch to Light Mode' : 'Switch to Night Mode'}
-              aria-label="Toggle Night Mode"
-            >
-              {isDark ? (
-                <svg className="w-4 h-4 text-amber-400 transition-transform duration-300 group-hover:rotate-45" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.773-4.227l-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z" />
-                </svg>
-              ) : (
-                <svg className="w-4 h-4 text-slate-600 transition-transform duration-300 group-hover:-rotate-12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z" />
-                </svg>
-              )}
-            </button>
-
-            {/* Notification Bell */}
-            <NotificationBell notifications={notifications} onViewAll={navigateNotif} />
-
-            {/* Divider */}
-            <div className="w-px h-5 bg-slate-200 dark:bg-slate-700" />
-
-            {/* Account dropdown */}
-            <AccountDropdown user={user} onLogout={onLogout} onSettings={onSettings} />
           </div>
-        </div>
-      )}
+        )}
 
         {/* ══════════════════════════════════════════
             PAGE CONTENT
@@ -1026,596 +1025,593 @@ export default function Dashboard({
                 />
               </div>
               {selectedCompanyProject ? (
-            <CompanyDetail
-              user={user}
-              companyProject={selectedCompanyProject}
-              projects={projectList}
-              onBack={() => setSelectedCompanyProject(null)}
-              onSelectProject={onSelectProject}
-              onNewSurvey={onNavigateToCreate}
-              onDeleteProject={handleDelete}
-            />
-          ) : view === 'home' || view === 'ai-reader' || view === 'floor-plan' || isCategoryView ? (
-            <Home
-              user={user}
-              projects={projectList}
-              categoryFilter={categoryFilter}
-              onSelectCompany={companyName => {
-                const clean = (s?: string) => (s || '').trim().toLowerCase();
-                const target = clean(companyName);
-                const found = projectList.find(
-                  p => clean(p.name) === target || clean(p.clientName) === target
-                );
-                if (found) {
-                  setSelectedCompanyProject(found);
-                } else {
-                  setSelectedCompanyProject({
-                    id: `company-synth-${Date.now()}`,
-                    name: companyName,
-                    clientName: companyName,
-                    location: '',
-                    buildingType: 'Other',
-                    status: 'Pending',
-                    assignedTechnicians: [],
-                    createdAt: new Date().toISOString(),
-                  });
-                }
-              }}
-              onSelectProject={onSelectProject}
-              onNewCompanyClick={() => { setIsCompanyMode(true); setShowCreate(true); }}
-              onDeleteProject={handleDelete}
-              onUpdateProject={handleSaveEdit}
-              aiScans={aiScans}
-              onRenameAIScan={onRenameAIScan}
-              onDeleteAIScan={onDeleteAIScan}
-              onUpdateAIScan={onUpdateAIScan}
-              isDark={isDark}
-            />
-          ) : view === 'estimation-hub' ? null
-          : view === 'calendar' ? (
-            <CalendarView
-              projects={projectList}
-              onSelectProject={onSelectProject}
-              userRole={user.role || 'ACCOUNTING'}
-              isDark={isDark}
-            />
-          ) : view === 'saved-folders' ? (
-            <SavedFoldersView
-              aiScans={aiScans}
-              onRenameAIScan={onRenameAIScan}
-              onDeleteAIScan={onDeleteAIScan}
-              onUpdateAIScan={onUpdateAIScan}
-            />
-          ) : view === 'saved-boqs' ? (
-            <SavedBOQsView userRole={user.role} />
-          ) : view === 'history' ? (
-            <SavedEstimationsView
-              projects={projectList}
-              statusFilter={['Completed', 'Finalized - Approved', 'Finalized - Rejected', 'Unknown']}
-              onDeleteProject={handleDelete}
-            />
-          ) : view === 'saved-estimations' ? (
-            <SavedEstimationsView
-              projects={projectList}
-              onDeleteProject={handleDelete}
-            />
-          ) : (
-            <div className="pb-10">
-              {/* Dashboard view: title + stats */}
-              {view === 'dashboard' && (
-                <>
-                  {/* Clean Header with Enriched Large Dynamic Time-Based Greeting */}
-                  <div className="px-6 pt-6 animate-fade-in-up">
-                    <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
-                      <div className="max-w-3xl">
-                        <h1
-                          className="text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight flex items-center gap-2.5 flex-wrap"
-                          style={{ fontFamily: 'Manrope, Inter, sans-serif' }}
-                        >
-                          <span className="text-slate-900 dark:text-white">{timeGreeting},</span>
-                          <span className="text-blue-600 dark:text-blue-400">{userGreetingName}!</span>
-                          <span className="inline-block animate-wave origin-bottom-right">👋</span>
-                        </h1>
-                        <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 font-medium leading-relaxed mt-2 max-w-2xl">
-                          Welcome to the system control center. Create estimation projects, assign technical teams, review surveys, and approve final equipment pricing estimates.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Status Overview & Stat Cards (2x2 Grid) */}
-                  <div className="px-6 pt-6 space-y-4">
-                    <StatusOverviewBanner
-                      totalProjects={totalProjects}
-                      inProgressCount={inProgressCount}
-                      pendingCount={pendingCount}
-                      completedCount={completedCount}
-                    />
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <SparklineCard
-                        label="PROJECTS"
-                        value={totalProjects}
-                        totalProjects={totalProjects}
-                        sub="Total site surveys"
-                        icon={<StatBuilding className="w-5 h-5" />}
-                        valueColor="#2563EB"
-                        onClick={() => navigate('assignment')}
-                        delay={0}
-                      />
-                      <SparklineCard
-                        label="IN PROGRESS"
-                        value={inProgressCount}
-                        totalProjects={totalProjects}
-                        sub="Active site surveys"
-                        icon={<StatBolt className="w-5 h-5" />}
-                        valueColor="#2563EB"
-                        onClick={() => navigate('workspace')}
-                        delay={50}
-                      />
-                      <SparklineCard
-                        label="PENDING"
-                        value={pendingCount}
-                        totalProjects={totalProjects}
-                        sub="Awaiting kickoff"
-                        icon={<StatCalendar className="w-5 h-5" />}
-                        valueColor="#F59E0B"
-                        onClick={() => navigate('workspace')}
-                        delay={100}
-                      />
-                      <SparklineCard
-                        label="COMPLETED"
-                        value={completedCount}
-                        totalProjects={totalProjects}
-                        sub="Finalized surveys"
-                        icon={<StatCheckCircle className="w-5 h-5" />}
-                        valueColor="#16A34A"
-                        onClick={() => navigate('done')}
-                        delay={150}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Pending Surveys & Active Projects */}
-                  <div className="px-6 pt-6">
-                    <div className="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-sm animate-fade-in-up flex flex-col flex-1">
-                      <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
-                        <div>
-                          <h3 className="text-sm font-black tracking-wider text-slate-800 uppercase flex items-center gap-2">
-                            <span>Pending Surveys &amp; Active Projects</span>
-                            {pendingCount > 0 && (
-                              <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500 text-white">
-                                {pendingCount} Pending
-                              </span>
-                            )}
-                          </h3>
-                          <p className="text-[11px] font-medium text-slate-500 mt-0.5">
-                            Click any project below to open site survey, upload floor plan, or build BOQ
-                          </p>
-                        </div>
-                        <button
-                          onClick={() => navigate('workspace')}
-                          className="text-xs font-bold text-blue-700 hover:text-blue-900 transition-colors"
-                        >
-                          View All Workspace →
-                        </button>
-                      </div>
-
-                      {/* Project Cards Grid */}
-                      {actualProjects.length > 0 ? (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-                          {actualProjects.slice(0, 6).map((p, index) => {
-                            const isPending = p.status === 'Pending';
-                            const isAwaitingApproval = p.status === 'Finalized';
-                            const isRejected = p.status === 'Finalized - Rejected';
-                            const isCompleted = p.status === 'Completed' || p.status === 'Finalized - Approved';
-                            return (
-                              <div
-                                key={p.id}
-                                onClick={() => onSelectProject(p)}
-                                className={`p-4.5 rounded-2xl border transition-all duration-300 cursor-pointer flex flex-col justify-between group/card relative overflow-hidden animate-fade-in-up hover:-translate-y-1.5 hover:shadow-xl ${
-                                  isPending
-                                    ? 'bg-amber-50/20 dark:bg-amber-950/20 border-amber-200/90 dark:border-amber-900/50 hover:border-amber-400'
-                                    : isAwaitingApproval
-                                    ? 'bg-blue-50/20 dark:bg-blue-950/20 border-blue-200/90 dark:border-blue-900/50 hover:border-blue-400'
-                                    : 'bg-white dark:bg-[#131B2E] border-slate-200 dark:border-slate-800 hover:border-blue-400 dark:hover:border-blue-500 hover:shadow-slate-100 dark:hover:shadow-none'
-                                }`}
-                                style={{ animationDelay: `${index * 60}ms` }}
+                <CompanyDetail
+                  user={user}
+                  companyProject={selectedCompanyProject}
+                  projects={projectList}
+                  onBack={() => setSelectedCompanyProject(null)}
+                  onSelectProject={onSelectProject}
+                  onNewSurvey={onNavigateToCreate}
+                  onDeleteProject={handleDelete}
+                />
+              ) : view === 'approval' ? (
+                <ApprovalPipeline />
+              ) : view === 'home' || view === 'ai-reader' || view === 'floor-plan' || isCategoryView ? (
+                <Home
+                  user={user}
+                  projects={projectList}
+                  categoryFilter={categoryFilter}
+                  onSelectCompany={companyName => {
+                    const clean = (s?: string) => (s || '').trim().toLowerCase();
+                    const target = clean(companyName);
+                    const found = projectList.find(
+                      p => clean(p.name) === target || clean(p.clientName) === target
+                    );
+                    if (found) {
+                      setSelectedCompanyProject(found);
+                    } else {
+                      setSelectedCompanyProject({
+                        id: `company-synth-${Date.now()}`,
+                        name: companyName,
+                        clientName: companyName,
+                        location: '',
+                        buildingType: 'Other',
+                        status: 'Pending',
+                        assignedTechnicians: [],
+                        createdAt: new Date().toISOString(),
+                      });
+                    }
+                  }}
+                  onSelectProject={onSelectProject}
+                  onNewCompanyClick={() => { setIsCompanyMode(true); setShowCreate(true); }}
+                  onDeleteProject={handleDelete}
+                  onUpdateProject={handleSaveEdit}
+                  aiScans={aiScans}
+                  onRenameAIScan={onRenameAIScan}
+                  onDeleteAIScan={onDeleteAIScan}
+                  onUpdateAIScan={onUpdateAIScan}
+                  isDark={isDark}
+                />
+              ) : view === 'estimation-hub' ? null
+                : view === 'calendar' ? (
+                  <CalendarView
+                    projects={projectList}
+                    onSelectProject={onSelectProject}
+                    userRole={user.role || 'ACCOUNTING'}
+                    isDark={isDark}
+                  />
+                ) : view === 'saved-folders' ? (
+                  <SavedFoldersView
+                    aiScans={aiScans}
+                    onRenameAIScan={onRenameAIScan}
+                    onDeleteAIScan={onDeleteAIScan}
+                    onUpdateAIScan={onUpdateAIScan}
+                  />
+                ) : view === 'saved-boqs' ? (
+                  <SavedBOQsView userRole={user.role} />
+                ) : view === 'history' ? (
+                  <SavedEstimationsView
+                    projects={projectList}
+                    statusFilter={['Completed', 'Finalized - Approved', 'Finalized - Rejected', 'Unknown']}
+                    onDeleteProject={handleDelete}
+                  />
+                ) : view === 'saved-estimations' ? (
+                  <SavedEstimationsView
+                    projects={projectList}
+                    onDeleteProject={handleDelete}
+                  />
+                ) : (
+                  <div className="pb-10">
+                    {/* Dashboard view: title + stats */}
+                    {view === 'dashboard' && (
+                      <>
+                        {/* Clean Header with Enriched Large Dynamic Time-Based Greeting */}
+                        <div className="px-6 pt-6 animate-fade-in-up">
+                          <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
+                            <div className="max-w-3xl">
+                              <h1
+                                className="text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight flex items-center gap-2.5 flex-wrap"
+                                style={{ fontFamily: 'Manrope, Inter, sans-serif' }}
                               >
-                                {/* Top Accent bar on hover */}
-                                <div
-                                  className={`absolute top-0 left-0 right-0 h-1 transition-opacity duration-300 opacity-0 group-hover/card:opacity-100 ${
-                                    isPending
-                                      ? 'bg-gradient-to-r from-amber-400 to-amber-600'
-                                      : isAwaitingApproval
-                                      ? 'bg-gradient-to-r from-blue-500 to-indigo-600'
-                                      : isRejected
-                                      ? 'bg-gradient-to-r from-rose-400 to-rose-600'
-                                      : 'bg-gradient-to-r from-emerald-400 to-teal-500'
-                                  }`}
-                                />
-
-                                <div>
-                                  <div className="flex items-center justify-between gap-2 mb-2.5">
-                                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 truncate">
-                                      {p.clientName}
-                                    </span>
-                                    <span
-                                      className={`text-[9px] font-extrabold px-2.5 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1.5 transition-transform duration-200 group-hover/card:scale-105 ${
-                                        isPending
-                                          ? 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800'
-                                          : isAwaitingApproval
-                                          ? 'bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800'
-                                          : isRejected
-                                          ? 'bg-rose-100 dark:bg-rose-950 text-rose-800 dark:text-rose-300 border border-rose-200 dark:border-rose-800'
-                                          : isCompleted
-                                          ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
-                                          : 'bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-300 border border-blue-200 dark:border-blue-800'
-                                      }`}
-                                    >
-                                      {/* Live status pulsing dot */}
-                                      <span className="relative flex h-1.5 w-1.5">
-                                        {(isPending || isAwaitingApproval) && (
-                                          <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${isPending ? 'bg-amber-400' : 'bg-blue-400'}`} />
-                                        )}
-                                        <span className={`relative inline-flex rounded-full h-1.5 w-1.5 ${isPending ? 'bg-amber-500' : isAwaitingApproval ? 'bg-blue-600' : isRejected ? 'bg-rose-500' : 'bg-emerald-500'}`} />
-                                      </span>
-                                      <span>
-                                        {isAwaitingApproval
-                                          ? 'Awaiting Approval'
-                                          : isCompleted
-                                          ? 'Approved'
-                                          : isRejected
-                                          ? 'Rejected'
-                                          : p.status}
-                                      </span>
-                                    </span>
-                                  </div>
-                                  <h4 className="text-xs font-black text-slate-800 dark:text-white mb-1 leading-snug transition-colors duration-200 group-hover/card:text-blue-600 dark:group-hover/card:text-blue-400">{p.name}</h4>
-                                  <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium truncate mb-3 flex items-center gap-1">
-                                    <span className="group-hover/card:scale-125 transition-transform duration-200 inline-block">📍</span>
-                                    <span>{p.location || 'Location not set'}</span>
-                                  </p>
-                                </div>
-
-                                <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
-                                  <span className="text-[10px] font-bold text-slate-400 truncate">
-                                    {p.systemTypes?.slice(0, 2).join(', ') || 'General System'}
-                                  </span>
-                                  <button
-                                    onClick={(e) => { e.stopPropagation(); onSelectProject(p); }}
-                                    className="px-3.5 py-1.5 rounded-xl text-xs font-black text-white transition-all duration-300 shadow-sm flex items-center gap-1 shrink-0 group-hover/card:shadow-md hover:scale-105 active:scale-95"
-                                    style={{
-                                      background: isPending ? 'linear-gradient(135deg, #D97706 0%, #B45309 100%)' : 'linear-gradient(135deg, #1D4ED8 0%, #1E40AF 100%)',
-                                      color: '#FFFFFF'
-                                    }}
-                                  >
-                                    <span>Open Survey</span>
-                                    <svg className="w-3.5 h-3.5 text-white transition-transform duration-300 group-hover/card:translate-x-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                                      <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
-                                    </svg>
-                                  </button>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      ) : (
-                        <div className="py-12 text-center flex flex-col items-center justify-center">
-                          <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center mb-3">
-                            <StatClipboard className="w-6 h-6" />
+                                <span className="text-slate-900 dark:text-white">{timeGreeting},</span>
+                                <span className="text-blue-600 dark:text-blue-400">{userGreetingName}!</span>
+                                <span className="inline-block animate-wave origin-bottom-right">👋</span>
+                              </h1>
+                              <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 font-medium leading-relaxed mt-2 max-w-2xl">
+                                Welcome to the system control center. Create estimation projects, assign technical teams, review surveys, and approve final equipment pricing estimates.
+                              </p>
+                            </div>
                           </div>
-                          <h4 className="text-sm font-black text-slate-800 mb-1">No site surveys created yet</h4>
-                          <p className="text-xs text-slate-500 max-w-sm mb-4">
-                            {isAdmin ? 'Click below to start your first survey and build low-voltage estimations.' : 'No active site surveys have been assigned or submitted yet.'}
-                          </p>
-                          {isAdmin && (
-                            <button
-                              onClick={onNavigateToCreate}
-                              className="px-5 py-2.5 rounded-xl font-black text-xs text-white bg-blue-700 hover:bg-blue-800 shadow-md transition-all cursor-pointer"
-                            >
-                              Start New Survey
-                            </button>
-                          )}
                         </div>
-                      )}
-                    </div>
-                  </div>
-                </>
-              )}
 
-              {/* Project Table (non-dashboard, non-notifications, non-category views) */}
-              {view !== 'dashboard' && view !== 'notifications' && !isCategoryView && (
-                <div className="px-6 pt-6 pb-6 flex-1 flex flex-col min-h-0">
-                  <div className="bg-white dark:bg-[#131B2E] rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm animate-fade-in-up flex-1 flex flex-col min-h-[calc(100vh-120px)]">
-                    {/* Table header */}
-                    <div
-                      className="flex flex-col sm:flex-row items-center justify-between gap-3 px-6 py-4 border-b border-slate-100 dark:border-slate-800"
-                    >
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-lg font-black text-slate-800 dark:text-white uppercase tracking-tight">
-                            {viewTitles[view] || 'Projects'}
-                          </span>
-
-                        </div>
-                        <p className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mt-0.5">
-                          AA2000 Security · Estimation Platform
-                        </p>
-                      </div>
-
-                      <div className="flex items-center gap-2 w-full sm:w-auto">
-                        <div className="relative flex-1 sm:max-w-xs">
-                          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                          </svg>
-                          <input
-                            type="text"
-                            value={search}
-                            onChange={e => setSearch(e.target.value)}
-                            placeholder="Search projects..."
-                            className="search-input w-full pl-9 pr-4 py-2 rounded-xl text-xs font-medium bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 outline-none focus:bg-white dark:focus:bg-slate-800 transition-all"
+                        {/* Status Overview & Stat Cards (2x2 Grid) */}
+                        <div className="px-6 pt-6 space-y-4">
+                          <StatusOverviewBanner
+                            totalProjects={totalProjects}
+                            inProgressCount={inProgressCount}
+                            pendingCount={pendingCount}
+                            completedCount={completedCount}
                           />
-                        </div>
-                        <select
-                          value={sort}
-                          onChange={e => setSort(e.target.value as SortMode)}
-                          className="px-3 py-2 rounded-xl text-xs font-medium bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-200 outline-none cursor-pointer"
-                        >
-                          <option value="newest">Newest</option>
-                          <option value="oldest">Oldest</option>
-                          <option value="name-asc">Name A–Z</option>
-                          <option value="name-desc">Name Z–A</option>
-                        </select>
-                      </div>
-                    </div>
 
-                    {/* Table body */}
-                    <div className="overflow-x-auto flex-1 pb-16">
-                      {ordered.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center py-16 gap-3 flex-1">
-                          <div
-                            className="w-14 h-14 rounded-2xl flex items-center justify-center text-2xl animate-float-a"
-                            style={{ background: theme.primaryAlpha08 }}
-                          >
-                            <StatClipboard className="w-6 h-6" />
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <SparklineCard
+                              label="PROJECTS"
+                              value={totalProjects}
+                              totalProjects={totalProjects}
+                              sub="Total site surveys"
+                              icon={<StatBuilding className="w-5 h-5" />}
+                              valueColor="#2563EB"
+                              onClick={() => navigate('assignment')}
+                              delay={0}
+                            />
+                            <SparklineCard
+                              label="IN PROGRESS"
+                              value={inProgressCount}
+                              totalProjects={totalProjects}
+                              sub="Active site surveys"
+                              icon={<StatBolt className="w-5 h-5" />}
+                              valueColor="#2563EB"
+                              onClick={() => navigate('workspace')}
+                              delay={50}
+                            />
+                            <SparklineCard
+                              label="PENDING"
+                              value={pendingCount}
+                              totalProjects={totalProjects}
+                              sub="Awaiting kickoff"
+                              icon={<StatCalendar className="w-5 h-5" />}
+                              valueColor="#F59E0B"
+                              onClick={() => navigate('workspace')}
+                              delay={100}
+                            />
+                            <SparklineCard
+                              label="COMPLETED"
+                              value={completedCount}
+                              totalProjects={totalProjects}
+                              sub="Finalized surveys"
+                              icon={<StatCheckCircle className="w-5 h-5" />}
+                              valueColor="#16A34A"
+                              onClick={() => navigate('done')}
+                              delay={150}
+                            />
                           </div>
-                          <div className="text-center">
-                            <p className="text-xs font-bold text-slate-600 dark:text-slate-300">No projects found</p>
-                            <p className="text-[11px] text-slate-400 mt-0.5">
-                              {user.role === 'ADMIN' ? 'Create a new project to get started' : 'No assignments in this view yet'}
-                            </p>
-                          </div>
                         </div>
-                      ) : (
-                        <table className="w-full text-left border-collapse">
-                          <thead>
-                            <tr className="text-[9px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100 dark:border-slate-800">
-                              <th className="py-3 pl-6">Project / Client</th>
-                              <th className="py-3 text-center">Status</th>
-                              <th className="py-3 text-center">Date & Time</th>
-                              <th className="py-3 pr-6 text-right" />
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {ordered.map((project, i) => {
-                              const isPinned = pinned.has(project.id);
-                              const isOpen = menuOpen === project.id;
-                              const isNearBottom = ordered.length > 2 && i >= ordered.length - 2;
-                              const statusBar =
-                                Object.entries(statusConfig).find(([key]) => project.status?.includes(key))?.[1]?.bar || '#64748B';
 
-                              const formattedTime = (() => {
-                                if (!project.createdAt) return '';
-                                try {
-                                  const d = new Date(project.createdAt);
-                                  if (!isNaN(d.getTime())) {
-                                    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
-                                  }
-                                } catch {}
-                                return '';
-                              })();
+                        {/* Pending Surveys & Active Projects */}
+                        <div className="px-6 pt-6">
+                          <div className="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-sm animate-fade-in-up flex flex-col flex-1">
+                            <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
+                              <div>
+                                <h3 className="text-sm font-black tracking-wider text-slate-800 uppercase flex items-center gap-2">
+                                  <span>Pending Surveys &amp; Active Projects</span>
+                                  {pendingCount > 0 && (
+                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500 text-white">
+                                      {pendingCount} Pending
+                                    </span>
+                                  )}
+                                </h3>
+                                <p className="text-[11px] font-medium text-slate-500 mt-0.5">
+                                  Click any project below to open site survey, upload floor plan, or build BOQ
+                                </p>
+                              </div>
+                              <button
+                                onClick={() => navigate('workspace')}
+                                className="text-xs font-bold text-blue-700 hover:text-blue-900 transition-colors"
+                              >
+                                View All Workspace →
+                              </button>
+                            </div>
 
-                              return (
-                                <tr
-                                  key={project.id}
-                                  onClick={() => onSelectProject(project)}
-                                  className={`hover:bg-slate-50/80 dark:hover:bg-slate-800/50 cursor-pointer border-b border-slate-50 dark:border-slate-800/50 transition-colors group animate-fade-in-up ${
-                                    isOpen ? 'relative z-50' : ''
-                                  }`}
-                                  style={{ animationDelay: `${i * 30}ms` }}
-                                >
-                                  <td className="py-3.5 pl-6">
-                                    <div className="flex items-center gap-3">
-                                      <div className="w-1 h-8 rounded-full shrink-0" style={{ background: statusBar }} />
+                            {/* Project Cards Grid */}
+                            {actualProjects.length > 0 ? (
+                              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+                                {actualProjects.slice(0, 6).map((p, index) => {
+                                  const isPending = p.status === 'Pending';
+                                  const isAwaitingApproval = p.status === 'Finalized';
+                                  const isRejected = p.status === 'Finalized - Rejected';
+                                  const isCompleted = p.status === 'Completed' || p.status === 'Finalized - Approved';
+                                  return (
+                                    <div
+                                      key={p.id}
+                                      onClick={() => onSelectProject(p)}
+                                      className={`p-4.5 rounded-2xl border transition-all duration-300 cursor-pointer flex flex-col justify-between group/card relative overflow-hidden animate-fade-in-up hover:-translate-y-1.5 hover:shadow-xl ${isPending
+                                        ? 'bg-amber-50/20 dark:bg-amber-950/20 border-amber-200/90 dark:border-amber-900/50 hover:border-amber-400'
+                                        : isAwaitingApproval
+                                          ? 'bg-blue-50/20 dark:bg-blue-950/20 border-blue-200/90 dark:border-blue-900/50 hover:border-blue-400'
+                                          : 'bg-white dark:bg-[#131B2E] border-slate-200 dark:border-slate-800 hover:border-blue-400 dark:hover:border-blue-500 hover:shadow-slate-100 dark:hover:shadow-none'
+                                        }`}
+                                      style={{ animationDelay: `${index * 60}ms` }}
+                                    >
+                                      {/* Top Accent bar on hover */}
+                                      <div
+                                        className={`absolute top-0 left-0 right-0 h-1 transition-opacity duration-300 opacity-0 group-hover/card:opacity-100 ${isPending
+                                          ? 'bg-gradient-to-r from-amber-400 to-amber-600'
+                                          : isAwaitingApproval
+                                            ? 'bg-gradient-to-r from-blue-500 to-indigo-600'
+                                            : isRejected
+                                              ? 'bg-gradient-to-r from-rose-400 to-rose-600'
+                                              : 'bg-gradient-to-r from-emerald-400 to-teal-500'
+                                          }`}
+                                      />
+
                                       <div>
-                                        <div className="flex items-center gap-2">
-                                          <span className="text-xs font-bold text-slate-800 dark:text-white">{project.name}</span>
-                                          {isPinned && (
-                                            <span
-                                              className="text-[8px] font-extrabold px-1.5 py-0.5 rounded uppercase tracking-wide"
-                                              style={{ background: theme.primaryAlpha08, color: theme.primary }}
-                                            >
-                                              Pinned
+                                        <div className="flex items-center justify-between gap-2 mb-2.5">
+                                          <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 truncate">
+                                            {p.clientName}
+                                          </span>
+                                          <span
+                                            className={`text-[9px] font-extrabold px-2.5 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1.5 transition-transform duration-200 group-hover/card:scale-105 ${isPending
+                                              ? 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800'
+                                              : isAwaitingApproval
+                                                ? 'bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800'
+                                                : isRejected
+                                                  ? 'bg-rose-100 dark:bg-rose-950 text-rose-800 dark:text-rose-300 border border-rose-200 dark:border-rose-800'
+                                                  : isCompleted
+                                                    ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
+                                                    : 'bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-300 border border-blue-200 dark:border-blue-800'
+                                              }`}
+                                          >
+                                            {/* Live status pulsing dot */}
+                                            <span className="relative flex h-1.5 w-1.5">
+                                              {(isPending || isAwaitingApproval) && (
+                                                <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${isPending ? 'bg-amber-400' : 'bg-blue-400'}`} />
+                                              )}
+                                              <span className={`relative inline-flex rounded-full h-1.5 w-1.5 ${isPending ? 'bg-amber-500' : isAwaitingApproval ? 'bg-blue-600' : isRejected ? 'bg-rose-500' : 'bg-emerald-500'}`} />
                                             </span>
-                                          )}
+                                            <span>
+                                              {isAwaitingApproval
+                                                ? 'Awaiting Approval'
+                                                : isCompleted
+                                                  ? 'Approved'
+                                                  : isRejected
+                                                    ? 'Rejected'
+                                                    : p.status}
+                                            </span>
+                                          </span>
                                         </div>
-                                        <p className="text-[10px] text-slate-400 mt-0.5">
-                                          {project.clientName} · {project.location}
+                                        <h4 className="text-xs font-black text-slate-800 dark:text-white mb-1 leading-snug transition-colors duration-200 group-hover/card:text-blue-600 dark:group-hover/card:text-blue-400">{p.name}</h4>
+                                        <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium truncate mb-3 flex items-center gap-1">
+                                          <span className="group-hover/card:scale-125 transition-transform duration-200 inline-block">📍</span>
+                                          <span>{p.location || 'Location not set'}</span>
                                         </p>
                                       </div>
-                                    </div>
-                                  </td>
-                                  <td className="py-3.5 text-center">
-                                    <StatusBadge status={project.status} />
-                                  </td>
-                                  <td className="py-3.5 text-center text-[11px] font-medium text-slate-500 dark:text-slate-400 whitespace-nowrap">
-                                    <div className="flex items-center justify-center gap-1.5">
-                                      <span>{project.startDate || (project.createdAt ? project.createdAt.split('T')[0] : '—')}</span>
-                                      {formattedTime && (
-                                        <span className="text-[10px] text-slate-400 dark:text-slate-500 font-semibold">
-                                          · {formattedTime}
+
+                                      <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
+                                        <span className="text-[10px] font-bold text-slate-400 truncate">
+                                          {p.systemTypes?.slice(0, 2).join(', ') || 'General System'}
                                         </span>
-                                      )}
-                                    </div>
-                                  </td>
-                                  <td className={`py-3.5 pr-6 text-right relative ${isOpen ? 'z-50' : ''}`} onClick={e => e.stopPropagation()}>
-                                    <button
-                                      onClick={() => setMenuOpen(isOpen ? null : project.id)}
-                                      className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-all opacity-0 group-hover:opacity-100 cursor-pointer"
-                                    >
-                                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h.01M12 12h.01M19 12h.01" />
-                                      </svg>
-                                    </button>
-                                    {isOpen && (
-                                      <>
-                                        <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(null)} />
-                                        <div
-                                          className={`absolute right-4 z-50 w-48 rounded-xl bg-white dark:bg-[#162032] border border-slate-200 dark:border-slate-700 py-1.5 shadow-2xl text-left animate-scale-in ${
-                                            isNearBottom ? 'bottom-8' : 'top-10'
-                                          }`}
+                                        <button
+                                          onClick={(e) => { e.stopPropagation(); onSelectProject(p); }}
+                                          className="px-3.5 py-1.5 rounded-xl text-xs font-black text-white transition-all duration-300 shadow-sm flex items-center gap-1 shrink-0 group-hover/card:shadow-md hover:scale-105 active:scale-95"
+                                          style={{
+                                            background: isPending ? 'linear-gradient(135deg, #D97706 0%, #B45309 100%)' : 'linear-gradient(135deg, #1D4ED8 0%, #1E40AF 100%)',
+                                            color: '#FFFFFF'
+                                          }}
                                         >
-                                          <button
-                                            onClick={() => { setEditProject(project); setMenuOpen(null); }}
-                                            className="w-full px-3.5 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-800 dark:hover:text-white flex items-center gap-2 cursor-pointer transition-colors"
-                                          >
-                                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
-                                            Edit Project
-                                          </button>
-                                          <button
-                                            onClick={() => handlePin(project.id)}
-                                            className="w-full px-3.5 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-800 dark:hover:text-white flex items-center gap-2 cursor-pointer transition-colors"
-                                          >
-                                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" /></svg>
-                                            {isPinned ? 'Unpin' : 'Pin Project'}
-                                          </button>
-                                          <button
-                                            onClick={() => onSelectProject(project)}
-                                            className="w-full px-3.5 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 hover:text-slate-800 flex items-center gap-2 cursor-pointer transition-colors"
-                                          >
-                                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
-                                            View Details
-                                          </button>
-                                          <div className="border-t border-slate-100 my-1" />
-                                          <button
-                                            onClick={() => { setDeleteConfirm(project.id); setMenuOpen(null); }}
-                                            className="w-full px-3.5 py-2 text-xs font-bold text-red-600 hover:bg-red-50 hover:text-red-700 flex items-center gap-2 cursor-pointer transition-colors"
-                                          >
-                                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                                            Delete Project
-                                          </button>
-                                        </div>
-                                      </>
-                                    )}
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Notification View */}
-              {view === 'notifications' && (
-                <div className="px-6 pt-6 pb-6 flex-1 flex flex-col min-h-0">
-                  <div className="bg-white dark:bg-[#131B2E] rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden animate-fade-in-up flex-1 flex flex-col min-h-[calc(100vh-120px)]">
-                    {/* Tabs */}
-                    <div className="px-6 pt-4 pb-0 border-b border-slate-100">
-                      <div className="flex flex-wrap gap-1">
-                        {[
-                          { key: 'ongoing', label: 'Ongoing', count: countOngoing, color: '#2563EB' },
-                          { key: 'upcoming', label: 'Upcoming', count: countUpcoming, color: '#059669' },
-                          { key: 'missing', label: 'Missing', count: countMissing, color: '#D97706' },
-                          ...(user.role === 'ADMIN' || user.role === 'ACCOUNTING'
-                            ? [
-                              { key: 'approval', label: 'Approval', count: countApproval, color: '#7C3AED' },
-                              { key: 'finalize', label: 'Finalize', count: countFinalize, color: '#059669' },
-                            ]
-                            : []),
-                        ].map(tab => (
-                          <button
-                            key={tab.key}
-                            onClick={() => setActiveNotifTab(tab.key as any)}
-                            className="flex items-center gap-1.5 px-3 py-2 text-[11px] font-bold uppercase tracking-wider border-b-2 transition-all mb-[-1px]"
-                            style={
-                              activeNotifTab === tab.key
-                                ? { borderColor: tab.color, color: tab.color }
-                                : { borderColor: 'transparent', color: '#94A3B8' }
-                            }
-                          >
-                            {tab.label}
-                            <span
-                              className="text-[9px] font-extrabold px-1.5 py-0.5 rounded-full"
-                              style={
-                                activeNotifTab === tab.key
-                                  ? { background: `${tab.color}15`, color: tab.color }
-                                  : { background: '#F1F5F9', color: '#94A3B8' }
-                              }
-                            >
-                              {tab.count}
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="divide-y divide-slate-50">
-                      {notifications.filter(n => n.type === activeNotifTab).length === 0 ? (
-                        <div className="py-12 text-center">
-                          <div className="w-12 h-12 rounded-2xl bg-slate-50 flex items-center justify-center mx-auto mb-3">
-                            <Bell className="w-5 h-5 text-slate-300" />
+                                          <span>Open Survey</span>
+                                          <svg className="w-3.5 h-3.5 text-white transition-transform duration-300 group-hover/card:translate-x-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                                            <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
+                                          </svg>
+                                        </button>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            ) : (
+                              <div className="py-12 text-center flex flex-col items-center justify-center">
+                                <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center mb-3">
+                                  <StatClipboard className="w-6 h-6" />
+                                </div>
+                                <h4 className="text-sm font-black text-slate-800 mb-1">No site surveys created yet</h4>
+                                <p className="text-xs text-slate-500 max-w-sm mb-4">
+                                  {isAdmin ? 'Click below to start your first survey and build low-voltage estimations.' : 'No active site surveys have been assigned or submitted yet.'}
+                                </p>
+                                {isAdmin && (
+                                  <button
+                                    onClick={onNavigateToCreate}
+                                    className="px-5 py-2.5 rounded-xl font-black text-xs text-white bg-blue-700 hover:bg-blue-800 shadow-md transition-all cursor-pointer"
+                                  >
+                                    Start New Survey
+                                  </button>
+                                )}
+                              </div>
+                            )}
                           </div>
-                          <p className="text-xs font-bold text-slate-400">No alerts in this category</p>
                         </div>
-                      ) : (
-                        notifications
-                          .filter(n => n.type === activeNotifTab)
-                          .map(n => {
-                            const cfg = typeConfig[n.type] || typeConfig.ongoing;
-                            return (
-                              <div
-                                key={n.id}
-                                onClick={() => navigateNotif(n.type)}
-                                className="px-6 py-4 flex items-start gap-4 cursor-pointer hover:bg-slate-50/50 transition-colors group"
-                              >
-                                <div
-                                  className="w-2.5 h-2.5 rounded-full mt-1.5 shrink-0"
-                                  style={{ background: !n.read ? cfg.dot : '#CBD5E1' }}
+                      </>
+                    )}
+
+                    {/* Project Table (non-dashboard, non-notifications, non-category views) */}
+                    {view !== 'dashboard' && view !== 'notifications' && !isCategoryView && (
+                      <div className="px-6 pt-6 pb-6 flex-1 flex flex-col min-h-0">
+                        <div className="bg-white dark:bg-[#131B2E] rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm animate-fade-in-up flex-1 flex flex-col min-h-[calc(100vh-120px)]">
+                          {/* Table header */}
+                          <div
+                            className="flex flex-col sm:flex-row items-center justify-between gap-3 px-6 py-4 border-b border-slate-100 dark:border-slate-800"
+                          >
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-lg font-black text-slate-800 dark:text-white uppercase tracking-tight">
+                                  {viewTitles[view] || 'Projects'}
+                                </span>
+
+                              </div>
+                              <p className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mt-0.5">
+                                AA2000 Security · Estimation Platform
+                              </p>
+                            </div>
+
+                            <div className="flex items-center gap-2 w-full sm:w-auto">
+                              <div className="relative flex-1 sm:max-w-xs">
+                                <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                                </svg>
+                                <input
+                                  type="text"
+                                  value={search}
+                                  onChange={e => setSearch(e.target.value)}
+                                  placeholder="Search projects..."
+                                  className="search-input w-full pl-9 pr-4 py-2 rounded-xl text-xs font-medium bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 outline-none focus:bg-white dark:focus:bg-slate-800 transition-all"
                                 />
-                                <div className="min-w-0 flex-1">
-                                  <p className={`text-sm ${!n.read ? 'font-bold text-slate-800' : 'font-medium text-slate-500'}`}>
-                                    {n.title}
+                              </div>
+                              <select
+                                value={sort}
+                                onChange={e => setSort(e.target.value as SortMode)}
+                                className="px-3 py-2 rounded-xl text-xs font-medium bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-200 outline-none cursor-pointer"
+                              >
+                                <option value="newest">Newest</option>
+                                <option value="oldest">Oldest</option>
+                                <option value="name-asc">Name A–Z</option>
+                                <option value="name-desc">Name Z–A</option>
+                              </select>
+                            </div>
+                          </div>
+
+                          {/* Table body */}
+                          <div className="overflow-x-auto flex-1 pb-16">
+                            {ordered.length === 0 ? (
+                              <div className="flex flex-col items-center justify-center py-16 gap-3 flex-1">
+                                <div
+                                  className="w-14 h-14 rounded-2xl flex items-center justify-center text-2xl animate-float-a"
+                                  style={{ background: theme.primaryAlpha08 }}
+                                >
+                                  <StatClipboard className="w-6 h-6" />
+                                </div>
+                                <div className="text-center">
+                                  <p className="text-xs font-bold text-slate-600 dark:text-slate-300">No projects found</p>
+                                  <p className="text-[11px] text-slate-400 mt-0.5">
+                                    {user.role === 'ADMIN' ? 'Create a new project to get started' : 'No assignments in this view yet'}
                                   </p>
-                                  <div className="flex items-center gap-3 mt-1.5">
-                                    <span className="text-xs text-slate-400 font-medium">
-                                      {n.companyName} · {n.date}
-                                    </span>
-                                    <span
-                                      className="text-[8px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wide"
-                                      style={{ background: cfg.bg, color: cfg.color }}
-                                    >
-                                      {cfg.label}
-                                    </span>
-                                  </div>
                                 </div>
                               </div>
-                            );
-                          })
-                      )}
-                    </div>
+                            ) : (
+                              <table className="w-full text-left border-collapse">
+                                <thead>
+                                  <tr className="text-[9px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100 dark:border-slate-800">
+                                    <th className="py-3 pl-6">Project / Client</th>
+                                    <th className="py-3 text-center">Status</th>
+                                    <th className="py-3 text-center">Date & Time</th>
+                                    <th className="py-3 pr-6 text-right" />
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {ordered.map((project, i) => {
+                                    const isPinned = pinned.has(project.id);
+                                    const isOpen = menuOpen === project.id;
+                                    const isNearBottom = ordered.length > 2 && i >= ordered.length - 2;
+                                    const statusBar =
+                                      Object.entries(statusConfig).find(([key]) => project.status?.includes(key))?.[1]?.bar || '#64748B';
+
+                                    const formattedTime = (() => {
+                                      if (!project.createdAt) return '';
+                                      try {
+                                        const d = new Date(project.createdAt);
+                                        if (!isNaN(d.getTime())) {
+                                          return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+                                        }
+                                      } catch { }
+                                      return '';
+                                    })();
+
+                                    return (
+                                      <tr
+                                        key={project.id}
+                                        onClick={() => onSelectProject(project)}
+                                        className={`hover:bg-slate-50/80 dark:hover:bg-slate-800/50 cursor-pointer border-b border-slate-50 dark:border-slate-800/50 transition-colors group animate-fade-in-up ${isOpen ? 'relative z-50' : ''
+                                          }`}
+                                        style={{ animationDelay: `${i * 30}ms` }}
+                                      >
+                                        <td className="py-3.5 pl-6">
+                                          <div className="flex items-center gap-3">
+                                            <div className="w-1 h-8 rounded-full shrink-0" style={{ background: statusBar }} />
+                                            <div>
+                                              <div className="flex items-center gap-2">
+                                                <span className="text-xs font-bold text-slate-800 dark:text-white">{project.name}</span>
+                                                {isPinned && (
+                                                  <span
+                                                    className="text-[8px] font-extrabold px-1.5 py-0.5 rounded uppercase tracking-wide"
+                                                    style={{ background: theme.primaryAlpha08, color: theme.primary }}
+                                                  >
+                                                    Pinned
+                                                  </span>
+                                                )}
+                                              </div>
+                                              <p className="text-[10px] text-slate-400 mt-0.5">
+                                                {project.clientName} · {project.location}
+                                              </p>
+                                            </div>
+                                          </div>
+                                        </td>
+                                        <td className="py-3.5 text-center">
+                                          <StatusBadge status={project.status} />
+                                        </td>
+                                        <td className="py-3.5 text-center text-[11px] font-medium text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                                          <div className="flex items-center justify-center gap-1.5">
+                                            <span>{project.startDate || (project.createdAt ? project.createdAt.split('T')[0] : '—')}</span>
+                                            {formattedTime && (
+                                              <span className="text-[10px] text-slate-400 dark:text-slate-500 font-semibold">
+                                                · {formattedTime}
+                                              </span>
+                                            )}
+                                          </div>
+                                        </td>
+                                        <td className={`py-3.5 pr-6 text-right relative ${isOpen ? 'z-50' : ''}`} onClick={e => e.stopPropagation()}>
+                                          <button
+                                            onClick={() => setMenuOpen(isOpen ? null : project.id)}
+                                            className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-all opacity-0 group-hover:opacity-100 cursor-pointer"
+                                          >
+                                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                                              <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h.01M12 12h.01M19 12h.01" />
+                                            </svg>
+                                          </button>
+                                          {isOpen && (
+                                            <>
+                                              <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(null)} />
+                                              <div
+                                                className={`absolute right-4 z-50 w-48 rounded-xl bg-white dark:bg-[#162032] border border-slate-200 dark:border-slate-700 py-1.5 shadow-2xl text-left animate-scale-in ${isNearBottom ? 'bottom-8' : 'top-10'
+                                                  }`}
+                                              >
+                                                <button
+                                                  onClick={() => { setEditProject(project); setMenuOpen(null); }}
+                                                  className="w-full px-3.5 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-800 dark:hover:text-white flex items-center gap-2 cursor-pointer transition-colors"
+                                                >
+                                                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                                                  Edit Project
+                                                </button>
+                                                <button
+                                                  onClick={() => handlePin(project.id)}
+                                                  className="w-full px-3.5 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-800 dark:hover:text-white flex items-center gap-2 cursor-pointer transition-colors"
+                                                >
+                                                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" /></svg>
+                                                  {isPinned ? 'Unpin' : 'Pin Project'}
+                                                </button>
+                                                <button
+                                                  onClick={() => onSelectProject(project)}
+                                                  className="w-full px-3.5 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 hover:text-slate-800 flex items-center gap-2 cursor-pointer transition-colors"
+                                                >
+                                                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                                                  View Details
+                                                </button>
+                                                <div className="border-t border-slate-100 my-1" />
+                                                <button
+                                                  onClick={() => { setDeleteConfirm(project.id); setMenuOpen(null); }}
+                                                  className="w-full px-3.5 py-2 text-xs font-bold text-red-600 hover:bg-red-50 hover:text-red-700 flex items-center gap-2 cursor-pointer transition-colors"
+                                                >
+                                                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                                  Delete Project
+                                                </button>
+                                              </div>
+                                            </>
+                                          )}
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Notification View */}
+                    {view === 'notifications' && (
+                      <div className="px-6 pt-6 pb-6 flex-1 flex flex-col min-h-0">
+                        <div className="bg-white dark:bg-[#131B2E] rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden animate-fade-in-up flex-1 flex flex-col min-h-[calc(100vh-120px)]">
+                          {/* Tabs */}
+                          <div className="px-6 pt-4 pb-0 border-b border-slate-100">
+                            <div className="flex flex-wrap gap-1">
+                              {[
+                                { key: 'ongoing', label: 'Ongoing', count: countOngoing, color: '#2563EB' },
+                                { key: 'upcoming', label: 'Upcoming', count: countUpcoming, color: '#059669' },
+                                { key: 'missing', label: 'Missing', count: countMissing, color: '#D97706' },
+                                ...(user.role === 'ADMIN' || user.role === 'ACCOUNTING'
+                                  ? [
+                                    { key: 'approval', label: 'Approval', count: countApproval, color: '#7C3AED' },
+                                    { key: 'finalize', label: 'Finalize', count: countFinalize, color: '#059669' },
+                                  ]
+                                  : []),
+                              ].map(tab => (
+                                <button
+                                  key={tab.key}
+                                  onClick={() => setActiveNotifTab(tab.key as any)}
+                                  className="flex items-center gap-1.5 px-3 py-2 text-[11px] font-bold uppercase tracking-wider border-b-2 transition-all mb-[-1px]"
+                                  style={
+                                    activeNotifTab === tab.key
+                                      ? { borderColor: tab.color, color: tab.color }
+                                      : { borderColor: 'transparent', color: '#94A3B8' }
+                                  }
+                                >
+                                  {tab.label}
+                                  <span
+                                    className="text-[9px] font-extrabold px-1.5 py-0.5 rounded-full"
+                                    style={
+                                      activeNotifTab === tab.key
+                                        ? { background: `${tab.color}15`, color: tab.color }
+                                        : { background: '#F1F5F9', color: '#94A3B8' }
+                                    }
+                                  >
+                                    {tab.count}
+                                  </span>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
+                          <div className="divide-y divide-slate-50">
+                            {notifications.filter(n => n.type === activeNotifTab).length === 0 ? (
+                              <div className="py-12 text-center">
+                                <div className="w-12 h-12 rounded-2xl bg-slate-50 flex items-center justify-center mx-auto mb-3">
+                                  <Bell className="w-5 h-5 text-slate-300" />
+                                </div>
+                                <p className="text-xs font-bold text-slate-400">No alerts in this category</p>
+                              </div>
+                            ) : (
+                              notifications
+                                .filter(n => n.type === activeNotifTab)
+                                .map(n => {
+                                  const cfg = typeConfig[n.type] || typeConfig.ongoing;
+                                  return (
+                                    <div
+                                      key={n.id}
+                                      onClick={() => navigateNotif(n.type)}
+                                      className="px-6 py-4 flex items-start gap-4 cursor-pointer hover:bg-slate-50/50 transition-colors group"
+                                    >
+                                      <div
+                                        className="w-2.5 h-2.5 rounded-full mt-1.5 shrink-0"
+                                        style={{ background: !n.read ? cfg.dot : '#CBD5E1' }}
+                                      />
+                                      <div className="min-w-0 flex-1">
+                                        <p className={`text-sm ${!n.read ? 'font-bold text-slate-800' : 'font-medium text-slate-500'}`}>
+                                          {n.title}
+                                        </p>
+                                        <div className="flex items-center gap-3 mt-1.5">
+                                          <span className="text-xs text-slate-400 font-medium">
+                                            {n.companyName} · {n.date}
+                                          </span>
+                                          <span
+                                            className="text-[8px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wide"
+                                            style={{ background: cfg.bg, color: cfg.color }}
+                                          >
+                                            {cfg.label}
+                                          </span>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  );
+                                })
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                </div>
-              )}
-            </div>
+                )}
+            </>
           )}
-        </>
-      )}
-    </div>
+        </div>
 
         {/* ── Modals ── */}
         {showCreate && (
