@@ -10,19 +10,20 @@ interface CalendarViewProps {
 }
 
 const statusConfig: Record<string, { label: string; color: string; bg: string; dot: string }> = {
-  'Pending':             { label: 'Pending',     color: '#F59E0B', bg: 'rgba(245, 158, 11, 0.15)', dot: '#F59E0B' },
-  'In Progress':         { label: 'In Progress', color: '#3B82F6', bg: 'rgba(59, 130, 246, 0.15)', dot: '#3B82F6' },
-  'Completed':           { label: 'Completed',   color: '#10B981', bg: 'rgba(16, 185, 129, 0.15)', dot: '#10B981' },
-  'Finalized - Approved':{ label: 'Approved',    color: '#10B981', bg: 'rgba(16, 185, 129, 0.15)', dot: '#10B981' },
-  'Finalized - Rejected':{ label: 'Rejected',    color: '#EF4444', bg: 'rgba(239, 68, 68, 0.15)',  dot: '#EF4444' },
-  'Finalized':           { label: 'Finalized',   color: '#A855F7', bg: 'rgba(168, 85, 247, 0.15)', dot: '#A855F7' },
+  'Pending':              { label: 'Pending',     color: '#F59E0B', bg: 'rgba(245, 158, 11, 0.15)', dot: '#F59E0B' },
+  'In Progress':          { label: 'In Progress', color: '#2563EB', bg: 'rgba(37, 99, 235, 0.15)', dot: '#2563EB' },
+  'Completed':            { label: 'Completed',   color: '#10B981', bg: 'rgba(16, 185, 129, 0.15)', dot: '#10B981' },
+  'Finalized - Approved': { label: 'Approved',    color: '#10B981', bg: 'rgba(16, 185, 129, 0.15)', dot: '#10B981' },
+  'Finalized - Rejected': { label: 'Rejected',    color: '#EF4444', bg: 'rgba(239, 68, 68, 0.15)',  dot: '#EF4444' },
+  'Finalized':            { label: 'Finalized',   color: '#7C3AED', bg: 'rgba(124, 58, 237, 0.15)', dot: '#7C3AED' },
 };
 
 export default function CalendarView({ projects, onSelectProject, userRole, isDark = false }: CalendarViewProps) {
-  const theme = getRoleTheme(userRole);
+  const theme = getRoleTheme(userRole, isDark);
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedStatus, setSelectedStatus] = useState<string>('ALL');
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [sideSearch, setSideSearch] = useState('');
   const [selectedDayProjects, setSelectedDayProjects] = useState<{ date: string; projects: Project[] } | null>(null);
 
   const actualProjects = useMemo(() => {
@@ -54,10 +55,9 @@ export default function CalendarView({ projects, onSelectProject, userRole, isDa
   const totalDays = new Date(year, month + 1, 0).getDate();
   const prevMonthTotalDays = new Date(year, month, 0).getDate();
 
-  // Create calendar cells array (42 cells: 6 rows x 7 cols)
+  // Create 42 cells (6 rows x 7 cols)
   const cells = useMemo(() => {
     const arr = [];
-    // Previous Month padding days
     for (let i = firstDayIndex - 1; i >= 0; i--) {
       const d = prevMonthTotalDays - i;
       const prevM = month === 0 ? 12 : month;
@@ -65,14 +65,11 @@ export default function CalendarView({ projects, onSelectProject, userRole, isDa
       const dateString = `${prevY}-${String(prevM).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
       arr.push({ day: d, isCurrentMonth: false, dateString });
     }
-    // Current Month days
     for (let d = 1; d <= totalDays; d++) {
       const dateString = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
       arr.push({ day: d, isCurrentMonth: true, dateString });
     }
-    // Next Month padding days
-    const totalCellsSoFar = arr.length;
-    const nextMonthPadding = 42 - totalCellsSoFar;
+    const nextMonthPadding = 42 - arr.length;
     for (let d = 1; d <= nextMonthPadding; d++) {
       const nextM = month === 11 ? 1 : month + 2;
       const nextY = month === 11 ? year + 1 : year;
@@ -95,20 +92,7 @@ export default function CalendarView({ projects, onSelectProject, userRole, isDa
     return map;
   }, [actualProjects]);
 
-  // Month projects list
-  const monthProjects = useMemo(() => {
-    return actualProjects.filter(p => {
-      if (!p.startDate) return false;
-      const pDate = new Date(p.startDate);
-      const inMonth = pDate.getFullYear() === year && pDate.getMonth() === month;
-      if (!inMonth) return false;
-      if (selectedStatus !== 'ALL' && p.status !== selectedStatus) return false;
-      if (selectedDate && p.startDate !== selectedDate) return false;
-      return true;
-    });
-  }, [actualProjects, year, month, selectedStatus, selectedDate]);
-
-  // Month stats for quick user overview
+  // Month stats
   const monthStats = useMemo(() => {
     let pending = 0;
     let inProgress = 0;
@@ -127,36 +111,54 @@ export default function CalendarView({ projects, onSelectProject, userRole, isDa
     return { pending, inProgress, completed, total: pending + inProgress + completed };
   }, [actualProjects, year, month]);
 
+  // Filtered month projects for side panel
+  const monthProjects = useMemo(() => {
+    const q = sideSearch.toLowerCase().trim();
+    return actualProjects.filter(p => {
+      if (!p.startDate) return false;
+      const pDate = new Date(p.startDate);
+      const inMonth = pDate.getFullYear() === year && pDate.getMonth() === month;
+      if (!inMonth) return false;
+      if (selectedStatus !== 'ALL' && p.status !== selectedStatus) return false;
+      if (selectedDate && p.startDate !== selectedDate) return false;
+      if (q) {
+        return (
+          p.name.toLowerCase().includes(q) ||
+          p.clientName.toLowerCase().includes(q) ||
+          p.location.toLowerCase().includes(q)
+        );
+      }
+      return true;
+    });
+  }, [actualProjects, year, month, selectedStatus, selectedDate, sideSearch]);
+
   return (
-    <div className="px-4 sm:px-6 pt-6 pb-16 space-y-6 max-w-7xl mx-auto w-full">
-      {/* Header & Quick Filter Pills */}
+    <div className="px-6 pt-6 pb-16 space-y-6 max-w-7xl mx-auto w-full">
+
+      {/* ══════════════════════════════════════════
+          TOP HEADER ROW
+      ══════════════════════════════════════════ */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 animate-fade-in-up">
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2.5">
             <h1
-              className="text-2xl font-black tracking-tight"
-              style={{ color: isDark ? '#F8FAFC' : '#0F172A', fontFamily: 'Manrope, Inter, sans-serif' }}
+              className="text-3xl font-black tracking-tight text-slate-900 dark:text-white"
+              style={{ fontFamily: 'Manrope, Inter, sans-serif' }}
             >
               Survey Calendar
             </h1>
-            <span
-              className={`text-xs font-bold px-2.5 py-0.5 rounded-full transition-colors ${
-                isDark
-                  ? 'bg-blue-950/60 text-blue-300 border border-blue-900/50'
-                  : 'bg-blue-100 text-blue-700'
-              }`}
-            >
+            <span className="text-xs font-bold px-3 py-1 rounded-full bg-blue-100 dark:bg-blue-950/80 text-blue-600 dark:text-blue-300">
               {monthName} {year}
             </span>
           </div>
-          <p className="text-xs font-semibold text-slate-400 mt-0.5">
-            Click any date or survey card to inspect site details, assigned technicians, and status
+          <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mt-1">
+            Click any date or survey card to inspect site details, assigned technicians, and status.
           </p>
         </div>
 
-        {/* Status Filter Buttons */}
+        {/* Filter Pills */}
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mr-1">Filter:</span>
+          <span className="text-xs font-medium text-slate-400 mr-1">Filters:</span>
           {[
             { key: 'ALL', label: `All (${monthStats.total})` },
             { key: 'Pending', label: `Pending (${monthStats.pending})` },
@@ -166,18 +168,11 @@ export default function CalendarView({ projects, onSelectProject, userRole, isDa
             <button
               key={key}
               onClick={() => setSelectedStatus(key)}
-              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all duration-200 border cursor-pointer ${
+              className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all duration-200 border cursor-pointer ${
                 selectedStatus === key
-                  ? ''
-                  : isDark
-                  ? 'bg-slate-800/80 hover:bg-slate-700 text-slate-300 border-slate-700'
-                  : 'bg-white hover:bg-slate-50 text-slate-600 border-slate-200 shadow-2xs'
+                  ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                  : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700'
               }`}
-              style={
-                selectedStatus === key
-                  ? { background: theme.primary, color: '#ffffff', borderColor: theme.primary, boxShadow: `0 4px 12px ${theme.primary}35` }
-                  : undefined
-              }
             >
               {label}
             </button>
@@ -185,460 +180,383 @@ export default function CalendarView({ projects, onSelectProject, userRole, isDa
         </div>
       </div>
 
-      {/* Overview Stat Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      {/* ══════════════════════════════════════════
+          4 STAT CARDS ROW
+      ══════════════════════════════════════════ */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 animate-fade-in-up">
+        {/* Total Surveys */}
         <div
           onClick={() => { setSelectedStatus('ALL'); setSelectedDate(null); }}
-          className={`p-3.5 rounded-2xl border transition-all cursor-pointer ${
-            selectedStatus === 'ALL' && !selectedDate
-              ? 'ring-2 ring-blue-500/50 shadow-sm'
-              : ''
-          } ${
-            isDark ? 'bg-slate-900/60 border-slate-800 text-slate-200' : 'bg-white border-slate-200 text-slate-800 shadow-2xs'
-          }`}
+          className="p-5 rounded-2xl bg-blue-50/70 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/40 shadow-xs flex items-center gap-4 transition-all hover:shadow-md cursor-pointer"
         >
-          <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Total Surveys</div>
-          <div className="text-xl font-black mt-0.5">{monthStats.total} <span className="text-xs font-medium text-slate-400">scheduled</span></div>
-        </div>
-
-        <div
-          onClick={() => { setSelectedStatus('Pending'); setSelectedDate(null); }}
-          className={`p-3.5 rounded-2xl border transition-all cursor-pointer ${
-            selectedStatus === 'Pending'
-              ? 'ring-2 ring-amber-500/50 shadow-sm'
-              : ''
-          } ${
-            isDark ? 'bg-amber-950/20 border-amber-900/40 text-amber-300' : 'bg-amber-50/60 border-amber-200 text-amber-900'
-          }`}
-        >
-          <div className="text-[10px] font-bold uppercase tracking-wider text-amber-600 flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-500" /> Pending
+          <div className="w-11 h-11 rounded-xl bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0 shadow-2xs">
+            {/* Filled clipboard-list icon */}
+            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+              <rect x="5" y="4" width="14" height="17" rx="2.5" />
+              <rect x="9" y="2" width="6" height="3" rx="1" className="fill-white dark:fill-slate-800" />
+              <rect x="7.5" y="9.25" width="2" height="2" rx="1" className="fill-white dark:fill-slate-800" />
+              <rect x="11" y="9.25" width="6" height="2" rx="1" className="fill-white dark:fill-slate-800" />
+              <rect x="7.5" y="13.25" width="2" height="2" rx="1" className="fill-white dark:fill-slate-800" />
+              <rect x="11" y="13.25" width="6" height="2" rx="1" className="fill-white dark:fill-slate-800" />
+              <rect x="7.5" y="17.25" width="2" height="2" rx="1" className="fill-white dark:fill-slate-800" />
+              <rect x="11" y="17.25" width="4" height="2" rx="1" className="fill-white dark:fill-slate-800" />
+            </svg>
           </div>
-          <div className="text-xl font-black mt-0.5">{monthStats.pending} <span className="text-xs font-semibold text-amber-600/80">awaiting</span></div>
-        </div>
-
-        <div
-          onClick={() => { setSelectedStatus('In Progress'); setSelectedDate(null); }}
-          className={`p-3.5 rounded-2xl border transition-all cursor-pointer ${
-            selectedStatus === 'In Progress'
-              ? 'ring-2 ring-blue-500/50 shadow-sm'
-              : ''
-          } ${
-            isDark ? 'bg-blue-950/20 border-blue-900/40 text-blue-300' : 'bg-blue-50/60 border-blue-200 text-blue-900'
-          }`}
-        >
-          <div className="text-[10px] font-bold uppercase tracking-wider text-blue-600 flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" /> In Progress
-          </div>
-          <div className="text-xl font-black mt-0.5">{monthStats.inProgress} <span className="text-xs font-semibold text-blue-600/80">on-site</span></div>
-        </div>
-
-        <div
-          onClick={() => { setSelectedStatus('Completed'); setSelectedDate(null); }}
-          className={`p-3.5 rounded-2xl border transition-all cursor-pointer ${
-            selectedStatus === 'Completed'
-              ? 'ring-2 ring-emerald-500/50 shadow-sm'
-              : ''
-          } ${
-            isDark ? 'bg-emerald-950/20 border-emerald-900/40 text-emerald-300' : 'bg-emerald-50/60 border-emerald-200 text-emerald-900'
-          }`}
-        >
-          <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Completed
-          </div>
-          <div className="text-xl font-black mt-0.5">{monthStats.completed} <span className="text-xs font-semibold text-emerald-600/80">finalized</span></div>
-        </div>
-      </div>
-
-      {/* Main Calendar Card */}
-      <div
-        className={`rounded-3xl border overflow-hidden transition-all shadow-sm ${
-          isDark
-            ? 'bg-[#0D1527] border-slate-800'
-            : 'bg-white border-slate-200'
-        }`}
-      >
-        {/* Navigation Bar */}
-        <div
-          className={`flex flex-wrap items-center justify-between px-6 py-4 border-b gap-3 ${
-            isDark
-              ? 'border-slate-800 bg-slate-900/70'
-              : 'border-slate-100 bg-slate-50/60'
-          }`}
-        >
-          <div className="flex items-center gap-3">
-            <h2 className={`text-xl font-black tracking-tight ${isDark ? 'text-white' : 'text-slate-900'}`}>
-              {monthName} {year}
-            </h2>
-            <button
-              onClick={handleToday}
-              className={`px-3 py-1 text-[11px] font-extrabold uppercase rounded-lg border transition-all cursor-pointer ${
-                isDark
-                  ? 'bg-blue-600/20 text-blue-400 hover:bg-blue-600/30 border-blue-500/30'
-                  : 'bg-blue-50 text-blue-700 hover:bg-blue-100 border-blue-200 shadow-2xs'
-              }`}
-            >
-              Today
-            </button>
-            {selectedDate && (
-              <button
-                onClick={() => setSelectedDate(null)}
-                className="text-[11px] font-bold text-slate-400 hover:text-slate-600 underline cursor-pointer"
-              >
-                Clear Day Filter
-              </button>
-            )}
-          </div>
-
-          {/* Month Controls & Arrows */}
-          <div className="flex items-center gap-3">
-            <div className="flex gap-1.5">
-              <button
-                onClick={handlePrevMonth}
-                aria-label="Previous Month"
-                className={`p-2 rounded-xl border transition-all cursor-pointer flex items-center gap-1.5 text-xs font-bold ${
-                  isDark
-                    ? 'border-slate-800 bg-slate-800/50 hover:bg-slate-800 text-slate-300 hover:text-white'
-                    : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700 shadow-2xs'
-                }`}
-              >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-                </svg>
-                <span className="hidden sm:inline">Prev</span>
-              </button>
-              <button
-                onClick={handleNextMonth}
-                aria-label="Next Month"
-                className={`p-2 rounded-xl border transition-all cursor-pointer flex items-center gap-1.5 text-xs font-bold ${
-                  isDark
-                    ? 'border-slate-800 bg-slate-800/50 hover:bg-slate-800 text-slate-300 hover:text-white'
-                    : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700 shadow-2xs'
-                }`}
-              >
-                <span className="hidden sm:inline">Next</span>
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                </svg>
-              </button>
+          <div>
+            <span className="text-xs font-bold text-blue-700 dark:text-blue-400 block mb-0.5">Total Surveys</span>
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-2xl font-black text-slate-900 dark:text-white leading-none">{monthStats.total}</span>
+              <span className="text-xs font-medium text-slate-400">scheduled</span>
             </div>
           </div>
         </div>
 
-        {/* Days of Week Header */}
+        {/* Pending */}
         <div
-          className={`grid grid-cols-7 border-b text-center py-2.5 ${
-            isDark
-              ? 'border-slate-800 bg-slate-900/40 text-slate-400'
-              : 'border-slate-100 bg-slate-50/90 text-slate-500'
-          }`}
+          onClick={() => { setSelectedStatus('Pending'); setSelectedDate(null); }}
+          className="p-5 rounded-2xl bg-amber-50/70 dark:bg-amber-950/30 border border-amber-100 dark:border-amber-900/40 shadow-xs flex items-center gap-4 transition-all hover:shadow-md cursor-pointer"
         >
-          {['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'].map(d => (
-            <span
-              key={d}
-              className="text-[11px] font-black uppercase tracking-wider"
-            >
-              {d}
-            </span>
-          ))}
+          <div className="w-11 h-11 rounded-xl bg-white dark:bg-slate-800 text-amber-500 flex items-center justify-center shrink-0 shadow-2xs">
+            {/* Document with clock badge icon */}
+            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6.5 3.5H13l4 4v12.25a.75.75 0 01-.75.75H6.5a.75.75 0 01-.75-.75V4.25a.75.75 0 01.75-.75z" />
+              <path strokeLinecap="round" d="M8.75 9.5h5M8.75 12.75h3" />
+              <circle cx="16" cy="16" r="3.35" className="fill-white dark:fill-slate-800" strokeWidth={1.5} />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16 14.5v1.6l1 .9" />
+            </svg>
+          </div>
+          <div>
+            <span className="text-xs font-bold text-amber-700 dark:text-amber-400 block mb-0.5">Pending</span>
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-2xl font-black text-slate-900 dark:text-white leading-none">{monthStats.pending}</span>
+              <span className="text-xs font-medium text-slate-400">awaiting</span>
+            </div>
+          </div>
         </div>
 
-        {/* Grid Cells */}
+        {/* In Progress */}
         <div
-          className={`grid grid-cols-7 grid-rows-6 divide-x divide-y ${
-            isDark
-              ? 'divide-slate-800/70 bg-[#0D1527]'
-              : 'divide-slate-100 bg-white'
-          }`}
+          onClick={() => { setSelectedStatus('In Progress'); setSelectedDate(null); }}
+          className="p-5 rounded-2xl bg-blue-50/70 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/40 shadow-xs flex items-center gap-4 transition-all hover:shadow-md cursor-pointer"
         >
-          {cells.map((cell, idx) => {
-            const dayProjects = projectsByDate[cell.dateString] || [];
-            const filteredProjects = dayProjects.filter(p => {
-              if (selectedStatus === 'ALL') return true;
-              return p.status === selectedStatus;
-            });
+          <div className="w-11 h-11 rounded-xl bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0 shadow-2xs">
+            {/* Repeat / sync loop icon */}
+            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="17 1 21 5 17 9" />
+              <path d="M3 11V9a4 4 0 0 1 4-4h14" />
+              <polyline points="7 23 3 19 7 15" />
+              <path d="M21 13v2a4 4 0 0 1-4 4H3" />
+            </svg>
+          </div>
+          <div>
+            <span className="text-xs font-bold text-blue-700 dark:text-blue-400 block mb-0.5">In Progress</span>
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-2xl font-black text-slate-900 dark:text-white leading-none">{monthStats.inProgress}</span>
+              <span className="text-xs font-medium text-slate-400">on-site</span>
+            </div>
+          </div>
+        </div>
 
-            const todayObj = new Date();
-            const isToday =
-              cell.isCurrentMonth &&
-              todayObj.getFullYear() === year &&
-              todayObj.getMonth() === month &&
-              todayObj.getDate() === cell.day;
-
-            const isSelected = selectedDate === cell.dateString;
-            const hasSurveys = filteredProjects.length > 0;
-
-            return (
-              <div
-                key={idx}
-                onClick={() => {
-                  setSelectedDate(cell.dateString);
-                  if (hasSurveys) {
-                    setSelectedDayProjects({ date: cell.dateString, projects: filteredProjects });
-                  }
-                }}
-                className={`min-h-[110px] sm:min-h-[120px] p-2 flex flex-col justify-between transition-all relative cursor-pointer group ${
-                  !cell.isCurrentMonth
-                    ? isDark
-                      ? 'bg-slate-950/40 opacity-30 hover:opacity-50'
-                      : 'bg-slate-50/50 opacity-40 hover:opacity-70'
-                    : isSelected
-                    ? isDark
-                      ? 'bg-blue-950/40 ring-2 ring-blue-500/60 inset-0'
-                      : 'bg-blue-50/60 ring-2 ring-blue-500/50'
-                    : isToday
-                    ? isDark
-                      ? 'bg-blue-950/20'
-                      : 'bg-blue-50/30'
-                    : isDark
-                    ? 'bg-[#0D1527] hover:bg-slate-800/40'
-                    : 'bg-white hover:bg-slate-50/80'
-                }`}
-              >
-                {/* Top bar in cell: Date Number & Count Badge */}
-                <div className="flex items-center justify-between mb-1">
-                  <span
-                    className={`text-xs w-6 h-6 flex items-center justify-center rounded-full transition-all ${
-                      isToday
-                        ? 'bg-blue-600 text-white font-black shadow-md shadow-blue-500/30 ring-2 ring-blue-400/40'
-                        : isSelected
-                        ? 'bg-slate-800 text-white font-bold'
-                        : !cell.isCurrentMonth
-                        ? isDark ? 'text-slate-600' : 'text-slate-300'
-                        : isDark ? 'text-slate-200 font-bold' : 'text-slate-700 font-bold'
-                    }`}
-                  >
-                    {cell.day}
-                  </span>
-
-                  {hasSurveys && (
-                    <span
-                      className={`text-[9px] font-black px-1.5 py-0.5 rounded-full border ${
-                        isDark
-                          ? 'text-blue-300 bg-blue-950 border-blue-800'
-                          : 'text-blue-700 bg-blue-50 border-blue-200'
-                      }`}
-                    >
-                      {filteredProjects.length} {filteredProjects.length === 1 ? 'Survey' : 'Surveys'}
-                    </span>
-                  )}
-                </div>
-
-                {/* Projects Event Badges */}
-                <div className="flex-1 space-y-1 overflow-y-auto max-h-[75px] no-scrollbar">
-                  {filteredProjects.map(proj => {
-                    const cfg = statusConfig[proj.status] ||
-                      Object.entries(statusConfig).find(([key]) => proj.status && proj.status.includes(key))?.[1] || {
-                        label: proj.status || 'Project',
-                        color: isDark ? '#94A3B8' : '#475569',
-                        bg: isDark ? 'rgba(148, 163, 184, 0.15)' : 'rgba(148, 163, 184, 0.12)',
-                        dot: '#94A3B8'
-                      };
-
-                    const systemTag = proj.systemTypes && proj.systemTypes.length > 0 ? proj.systemTypes[0] : '';
-
-                    return (
-                      <div
-                        key={proj.id}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onSelectProject(proj);
-                        }}
-                        className={`text-[10px] font-bold p-1.5 rounded-xl border transition-all cursor-pointer flex flex-col gap-0.5 hover:scale-[1.02] shadow-2xs ${
-                          isDark
-                            ? 'border-slate-800 hover:border-slate-700'
-                            : 'border-slate-200 hover:border-blue-300'
-                        }`}
-                        style={{ background: cfg.bg, color: cfg.color }}
-                        title={`${proj.name} (${proj.clientName}) — Click to view details`}
-                      >
-                        <div className="flex items-center gap-1.5 truncate">
-                          <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: cfg.dot }} />
-                          <span className="truncate font-black">{proj.name}</span>
-                        </div>
-                        {systemTag && (
-                          <span className="text-[8px] font-semibold opacity-75 truncate pl-3">
-                            {systemTag} • {proj.clientName || 'Survey'}
-                          </span>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })}
+        {/* Completed */}
+        <div
+          onClick={() => { setSelectedStatus('Completed'); setSelectedDate(null); }}
+          className="p-5 rounded-2xl bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-100 dark:border-emerald-900/40 shadow-xs flex items-center gap-4 transition-all hover:shadow-md cursor-pointer"
+        >
+          <div className="w-11 h-11 rounded-xl bg-white dark:bg-slate-800 flex items-center justify-center shrink-0 shadow-2xs">
+            {/* Filled green check-circle icon */}
+            <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none">
+              <circle cx="12" cy="12" r="9.5" className="fill-emerald-500 dark:fill-emerald-500" />
+              <path d="M8 12.4l2.6 2.6L16.2 9" stroke="white" strokeWidth={1.9} strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </div>
+          <div>
+            <span className="text-xs font-bold text-emerald-700 dark:text-emerald-400 block mb-0.5">Completed</span>
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-2xl font-black text-slate-900 dark:text-white leading-none">{monthStats.completed}</span>
+              <span className="text-xs font-medium text-slate-400">finalized</span>
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Monthly Scheduled Surveys Agenda List */}
-      <div
-        className={`rounded-3xl border p-6 space-y-4 shadow-sm ${
-          isDark ? 'bg-slate-900/60 border-slate-800' : 'bg-white border-slate-200'
-        }`}
-      >
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b pb-3 border-slate-100">
-          <div>
-            <h3 className={`text-base font-black ${isDark ? 'text-white' : 'text-slate-900'}`}>
-              {selectedDate ? `Scheduled Surveys for ${selectedDate}` : `All Scheduled Surveys in ${monthName} ${year}`}
-            </h3>
-            <p className="text-xs font-semibold text-slate-400">
-              {monthProjects.length} {monthProjects.length === 1 ? 'project survey' : 'project surveys'} found
-            </p>
-          </div>
-          {selectedDate && (
-            <button
-              onClick={() => setSelectedDate(null)}
-              className="text-xs font-bold text-blue-600 hover:underline cursor-pointer"
-            >
-              Show all for {monthName}
-            </button>
-          )}
-        </div>
+      {/* ══════════════════════════════════════════
+          MAIN TWO-COLUMN CALENDAR & PANEL GRID
+      ══════════════════════════════════════════ */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 animate-fade-in-up">
 
-        {monthProjects.length === 0 ? (
-          <div className="text-center py-8 text-slate-400 text-xs font-medium">
-            No surveys scheduled {selectedDate ? `for ${selectedDate}` : `for ${monthName} with the selected filters`}.
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {monthProjects.map(proj => {
-              const cfg = statusConfig[proj.status] || { label: proj.status, color: '#3B82F6', bg: 'rgba(59,130,246,0.12)', dot: '#3B82F6' };
-              return (
-                <div
-                  key={proj.id}
-                  onClick={() => onSelectProject(proj)}
-                  className={`p-4 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between gap-3 hover:scale-[1.01] shadow-2xs ${
-                    isDark
-                      ? 'bg-slate-800/50 border-slate-700/60 hover:border-blue-500/50'
-                      : 'bg-slate-50/70 border-slate-200 hover:border-blue-400 hover:bg-white'
-                  }`}
+        {/* Left Column: Calendar Month View (7 cols) */}
+        <div className="lg:col-span-7 bg-white dark:bg-[#131B2E] rounded-3xl p-6 border border-slate-200/80 dark:border-slate-800 shadow-sm flex flex-col justify-between">
+          <div>
+            {/* Header: Month title, controls */}
+            <div className="flex items-center justify-between gap-3 mb-5 pb-3 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handlePrevMonth}
+                  className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 transition-colors cursor-pointer"
+                  title="Previous Month"
                 >
-                  <div className="space-y-1">
-                    <div className="flex items-start justify-between gap-2">
-                      <h4 className={`text-sm font-black truncate ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                        {proj.name}
-                      </h4>
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                  </svg>
+                </button>
+                <h2 className="text-xl font-black text-slate-900 dark:text-white tracking-tight">
+                  {monthName} {year}
+                </h2>
+                <button
+                  onClick={handleNextMonth}
+                  className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 transition-colors cursor-pointer"
+                  title="Next Month"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                  </svg>
+                </button>
+                <button
+                  onClick={handleToday}
+                  className="ml-2 px-3 py-1 rounded-full text-xs font-bold bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-300 hover:bg-blue-100 transition-colors cursor-pointer"
+                >
+                  Today
+                </button>
+              </div>
+
+              {/* Month view dropdown selector pill */}
+              <div className="flex items-center gap-2">
+                <button
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold cursor-pointer"
+                >
+                  <span>Month</span>
+                  <svg className="w-3.5 h-3.5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+
+            {/* Days of Week Row */}
+            <div className="grid grid-cols-7 text-center mb-2">
+              {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
+                <span key={d} className="text-xs font-bold text-slate-400 py-1">
+                  {d}
+                </span>
+              ))}
+            </div>
+
+            {/* Calendar Cells Grid (7x6) */}
+            <div className="grid grid-cols-7 border-t border-l border-slate-200/80 dark:border-slate-800 rounded-2xl overflow-hidden">
+              {cells.map((cell, idx) => {
+                const dayProjects = projectsByDate[cell.dateString] || [];
+                const filteredProjects = dayProjects.filter(p => {
+                  if (selectedStatus === 'ALL') return true;
+                  return p.status === selectedStatus;
+                });
+
+                const todayObj = new Date();
+                const isToday =
+                  cell.isCurrentMonth &&
+                  todayObj.getFullYear() === year &&
+                  todayObj.getMonth() === month &&
+                  todayObj.getDate() === cell.day;
+
+                const isSelected = selectedDate === cell.dateString;
+                const hasSurveys = filteredProjects.length > 0;
+
+                return (
+                  <div
+                    key={idx}
+                    onClick={() => {
+                      setSelectedDate(cell.dateString);
+                      if (hasSurveys) {
+                        setSelectedDayProjects({ date: cell.dateString, projects: filteredProjects });
+                      }
+                    }}
+                    className={`min-h-[72px] sm:min-h-[82px] p-2 border-r border-b border-slate-200/80 dark:border-slate-800 flex flex-col justify-between transition-all cursor-pointer relative group ${
+                      !cell.isCurrentMonth
+                        ? 'bg-slate-50/40 dark:bg-slate-900/30'
+                        : isSelected
+                        ? 'bg-blue-50/60 dark:bg-blue-950/40'
+                        : 'bg-white dark:bg-[#131B2E] hover:bg-slate-50/80 dark:hover:bg-slate-800/50'
+                    }`}
+                  >
+                    {/* Date number */}
+                    <div className="flex items-center justify-between">
                       <span
-                        className="text-[9px] font-extrabold px-2 py-0.5 rounded-full shrink-0 border border-current"
-                        style={{ background: cfg.bg, color: cfg.color }}
+                        className={`text-xs w-6 h-6 flex items-center justify-center rounded-full font-bold ${
+                          isSelected
+                            ? 'bg-blue-600 text-white shadow-sm'
+                            : isToday
+                            ? 'bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300'
+                            : !cell.isCurrentMonth
+                            ? 'text-slate-300 dark:text-slate-600'
+                            : 'text-slate-700 dark:text-slate-200'
+                        }`}
                       >
-                        {proj.status}
+                        {cell.day}
                       </span>
                     </div>
 
-                    <p className="text-xs text-slate-500 font-medium truncate">
-                      {proj.clientName} {proj.location ? `• ${proj.location}` : ''}
-                    </p>
-
-                    {proj.systemTypes && proj.systemTypes.length > 0 && (
-                      <div className="flex flex-wrap gap-1 pt-1">
-                        {proj.systemTypes.map(s => (
-                          <span
-                            key={s}
-                            className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
-                              isDark
-                                ? 'bg-blue-950/60 text-blue-300 border border-blue-900/40'
-                                : 'bg-blue-100 text-blue-700'
-                            }`}
-                          >
-                            {s}
+                    {/* Event indicators */}
+                    {hasSurveys && (
+                      <div className="mt-1 space-y-1">
+                        {filteredProjects.slice(0, 2).map(proj => {
+                          const isPending = proj.status === 'Pending';
+                          const isCompleted = proj.status === 'Completed' || proj.status?.includes('Finalized');
+                          return (
+                            <div
+                              key={proj.id}
+                              onClick={e => { e.stopPropagation(); onSelectProject(proj); }}
+                              className={`text-[9px] font-bold px-1.5 py-0.5 rounded-md truncate ${
+                                isPending
+                                  ? 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300'
+                                  : isCompleted
+                                  ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300'
+                                  : 'bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-300'
+                              }`}
+                            >
+                              {proj.name}
+                            </div>
+                          );
+                        })}
+                        {filteredProjects.length > 2 && (
+                          <span className="text-[8px] font-bold text-slate-400 block pl-1">
+                            +{filteredProjects.length - 2} more
                           </span>
-                        ))}
+                        )}
                       </div>
                     )}
-                  </div>
-
-                  <div className={`pt-2 border-t flex items-center justify-between text-[11px] ${
-                    isDark ? 'border-slate-700/60 text-slate-400' : 'border-slate-200/60 text-slate-500'
-                  }`}>
-                    <span className="font-semibold">
-                      📅 {proj.startDate || 'No date'}
-                    </span>
-                    <span className="font-bold text-blue-600 hover:underline">
-                      Open Project →
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      {/* Selected Day Quick View Modal */}
-      {selectedDayProjects && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in">
-          <div
-            className={`border rounded-3xl max-w-md w-full p-6 space-y-4 shadow-2xl ${
-              isDark
-                ? 'bg-slate-900 border-slate-800 text-white'
-                : 'bg-white border-slate-200 text-slate-900'
-            }`}
-          >
-            <div className={`flex items-center justify-between border-b pb-3 ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
-              <div>
-                <h3 className={`text-lg font-black ${isDark ? 'text-white' : 'text-slate-900'}`}>Scheduled Surveys</h3>
-                <p className="text-xs text-slate-400">{selectedDayProjects.date}</p>
-              </div>
-              <button
-                onClick={() => setSelectedDayProjects(null)}
-                className={`p-1.5 rounded-xl transition-all cursor-pointer ${
-                  isDark
-                    ? 'bg-slate-800 text-slate-400 hover:text-white'
-                    : 'bg-slate-100 text-slate-500 hover:text-slate-900'
-                }`}
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="space-y-2.5 max-h-60 overflow-y-auto pr-1">
-              {selectedDayProjects.projects.map(proj => {
-                const cfg = statusConfig[proj.status] || { color: '#3B82F6', bg: 'rgba(59,130,246,0.15)', dot: '#3B82F6' };
-                return (
-                  <div
-                    key={proj.id}
-                    onClick={() => {
-                      setSelectedDayProjects(null);
-                      onSelectProject(proj);
-                    }}
-                    className={`p-3 border rounded-2xl transition-all cursor-pointer flex items-center justify-between ${
-                      isDark
-                        ? 'bg-slate-800/60 border-slate-700/60 hover:bg-slate-800'
-                        : 'bg-slate-50 border-slate-200 hover:bg-slate-100'
-                    }`}
-                  >
-                    <div>
-                      <h4 className={`text-sm font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>{proj.name}</h4>
-                      <p className="text-xs text-slate-400">{proj.clientName} • {proj.location}</p>
-                    </div>
-                    <span
-                      className={`text-[10px] font-extrabold px-2.5 py-1 rounded-full border ${
-                        isDark ? 'border-slate-700' : 'border-slate-200'
-                      }`}
-                      style={{ background: cfg.bg, color: cfg.color }}
-                    >
-                      {proj.status}
-                    </span>
                   </div>
                 );
               })}
             </div>
+          </div>
+        </div>
 
+        {/* Right Column: Scheduled Surveys Side Panel (5 cols) */}
+        <div className="lg:col-span-5 bg-white dark:bg-[#131B2E] rounded-3xl p-6 border border-slate-200/80 dark:border-slate-800 shadow-sm flex flex-col justify-between relative min-h-[480px]">
+          <div>
+            {/* Header: Title + Search */}
+            <div className="flex items-center justify-between gap-3 mb-6 pb-3 border-b border-slate-100 dark:border-slate-800">
+              <div>
+                <h3 className="text-sm font-black text-slate-800 dark:text-white leading-snug">
+                  {selectedDate ? `Scheduled Surveys for ${selectedDate}` : `All Scheduled Surveys in ${monthName} ${year}`}
+                </h3>
+                <p className="text-[11px] font-medium text-slate-400 mt-0.5">
+                  {monthProjects.length} {monthProjects.length === 1 ? 'project survey' : 'project surveys'} found
+                </p>
+              </div>
+
+              {/* Search input */}
+              <div className="relative">
+                <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+                <input
+                  type="text"
+                  placeholder="Search surveys..."
+                  value={sideSearch}
+                  onChange={e => setSideSearch(e.target.value)}
+                  className="w-36 sm:w-40 pl-8 pr-3 py-1.5 rounded-full text-[11px] font-medium bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 outline-none focus:bg-white transition-all"
+                />
+              </div>
+            </div>
+
+            {/* List / Empty State */}
+            {monthProjects.length === 0 ? (
+              <div className="py-16 text-center flex flex-col items-center justify-center">
+                <div className="w-12 h-12 rounded-2xl bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 flex items-center justify-center mb-3">
+                  <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 01-2-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                </div>
+                <h4 className="text-sm font-black text-slate-800 dark:text-white mb-1">
+                  No surveys scheduled for {monthName}
+                </h4>
+                <p className="text-xs text-slate-400 max-w-xs">
+                  No surveys scheduled for {monthName} with the selected filters.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3 max-h-[380px] overflow-y-auto pr-1">
+                {monthProjects.map(proj => {
+                  const cfg = statusConfig[proj.status] || { label: proj.status, color: '#2563EB', bg: 'rgba(37,99,235,0.08)', dot: '#2563EB' };
+                  return (
+                    <div
+                      key={proj.id}
+                      onClick={() => onSelectProject(proj)}
+                      className="p-3.5 rounded-2xl border border-slate-200/80 dark:border-slate-800 hover:border-blue-300 dark:hover:border-blue-500/50 bg-slate-50/50 dark:bg-slate-800/40 transition-all cursor-pointer group flex flex-col justify-between gap-2"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[10px] font-black uppercase text-slate-400 truncate">
+                          {proj.clientName}
+                        </span>
+                        <span
+                          className="text-[8px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wider"
+                          style={{ background: cfg.bg, color: cfg.color }}
+                        >
+                          {proj.status}
+                        </span>
+                      </div>
+                      <h4 className="text-xs font-black text-slate-800 dark:text-white group-hover:text-blue-600 transition-colors truncate">
+                        {proj.name}
+                      </h4>
+                      <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1 border-t border-slate-100 dark:border-slate-800">
+                        <span>📍 {proj.location || 'Location not set'}</span>
+                        <span className="font-bold text-blue-600 dark:text-blue-400 group-hover:underline">View →</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+
+        </div>
+
+      </div>
+
+      {/* Day Details Modal */}
+      {selectedDayProjects && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="w-full max-w-md bg-white dark:bg-[#131B2E] rounded-3xl p-6 border border-slate-100 dark:border-slate-800 shadow-2xl animate-scale-in">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800 mb-4">
+              <div>
+                <h3 className="text-sm font-black text-slate-800 dark:text-white">Scheduled Surveys</h3>
+                <p className="text-xs text-slate-400 font-medium">{selectedDayProjects.date}</p>
+              </div>
+              <button
+                onClick={() => setSelectedDayProjects(null)}
+                className="w-7 h-7 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-300 hover:bg-slate-200 flex items-center justify-center text-xs font-black cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+              {selectedDayProjects.projects.map(proj => (
+                <div
+                  key={proj.id}
+                  onClick={() => { setSelectedDayProjects(null); onSelectProject(proj); }}
+                  className="p-3 rounded-2xl border border-slate-200 dark:border-slate-800 hover:border-blue-400 bg-slate-50 dark:bg-slate-800/40 transition-all cursor-pointer flex items-center justify-between"
+                >
+                  <div>
+                    <h4 className="text-xs font-black text-slate-800 dark:text-white">{proj.name}</h4>
+                    <p className="text-[10px] text-slate-400">{proj.clientName} • {proj.location}</p>
+                  </div>
+                  <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300">
+                    {proj.status}
+                  </span>
+                </div>
+              ))}
+            </div>
             <button
               onClick={() => setSelectedDayProjects(null)}
-              className={`w-full py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                isDark
-                  ? 'bg-slate-800 hover:bg-slate-700 text-slate-300'
-                  : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-              }`}
+              className="mt-4 w-full py-2.5 rounded-xl text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200 cursor-pointer"
             >
               Close
             </button>
           </div>
         </div>
       )}
+
     </div>
   );
 }
