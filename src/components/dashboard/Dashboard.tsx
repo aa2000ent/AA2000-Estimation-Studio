@@ -19,6 +19,7 @@ import SavedBOQsView from '../floor-plan/SavedBOQsView';
 import SavedEstimationsView from '../estimation/SavedEstimationsView';
 import SavedFoldersView from '../ai-sidebar/SavedFoldersView';
 import { AIChatbotFloating } from '../chatbot/AIChatbotFloating';
+import SparklineCard from './cards/SparklineCard';
 
 interface Props {
   user: User;
@@ -162,8 +163,8 @@ const typeConfig = {
   finalize: { color: '#059669', bg: 'rgba(5,150,105,0.08)', label: 'Finalize', dot: '#059669' },
 };
 
-// Progress Donut Card matching exact layout from user
-function ProgressDonutCard({
+// Status Overview Banner matching exact decluttered layout
+function StatusOverviewBanner({
   totalProjects,
   inProgressCount,
   pendingCount,
@@ -188,354 +189,160 @@ function ProgressDonutCard({
   const compOffset = -(inProgLen + pendingLen);
 
   return (
-    <div className="bg-white dark:bg-[#131B2E] rounded-3xl p-6 sm:p-7 border border-blue-100/80 dark:border-slate-800 shadow-sm hover:shadow-md transition-all duration-300 flex items-center justify-center animate-fade-in-up">
-      <div className="relative w-36 h-36 sm:w-40 sm:h-40 flex items-center justify-center shrink-0 group/donut transition-transform duration-300 hover:scale-105">
-        <svg className="w-full h-full transform -rotate-90 filter drop-shadow-xs" viewBox="0 0 96 96">
-          <circle
-            cx="48"
-            cy="48"
-            r={r}
-            stroke="currentColor"
-            className="text-slate-100 dark:text-slate-800"
-            strokeWidth="8"
-            fill="none"
-          />
-
-          {totalProjects === 0 ? (
+    <div className="bg-white dark:bg-[#131B2E] rounded-3xl p-6 sm:p-7 border border-blue-100/80 dark:border-slate-800 shadow-sm hover:shadow-md transition-all duration-300 flex flex-col sm:flex-row items-center justify-between gap-8 animate-fade-in-up">
+      {/* Left: Minimalistic Donut Chart */}
+      <div className="flex items-center gap-6">
+        <div className="relative w-32 h-32 sm:w-36 sm:h-36 flex items-center justify-center shrink-0 group/donut transition-transform duration-300 hover:scale-105">
+          <svg className="w-full h-full transform -rotate-90 filter drop-shadow-xs" viewBox="0 0 96 96">
             <circle
               cx="48"
               cy="48"
               r={r}
-              stroke="#DBEAFE"
+              stroke="currentColor"
+              className="text-slate-100 dark:text-slate-800"
               strokeWidth="8"
               fill="none"
-              strokeDasharray={`${C * 0.2} ${C}`}
-              strokeLinecap="round"
-              className="animate-donut-draw"
             />
-          ) : (
-            <>
-              {inProgressCount > 0 && (
-                <circle
-                  cx="48"
-                  cy="48"
-                  r={r}
-                  stroke="#2563EB"
-                  strokeWidth={hoveredStatus === 'in-progress' ? 10 : 8}
-                  fill="none"
-                  strokeDasharray={`${inProgLen} ${C}`}
-                  strokeDashoffset={inProgOffset}
-                  strokeLinecap="round"
-                  className="transition-all duration-500 animate-donut-draw cursor-pointer"
-                  style={{
-                    opacity: hoveredStatus && hoveredStatus !== 'in-progress' ? 0.35 : 1,
-                  }}
-                  onMouseEnter={() => setHoveredStatus('in-progress')}
-                  onMouseLeave={() => setHoveredStatus(null)}
-                />
-              )}
-              {pendingCount > 0 && (
-                <circle
-                  cx="48"
-                  cy="48"
-                  r={r}
-                  stroke="#F59E0B"
-                  strokeWidth={hoveredStatus === 'pending' ? 10 : 8}
-                  fill="none"
-                  strokeDasharray={`${pendingLen} ${C}`}
-                  strokeDashoffset={pendingOffset}
-                  strokeLinecap="round"
-                  className="transition-all duration-500 animate-donut-draw cursor-pointer"
-                  style={{
-                    opacity: hoveredStatus && hoveredStatus !== 'pending' ? 0.35 : 1,
-                  }}
-                  onMouseEnter={() => setHoveredStatus('pending')}
-                  onMouseLeave={() => setHoveredStatus(null)}
-                />
-              )}
-              {completedCount > 0 && (
-                <circle
-                  cx="48"
-                  cy="48"
-                  r={r}
-                  stroke="#10B981"
-                  strokeWidth={hoveredStatus === 'completed' ? 10 : 8}
-                  fill="none"
-                  strokeDasharray={`${compLen} ${C}`}
-                  strokeDashoffset={compOffset}
-                  strokeLinecap="round"
-                  className="transition-all duration-500 animate-donut-draw cursor-pointer"
-                  style={{
-                    opacity: hoveredStatus && hoveredStatus !== 'completed' ? 0.35 : 1,
-                  }}
-                  onMouseEnter={() => setHoveredStatus('completed')}
-                  onMouseLeave={() => setHoveredStatus(null)}
-                />
-              )}
-            </>
-          )}
-        </svg>
 
-        <div className="absolute inset-0 flex flex-col items-center justify-center text-center select-none pointer-events-none transition-transform duration-300 group-hover/donut:scale-110">
-          <span className="text-3xl sm:text-4xl font-black text-slate-900 dark:text-white leading-none animate-count">
-            {totalProjects}
-          </span>
-          <span className="text-[9px] sm:text-[10px] font-black text-blue-600 dark:text-blue-400 uppercase tracking-widest mt-1.5">
-            PROGRESS
-          </span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// Status Overview Card matching exact layout from user
-function StatusOverviewCard({
-  inProgressCount,
-  pendingCount,
-  completedCount,
-}: {
-  inProgressCount: number;
-  pendingCount: number;
-  completedCount: number;
-}) {
-  const [hoveredStatus, setHoveredStatus] = React.useState<string | null>(null);
-
-  return (
-    <div className="bg-white dark:bg-[#131B2E] rounded-3xl p-6 sm:p-7 border border-blue-100/80 dark:border-slate-800 shadow-sm hover:shadow-md transition-all duration-300 flex flex-col justify-center gap-3 animate-fade-in-up">
-      <span className="text-[11px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-1">
-        STATUS OVERVIEW
-      </span>
-
-      <div
-        onMouseEnter={() => setHoveredStatus('in-progress')}
-        onMouseLeave={() => setHoveredStatus(null)}
-        className="flex items-center justify-between gap-8 text-xs sm:text-sm px-3 py-2 rounded-xl transition-all duration-200 cursor-pointer hover:bg-blue-50/70 dark:hover:bg-blue-950/40"
-      >
-        <span className="flex items-center gap-3 font-bold text-slate-700 dark:text-slate-300">
-          <span className="relative flex h-3 w-3 items-center justify-center">
-            {inProgressCount > 0 && (
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
-            )}
-            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-blue-600" />
-          </span>
-          In Progress
-        </span>
-        <span className="font-black text-slate-900 dark:text-white text-sm sm:text-base">{inProgressCount}</span>
-      </div>
-
-      <div
-        onMouseEnter={() => setHoveredStatus('pending')}
-        onMouseLeave={() => setHoveredStatus(null)}
-        className="flex items-center justify-between gap-8 text-xs sm:text-sm px-3 py-2 rounded-xl transition-all duration-200 cursor-pointer hover:bg-amber-50/70 dark:hover:bg-amber-950/40"
-      >
-        <span className="flex items-center gap-3 font-bold text-slate-700 dark:text-slate-300">
-          <span className="relative flex h-3 w-3 items-center justify-center">
-            {pendingCount > 0 && (
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
-            )}
-            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500" />
-          </span>
-          Pending
-        </span>
-        <span className="font-black text-amber-600 dark:text-amber-400 text-sm sm:text-base">{pendingCount}</span>
-      </div>
-
-      <div
-        onMouseEnter={() => setHoveredStatus('completed')}
-        onMouseLeave={() => setHoveredStatus(null)}
-        className="flex items-center justify-between gap-8 text-xs sm:text-sm px-3 py-2 rounded-xl transition-all duration-200 cursor-pointer hover:bg-emerald-50/70 dark:hover:bg-emerald-950/40"
-      >
-        <span className="flex items-center gap-3 font-bold text-slate-700 dark:text-slate-300">
-          <span className="relative flex h-3 w-3 items-center justify-center">
-            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500" />
-          </span>
-          Completed
-        </span>
-        <span className="font-black text-emerald-600 dark:text-emerald-400 text-sm sm:text-base">{completedCount}</span>
-      </div>
-    </div>
-  );
-}
-
-// Helper to generate clear, intuitive sparkline paths that reflect the exact status count and rate
-function getSparklineData(value: number, total: number = 0) {
-  if (value === 0) {
-    return {
-      linePath: 'M 2 28 L 98 28',
-      areaPath: 'M 2 28 L 98 28 L 98 32 L 2 32 Z',
-      dots: [{ cx: 98, cy: 28 }],
-    };
-  }
-
-  // Calculate percentage of total to scale height
-  const pct = total > 0 ? Math.min(1, value / total) : 1;
-  // Peak Y: higher percentage = reaches closer to top (y = 6 to y = 22)
-  const peakY = Math.max(5, 26 - Math.round(pct * 21));
-  const midY = Math.round((28 + peakY) / 2);
-
-  return {
-    linePath: `M 2 28 C 24 28, 44 ${midY + 2}, 64 ${midY - 2} S 84 ${peakY + 2}, 98 ${peakY}`,
-    areaPath: `M 2 28 C 24 28, 44 ${midY + 2}, 64 ${midY - 2} S 84 ${peakY + 2}, 98 ${peakY} L 98 32 L 2 32 Z`,
-    dots: [
-      { cx: 64, cy: midY - 2 },
-      { cx: 98, cy: peakY },
-    ],
-  };
-}
-
-// Sparkline Card matching exact layout from user with Clear, Understandable Trendline & Context Badge
-function SparklineCard({
-  label,
-  value,
-  totalProjects = 0,
-  sub,
-  icon,
-  onClick,
-  delay = 0,
-  valueColor,
-}: {
-  label: string;
-  value: number;
-  totalProjects?: number;
-  sub: string;
-  icon: React.ReactNode;
-  onClick?: () => void;
-  delay?: number;
-  valueColor?: string;
-}) {
-  const color = valueColor || '#2563EB';
-  const total = totalProjects > 0 ? totalProjects : Math.max(1, value);
-  const percentage = totalProjects > 0 ? Math.round((value / totalProjects) * 100) : (value > 0 ? 100 : 0);
-
-  const badgeText = label === 'PROJECTS'
-    ? `${value} Total`
-    : label === 'COMPLETED'
-    ? `${percentage}% Done`
-    : label === 'PENDING'
-    ? `${percentage}% Queue`
-    : `${percentage}% Active`;
-
-  const { linePath, areaPath, dots } = getSparklineData(value, total);
-  const gradId = `spark-grad-${label.toLowerCase().replace(/[^a-z0-9]/g, '-')}-${value}`;
-
-  return (
-    <div
-      onClick={onClick}
-      className="bg-white dark:bg-[#131B2E] rounded-3xl p-5 sm:p-6 border border-blue-100/70 dark:border-slate-800 shadow-sm relative overflow-hidden transition-all duration-300 hover:shadow-lg hover:border-blue-300 dark:hover:border-blue-500/50 hover:-translate-y-1 cursor-pointer flex flex-col justify-between min-h-[145px] group animate-fade-in-up"
-      style={{ animationDelay: `${delay}ms` }}
-    >
-      {/* Subtle top gradient accent on hover matching status color */}
-      <div
-        className="absolute top-0 left-0 right-0 h-1 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
-        style={{
-          background: `linear-gradient(90deg, ${color} 0%, #3B82F6 100%)`,
-        }}
-      />
-
-      {/* Top row: Label (Left) & Icon (Top-Right) */}
-      <div className="flex items-center justify-between mb-3">
-        <span className="text-[11px] font-black text-slate-900 dark:text-white uppercase tracking-wider transition-colors duration-200 group-hover:text-blue-600 dark:group-hover:text-blue-400">
-          {label}
-        </span>
-        <div
-          className="w-10 h-10 rounded-2xl bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0 transition-all duration-300 group-hover:scale-110 group-hover:rotate-6 group-hover:bg-blue-600 group-hover:text-white shadow-2xs"
-        >
-          {icon}
-        </div>
-      </div>
-
-      {/* Bottom row: Value & Subtitle (Left) + Understandable Analytics Graph (Bottom-Right) */}
-      <div className="flex items-end justify-between gap-4 mt-auto">
-        <div className="min-w-0">
-          <p
-            className="text-3xl sm:text-4xl font-black leading-none mb-1 transition-transform duration-200 group-hover:scale-105 origin-left animate-count"
-            style={{ color }}
-          >
-            {value}
-          </p>
-          <p className="text-xs text-slate-400 dark:text-slate-500 font-medium truncate">
-            {sub}
-          </p>
-        </div>
-
-        {/* Bottom-right: Clear Status Line Graph with Percentage Badge */}
-        <div className="flex flex-col items-end gap-1.5 shrink-0">
-          {/* Understandable Percentage Pill */}
-          <span
-            className="text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider transition-all duration-200"
-            style={{
-              backgroundColor: value === 0 ? '#F1F5F9' : `${color}15`,
-              color: value === 0 ? '#94A3B8' : color,
-              border: `1px solid ${value === 0 ? '#E2E8F0' : `${color}30`}`,
-            }}
-          >
-            {badgeText}
-          </span>
-
-          {/* SVG Sparkline with Baseline and Trend Curve */}
-          <div className="w-24 sm:w-28 h-8 transition-all duration-300 group-hover:scale-105">
-            <svg viewBox="0 0 100 35" fill="none" className="w-full h-full overflow-visible">
-              <defs>
-                <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor={color} stopOpacity={value === 0 ? "0.04" : "0.25"} />
-                  <stop offset="100%" stopColor={color} stopOpacity="0" />
-                </linearGradient>
-              </defs>
-
-              {/* Baseline Reference Grid Line */}
-              <line
-                x1="2"
-                y1="28"
-                x2="98"
-                y2="28"
-                stroke="currentColor"
-                className="text-slate-200 dark:text-slate-700 opacity-70"
-                strokeWidth="1"
-                strokeDasharray="2 2"
-              />
-
-              {/* Area fill under curve */}
-              {value > 0 && (
-                <path
-                  d={areaPath}
-                  fill={`url(#${gradId})`}
-                  className="transition-all duration-700"
-                />
-              )}
-
-              {/* Dynamic Line Graph */}
-              <path
-                d={linePath}
-                stroke={value === 0 ? '#CBD5E1' : color}
-                strokeWidth={value === 0 ? "1.75" : "2.5"}
+            {totalProjects === 0 ? (
+              <circle
+                cx="48"
+                cy="48"
+                r={r}
+                stroke="#DBEAFE"
+                strokeWidth="8"
+                fill="none"
+                strokeDasharray={`${C * 0.2} ${C}`}
                 strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeDasharray={value === 0 ? "4 3" : undefined}
-                className="animate-wave-draw transition-all duration-700"
+                className="animate-donut-draw"
               />
+            ) : (
+              <>
+                {inProgressCount > 0 && (
+                  <circle
+                    cx="48"
+                    cy="48"
+                    r={r}
+                    stroke="#2563EB"
+                    strokeWidth={hoveredStatus === 'in-progress' ? 10 : 8}
+                    fill="none"
+                    strokeDasharray={`${inProgLen} ${C}`}
+                    strokeDashoffset={inProgOffset}
+                    strokeLinecap="round"
+                    className="transition-all duration-500 animate-donut-draw cursor-pointer"
+                    style={{
+                      opacity: hoveredStatus && hoveredStatus !== 'in-progress' ? 0.35 : 1,
+                    }}
+                  />
+                )}
+                {pendingCount > 0 && (
+                  <circle
+                    cx="48"
+                    cy="48"
+                    r={r}
+                    stroke="#F59E0B"
+                    strokeWidth={hoveredStatus === 'pending' ? 10 : 8}
+                    fill="none"
+                    strokeDasharray={`${pendingLen} ${C}`}
+                    strokeDashoffset={pendingOffset}
+                    strokeLinecap="round"
+                    className="transition-all duration-500 animate-donut-draw cursor-pointer"
+                    style={{
+                      opacity: hoveredStatus && hoveredStatus !== 'pending' ? 0.35 : 1,
+                    }}
+                  />
+                )}
+                {completedCount > 0 && (
+                  <circle
+                    cx="48"
+                    cy="48"
+                    r={r}
+                    stroke="#10B981"
+                    strokeWidth={hoveredStatus === 'completed' ? 10 : 8}
+                    fill="none"
+                    strokeDasharray={`${compLen} ${C}`}
+                    strokeDashoffset={compOffset}
+                    strokeLinecap="round"
+                    className="transition-all duration-500 animate-donut-draw cursor-pointer"
+                    style={{
+                      opacity: hoveredStatus && hoveredStatus !== 'completed' ? 0.35 : 1,
+                    }}
+                  />
+                )}
+              </>
+            )}
+          </svg>
 
-              {/* Indicator Data Points */}
-              {dots.map((d, i) => (
-                <circle
-                  key={i}
-                  cx={d.cx}
-                  cy={d.cy}
-                  r={value === 0 ? "2" : "3"}
-                  fill={value === 0 ? '#CBD5E1' : color}
-                  className="transition-all duration-700"
-                  style={{
-                    filter: value > 0 ? `drop-shadow(0 0 3px ${color}80)` : undefined,
-                  }}
-                />
-              ))}
-            </svg>
+          <div className="absolute inset-0 flex flex-col items-center justify-center text-center select-none pointer-events-none transition-transform duration-300 group-hover/donut:scale-110">
+            <span className="text-3xl sm:text-4xl font-black text-slate-900 dark:text-white leading-none animate-count">
+              {totalProjects}
+            </span>
+            <span className="text-[9px] sm:text-[10px] font-black text-blue-600 dark:text-blue-400 uppercase tracking-widest mt-1.5">
+              PROGRESS
+            </span>
           </div>
         </div>
       </div>
+
+      {/* Right: Status Overview Breakdown */}
+      <div className="w-full sm:w-auto flex flex-col gap-2 sm:min-w-[220px]">
+        <span className="text-[11px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-0.5">
+          STATUS OVERVIEW
+        </span>
+
+        <div
+          onMouseEnter={() => setHoveredStatus('in-progress')}
+          onMouseLeave={() => setHoveredStatus(null)}
+          className="flex items-center justify-between gap-8 text-xs sm:text-sm px-2.5 py-1.5 rounded-xl transition-all duration-200 cursor-pointer hover:bg-blue-50/70 dark:hover:bg-blue-950/40"
+        >
+          <span className="flex items-center gap-2.5 font-bold text-slate-700 dark:text-slate-300">
+            <span className="relative flex h-3 w-3 items-center justify-center">
+              {inProgressCount > 0 && (
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
+              )}
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-blue-600" />
+            </span>
+            In Progress
+          </span>
+          <span className="font-black text-slate-900 dark:text-white text-sm sm:text-base">{inProgressCount}</span>
+        </div>
+
+        <div
+          onMouseEnter={() => setHoveredStatus('pending')}
+          onMouseLeave={() => setHoveredStatus(null)}
+          className="flex items-center justify-between gap-8 text-xs sm:text-sm px-2.5 py-1.5 rounded-xl transition-all duration-200 cursor-pointer hover:bg-amber-50/70 dark:hover:bg-amber-950/40"
+        >
+          <span className="flex items-center gap-2.5 font-bold text-slate-700 dark:text-slate-300">
+            <span className="relative flex h-3 w-3 items-center justify-center">
+              {pendingCount > 0 && (
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
+              )}
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500" />
+            </span>
+            Pending
+          </span>
+          <span className="font-black text-amber-600 dark:text-amber-400 text-sm sm:text-base">{pendingCount}</span>
+        </div>
+
+        <div
+          onMouseEnter={() => setHoveredStatus('completed')}
+          onMouseLeave={() => setHoveredStatus(null)}
+          className="flex items-center justify-between gap-8 text-xs sm:text-sm px-2.5 py-1.5 rounded-xl transition-all duration-200 cursor-pointer hover:bg-emerald-50/70 dark:hover:bg-emerald-950/40"
+        >
+          <span className="flex items-center gap-2.5 font-bold text-slate-700 dark:text-slate-300">
+            <span className="relative flex h-3 w-3 items-center justify-center">
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500" />
+            </span>
+            Completed
+          </span>
+          <span className="font-black text-emerald-600 dark:text-emerald-400 text-sm sm:text-base">{completedCount}</span>
+        </div>
+      </div>
     </div>
   );
 }
+
+
 
 export default function Dashboard({
   user,
@@ -895,9 +702,7 @@ export default function Dashboard({
 
       <main className="flex-1 flex flex-col min-w-0 relative overflow-hidden">
 
-        {/* ══════════════════════════════════════════
-            TOP NAVIGATION BAR (Glassmorphism)
-        ══════════════════════════════════════════ */}
+        {/*TOP NAVIGATION BAR (Glassmorphism)*/}
         {!contentOverride && (
           <div
             className={`sticky top-0 z-50 px-4 sm:px-6 h-14 flex items-center justify-between shrink-0 border-b backdrop-blur-md transition-colors ${
@@ -1110,7 +915,7 @@ export default function Dashboard({
               {/* Dashboard view: title + stats */}
               {view === 'dashboard' && (
                 <>
-                  {/* Clean Header with Enriched Large Dynamic Time-Based Greeting & Top Action Buttons */}
+                  {/* Clean Header with Enriched Large Dynamic Time-Based Greeting */}
                   <div className="px-6 pt-6 animate-fade-in-up">
                     <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
                       <div className="max-w-3xl">
@@ -1120,248 +925,187 @@ export default function Dashboard({
                         >
                           <span className="text-slate-900 dark:text-white">{timeGreeting},</span>
                           <span className="text-blue-600 dark:text-blue-400">{userGreetingName}!</span>
-                          <span className="inline-block animate-wave origin-bottom-right">👋</span>
                         </h1>
                         <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 font-medium leading-relaxed mt-2 max-w-2xl">
                           Welcome to the system control center. Create estimation projects, assign technical teams, review surveys, and approve final equipment pricing estimates.
                         </p>
                       </div>
-
-                      {/* Top Right Action Buttons */}
-                      <div className="flex items-center gap-3 shrink-0">
-                        <button
-                          onClick={() => { setIsCompanyMode(false); setShowCreate(true); }}
-                          className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-white dark:bg-[#131B2E] border border-blue-200/80 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 text-xs font-bold transition-all shadow-2xs cursor-pointer"
-                        >
-                          <svg className="w-4 h-4 text-blue-600 dark:text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                          </svg>
-                          <span>New Survey</span>
-                        </button>
-                        <button
-                          onClick={() => navigate('estimation-hub')}
-                          className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-all shadow-md shadow-blue-500/20 cursor-pointer"
-                        >
-                          <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-                          </svg>
-                          <span>New Estimate</span>
-                        </button>
-                      </div>
                     </div>
                   </div>
 
-                  {/* Progress Donut & Status Overview Side-by-Side Cards */}
+                  {/* 2-Column Dashboard Layout: Right = Pending Surveys & Active Projects, left = Status Banner + Stat Cards */}
                   <div className="px-6 pt-6">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <ProgressDonutCard
-                        totalProjects={totalProjects}
-                        inProgressCount={inProgressCount}
-                        pendingCount={pendingCount}
-                        completedCount={completedCount}
-                      />
-                      <StatusOverviewCard
-                        inProgressCount={inProgressCount}
-                        pendingCount={pendingCount}
-                        completedCount={completedCount}
-                      />
-                    </div>
-                  </div>
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                      {/* Left Column: Screenshot Group (Status Overview Banner + 4 Stat Cards in 2x2) */}
+                      <div className="lg:col-span-5 flex flex-col gap-6">
+                        {/* Status Overview Banner */}
+                        <StatusOverviewBanner
+                          totalProjects={totalProjects}
+                          inProgressCount={inProgressCount}
+                          pendingCount={pendingCount}
+                          completedCount={completedCount}
+                        />
 
-                  {/* Sparkline Stat Cards (2x2 Grid) */}
-                  <div className="px-6 pt-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <SparklineCard
-                        label="PROJECTS"
-                        value={totalProjects}
-                        totalProjects={totalProjects}
-                        sub="Total site surveys"
-                        icon={<StatBuilding className="w-5 h-5" />}
-                        valueColor="#2563EB"
-                        onClick={() => navigate('assignment')}
-                        delay={0}
-                      />
-                      <SparklineCard
-                        label="IN PROGRESS"
-                        value={inProgressCount}
-                        totalProjects={totalProjects}
-                        sub="Active site surveys"
-                        icon={<StatBolt className="w-5 h-5" />}
-                        valueColor="#2563EB"
-                        onClick={() => navigate('workspace')}
-                        delay={50}
-                      />
-                      <SparklineCard
-                        label="PENDING"
-                        value={pendingCount}
-                        totalProjects={totalProjects}
-                        sub="Awaiting kickoff"
-                        icon={<StatCalendar className="w-5 h-5" />}
-                        valueColor="#F59E0B"
-                        onClick={() => navigate('workspace')}
-                        delay={100}
-                      />
-                      <SparklineCard
-                        label="COMPLETED"
-                        value={completedCount}
-                        totalProjects={totalProjects}
-                        sub="Finalized surveys"
-                        icon={<StatCheckCircle className="w-5 h-5" />}
-                        valueColor="#16A34A"
-                        onClick={() => navigate('done')}
-                        delay={150}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Pending Surveys & Active Projects */}
-                  <div className="px-6 pt-6">
-                    <div className="bg-white dark:bg-[#131B2E] rounded-2xl p-6 border border-slate-200/80 dark:border-slate-800 shadow-sm animate-fade-in-up flex flex-col flex-1 relative min-h-[220px]">
-                      <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100 dark:border-slate-800">
-                        <div>
-                          <h3 className="text-sm font-black tracking-wider text-slate-800 dark:text-white uppercase flex items-center gap-2">
-                            <span>Pending Surveys &amp; Active Projects</span>
-                            {pendingCount > 0 && (
-                              <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500 text-white">
-                                {pendingCount} Pending
-                              </span>
-                            )}
-                          </h3>
-                          <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mt-0.5">
-                            Click any project below to open site survey, upload floor plan, or build BOQ
-                          </p>
+                        {/* 4 Stat Cards in 2x2 Grid */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <SparklineCard
+                            label="PROJECTS"
+                            value={totalProjects}
+                            totalProjects={totalProjects}
+                            sub="Total site surveys"
+                            icon={<StatBuilding className="w-5 h-5" />}
+                            valueColor="#2563EB"
+                            onClick={() => navigate('assignment')}
+                            delay={0}
+                          />
+                          <SparklineCard
+                            label="IN PROGRESS"
+                            value={inProgressCount}
+                            totalProjects={totalProjects}
+                            sub="Active site surveys"
+                            icon={<StatBolt className="w-5 h-5" />}
+                            valueColor="#2563EB"
+                            onClick={() => navigate('workspace')}
+                            delay={50}
+                          />
+                          <SparklineCard
+                            label="PENDING"
+                            value={pendingCount}
+                            totalProjects={totalProjects}
+                            sub="Awaiting kickoff"
+                            icon={<StatCalendar className="w-5 h-5" />}
+                            valueColor="#F59E0B"
+                            onClick={() => navigate('workspace')}
+                            delay={100}
+                          />
+                          <SparklineCard
+                            label="COMPLETED"
+                            value={completedCount}
+                            totalProjects={totalProjects}
+                            sub="Finalized surveys"
+                            icon={<StatCheckCircle className="w-5 h-5" />}
+                            valueColor="#16A34A"
+                            onClick={() => navigate('done')}
+                            delay={150}
+                          />
                         </div>
-                        <button
-                          onClick={() => navigate('workspace')}
-                          className="text-xs font-bold text-blue-700 dark:text-blue-400 hover:text-blue-900 dark:hover:text-blue-300 transition-colors"
-                        >
-                          View All Workspace →
-                        </button>
                       </div>
 
-                      {/* Project Cards Grid */}
-                      {actualProjects.length > 0 ? (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 mb-16">
-                          {actualProjects.slice(0, 6).map((p, index) => {
-                            const isPending = p.status === 'Pending';
-                            const isAwaitingApproval = p.status === 'Finalized';
-                            const isRejected = p.status === 'Finalized - Rejected';
-                            const isCompleted = p.status === 'Completed' || p.status === 'Finalized - Approved';
-                            return (
-                              <div
-                                key={p.id}
-                                onClick={() => onSelectProject(p)}
-                                className={`p-4.5 rounded-2xl border transition-all duration-300 cursor-pointer flex flex-col justify-between group/card relative overflow-hidden animate-fade-in-up hover:-translate-y-1.5 hover:shadow-xl ${
-                                  isPending
-                                    ? 'bg-amber-50/20 dark:bg-amber-950/20 border-amber-200/90 dark:border-amber-900/50 hover:border-amber-400'
-                                    : isAwaitingApproval
-                                    ? 'bg-blue-50/20 dark:bg-blue-950/20 border-blue-200/90 dark:border-blue-900/50 hover:border-blue-400'
-                                    : 'bg-white dark:bg-[#131B2E] border-slate-200 dark:border-slate-800 hover:border-blue-400 dark:hover:border-blue-500 hover:shadow-slate-100 dark:hover:shadow-none'
-                                }`}
-                                style={{ animationDelay: `${index * 60}ms` }}
-                              >
-                                {/* Top Accent bar on hover */}
-                                <div
-                                  className={`absolute top-0 left-0 right-0 h-1 transition-opacity duration-300 opacity-0 group-hover/card:opacity-100 ${
-                                    isPending
-                                      ? 'bg-gradient-to-r from-amber-400 to-amber-600'
-                                      : isAwaitingApproval
-                                      ? 'bg-gradient-to-r from-blue-500 to-indigo-600'
-                                      : isRejected
-                                      ? 'bg-gradient-to-r from-rose-400 to-rose-600'
-                                      : 'bg-gradient-to-r from-emerald-400 to-teal-500'
-                                  }`}
-                                />
-
-                                <div>
-                                  <div className="flex items-center justify-between gap-2 mb-2.5">
-                                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 truncate">
-                                      {p.clientName}
-                                    </span>
-                                    <span
-                                      className={`text-[9px] font-extrabold px-2.5 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1.5 transition-transform duration-200 group-hover/card:scale-105 ${
-                                        isPending
-                                          ? 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800'
-                                          : isAwaitingApproval
-                                          ? 'bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800'
-                                          : isRejected
-                                          ? 'bg-rose-100 dark:bg-rose-950 text-rose-800 dark:text-rose-300 border border-rose-200 dark:border-rose-800'
-                                          : isCompleted
-                                          ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
-                                          : 'bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-300 border border-blue-200 dark:border-blue-800'
-                                      }`}
-                                    >
-                                      {/* Live status pulsing dot */}
-                                      <span className="relative flex h-1.5 w-1.5">
-                                        {(isPending || isAwaitingApproval) && (
-                                          <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${isPending ? 'bg-amber-400' : 'bg-blue-400'}`} />
-                                        )}
-                                        <span className={`relative inline-flex rounded-full h-1.5 w-1.5 ${isPending ? 'bg-amber-500' : isAwaitingApproval ? 'bg-blue-600' : isRejected ? 'bg-rose-500' : 'bg-emerald-500'}`} />
-                                      </span>
-                                      <span>
-                                        {isAwaitingApproval
-                                          ? 'Awaiting Approval'
-                                          : isCompleted
-                                          ? 'Approved'
-                                          : isRejected
-                                          ? 'Rejected'
-                                          : p.status}
-                                      </span>
-                                    </span>
-                                  </div>
-                                  <h4 className="text-xs font-black text-slate-800 dark:text-white mb-1 leading-snug transition-colors duration-200 group-hover/card:text-blue-600 dark:group-hover/card:text-blue-400">{p.name}</h4>
-                                  <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium truncate mb-3 flex items-center gap-1">
-                                    <span className="group-hover/card:scale-125 transition-transform duration-200 inline-block">📍</span>
-                                    <span>{p.location || 'Location not set'}</span>
-                                  </p>
-                                </div>
-
-                                <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
-                                  <span className="text-[10px] font-bold text-slate-400 truncate">
-                                    {p.systemTypes?.slice(0, 2).join(', ') || 'General System'}
+                      {/* Right Column: Pending Surveys & Active Projects */}
+                      <div className="lg:col-span-7 flex flex-col">
+                        <div className="bg-white dark:bg-[#131B2E] rounded-3xl p-6 border border-slate-200/80 dark:border-slate-800 shadow-sm animate-fade-in-up flex-1 flex flex-col relative min-h-[380px]">
+                          <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100 dark:border-slate-800">
+                            <div>
+                              <h3 className="text-sm font-black tracking-wider text-slate-800 dark:text-white uppercase flex items-center gap-2">
+                                <span>Pending Surveys &amp; Active Projects</span>
+                                {pendingCount > 0 && (
+                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500 text-white">
+                                    {pendingCount} Pending
                                   </span>
-                                  <button
-                                    onClick={(e) => { e.stopPropagation(); onSelectProject(p); }}
-                                    className="px-3.5 py-1.5 rounded-xl text-xs font-black text-white transition-all duration-300 shadow-sm flex items-center gap-1 shrink-0 group-hover/card:shadow-md hover:scale-105 active:scale-95"
-                                    style={{
-                                      background: isPending ? 'linear-gradient(135deg, #D97706 0%, #B45309 100%)' : 'linear-gradient(135deg, #1D4ED8 0%, #1E40AF 100%)',
-                                      color: '#FFFFFF'
-                                    }}
-                                  >
-                                    <span>Open Survey</span>
-                                    <svg className="w-3.5 h-3.5 text-white transition-transform duration-300 group-hover/card:translate-x-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                                      <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
-                                    </svg>
-                                  </button>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      ) : (
-                        <div className="py-12 text-center flex flex-col items-center justify-center">
-                          <div className="w-12 h-12 rounded-2xl bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 flex items-center justify-center mb-3">
-                            <StatClipboard className="w-6 h-6" />
+                                )}
+                              </h3>
+                              <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mt-0.5">
+                                Click any project below to open site survey, upload floor plan, or build BOQ
+                              </p>
+                            </div>
+                            <button
+                              onClick={() => navigate('workspace')}
+                              className="text-xs font-bold text-blue-700 dark:text-blue-400 hover:text-blue-900 dark:hover:text-blue-300 transition-colors shrink-0"
+                            >
+                              View All Workspace →
+                            </button>
                           </div>
-                          <h4 className="text-sm font-black text-slate-800 dark:text-white mb-1">No site surveys created yet</h4>
-                          <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mb-4">
-                            No active site surveys have been assigned or submitted yet.
-                          </p>
-                        </div>
-                      )}
 
-                      {/* AI Estimator Button at bottom right */}
-                      <div className="absolute right-6 bottom-6">
-                        <button
-                          onClick={() => navigate('estimation-hub')}
-                          className="flex items-center gap-2 px-5 py-2.5 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-all shadow-md shadow-blue-500/25 cursor-pointer"
-                        >
-                          <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
-                          </svg>
-                          <span>AI Estimator</span>
-                        </button>
+                          {/* Project Cards Grid or Empty State */}
+                          {actualProjects.length > 0 ? (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-16">
+                              {actualProjects.slice(0, 6).map((p, index) => {
+                                const isPending = p.status === 'Pending';
+                                const isAwaitingApproval = p.status === 'Finalized';
+                                const isRejected = p.status === 'Finalized - Rejected';
+                                const isCompleted = p.status === 'Completed' || p.status === 'Finalized - Approved';
+                                return (
+                                  <div
+                                    key={p.id}
+                                    onClick={() => onSelectProject(p)}
+                                    className={`p-4 rounded-2xl border transition-all duration-300 cursor-pointer flex flex-col justify-between group/card relative overflow-hidden animate-fade-in-up hover:-translate-y-1.5 hover:shadow-xl ${
+                                      isPending
+                                        ? 'bg-amber-50/20 dark:bg-amber-950/20 border-amber-200/90 dark:border-amber-900/50 hover:border-amber-400'
+                                        : isAwaitingApproval
+                                        ? 'bg-blue-50/20 dark:bg-blue-950/20 border-blue-200/90 dark:border-blue-900/50 hover:border-blue-400'
+                                        : 'bg-white dark:bg-[#131B2E] border-slate-200 dark:border-slate-800 hover:border-blue-400 dark:hover:border-blue-500'
+                                    }`}
+                                    style={{ animationDelay: `${index * 60}ms` }}
+                                  >
+                                    <div
+                                      className={`absolute top-0 left-0 right-0 h-1 transition-opacity duration-300 opacity-0 group-hover/card:opacity-100 ${
+                                        isPending
+                                          ? 'bg-gradient-to-r from-amber-400 to-amber-600'
+                                          : isAwaitingApproval
+                                          ? 'bg-gradient-to-r from-blue-500 to-indigo-600'
+                                          : isRejected
+                                          ? 'bg-gradient-to-r from-rose-400 to-rose-600'
+                                          : 'bg-gradient-to-r from-emerald-400 to-teal-500'
+                                      }`}
+                                    />
+                                    <div>
+                                      <div className="flex items-center justify-between gap-2 mb-2.5">
+                                        <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 truncate">
+                                          {p.clientName}
+                                        </span>
+                                        <span
+                                          className={`text-[9px] font-extrabold px-2.5 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1.5 ${
+                                            isPending
+                                              ? 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300'
+                                              : isAwaitingApproval
+                                              ? 'bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300'
+                                              : isRejected
+                                              ? 'bg-rose-100 dark:bg-rose-950 text-rose-800 dark:text-rose-300'
+                                              : 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300'
+                                          }`}
+                                        >
+                                          {p.status}
+                                        </span>
+                                      </div>
+                                      <h4 className="text-xs font-black text-slate-800 dark:text-white mb-1 leading-snug group-hover/card:text-blue-600 dark:group-hover/card:text-blue-400">{p.name}</h4>
+                                      <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium truncate mb-3 flex items-center gap-1">
+                                        <span>📍</span>
+                                        <span>{p.location || 'Location not set'}</span>
+                                      </p>
+                                    </div>
+
+                                    <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
+                                      <span className="text-[10px] font-bold text-slate-400 truncate">
+                                        {p.systemTypes?.slice(0, 2).join(', ') || 'General System'}
+                                      </span>
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); onSelectProject(p); }}
+                                        className="px-3.5 py-1.5 rounded-xl text-xs font-black text-white shadow-sm flex items-center gap-1 shrink-0"
+                                        style={{
+                                          background: isPending ? 'linear-gradient(135deg, #D97706 0%, #B45309 100%)' : 'linear-gradient(135deg, #1D4ED8 0%, #1E40AF 100%)',
+                                        }}
+                                      >
+                                        <span>Open Survey</span>
+                                      </button>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <div className="py-16 text-center flex flex-col items-center justify-center my-auto">
+                              <div className="w-12 h-12 rounded-2xl bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 flex items-center justify-center mb-3">
+                                <StatClipboard className="w-6 h-6" />
+                              </div>
+                              <h4 className="text-sm font-black text-slate-800 dark:text-white mb-1">No site surveys created yet</h4>
+                              <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mb-4">
+                                No active site surveys have been assigned or submitted yet.
+                              </p>
+                            </div>
+                          )}
+                        </div>
                       </div>
+
                     </div>
                   </div>
                 </>

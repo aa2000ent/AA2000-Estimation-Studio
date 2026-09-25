@@ -1,366 +1,371 @@
 import React, { useState, useEffect } from 'react';
-import {
-  FileText,
-  Settings,
-  LogOut,
-  Cpu,
-  UserCheck,
-  ChevronDown,
-  ChevronUp,
-  Bot,
-  X,
-  Home,
-  ListMinus,
-  Users,
-  Box,
-  BarChart3,
-  Lightbulb,
-} from 'lucide-react';
-import { UserRole, type SessionUserProfile } from '../domain/models';
-import { isTabUnderMaintenance } from '../shared/config/maintenanceConfig';
+import type { User, Project, AIScanGroup } from '../../App';
+import type { Notification } from '../notifications/NotificationBell';
+import { getRoleTheme } from '../../utils/RoleTheme';
+import { getSavedBOQCount } from '../floor-plan/SavedBOQsView';
 
-export type ActiveTab = 'dashboard' | 'manual-quotation' | 'quotation' | 'pipeline' | 'ai_quotation' | 'profile' | 'admin' | 'catalog' | 'template' | 'admin-automation' | 'app_review' | 'allyvirtual' | 'allyvirtual-contacts' | 'reports' | 'chats';
+export type View =
+  | 'home' | 'dashboard' | 'workspace' | 'create-survey'
+  | 'todo' | 'assignment' | 'missing' | 'done' | 'history'
+  | 'approval' | 'finalize'
+  | 'ongoing' | 'upcoming' | 'missing-notif' | 'approval-notif' | 'finalize-notif'
+  | 'notifications' | 'calendar' | 'floor-plan'
+  | 'cctv' | 'fire_alarm' | 'fire_protection' | 'access_control' | 'burglar_alarm' | 'other'
+  | 'ai-reader' | 'estimation-hub' | 'saved-folders' | 'saved-boqs' | 'saved-estimations';
 
-interface SidebarProps {
-  activeTab: ActiveTab;
-  setActiveTab: (tab: ActiveTab) => void;
-  sidebarOpen: boolean;
-  setSidebarOpen: (open: boolean) => void;
-  onLogout: () => void;
-  userRole: UserRole;
-  accountId: string;
-  displayName: string;
-  sessionProfile: SessionUserProfile | null;
-  cartCount?: number;
-  isDarkMode?: boolean;
-  onToggleDarkMode?: () => void;
+export interface Props {
+  user: User;
+  currentView: View;
+  onNavigate: (view: View) => void;
+  notifications?: Notification[];
+  projects?: Project[];
+  aiScans?: AIScanGroup[];
+  onNewSurvey?: () => void;
+  isMobile?: boolean;
+  isDark?: boolean;
 }
 
-interface NavItem {
-  id: ActiveTab;
-  label: string;
-  icon: React.ComponentType<{ size?: number; className?: string }>;
-  show: boolean;
-  isSubItem?: boolean;
-  isParent?: boolean;
-  parentId?: ActiveTab;
-  dividerAfter?: boolean;
-}
-
-const Sidebar: React.FC<SidebarProps> = ({
-  activeTab,
-  setActiveTab,
-  sidebarOpen,
-  setSidebarOpen,
-  onLogout,
-  userRole,
-  accountId,
-  displayName,
-  sessionProfile,
-  cartCount = 0,
-  isDarkMode = false,
-  onToggleDarkMode = () => {},
-}) => {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
-
-  // Track single open accordion section ('admin' | 'allyvirtual' | null)
-  const [openParentId, setOpenParentId] = useState<string | null>(() => {
-    if (activeTab.startsWith('admin')) return 'admin';
-    if (activeTab.startsWith('allyvirtual')) return 'allyvirtual';
-    return null;
-  });
-
-  // Keep open parent section in sync if activeTab changes externally
-  useEffect(() => {
-    if (activeTab.startsWith('admin')) {
-      setOpenParentId('admin');
-    } else if (activeTab.startsWith('allyvirtual')) {
-      setOpenParentId('allyvirtual');
-    } else {
-      setOpenParentId(null);
-    }
-  }, [activeTab]);
-
-  const selectTab = (tab: ActiveTab) => {
-    setActiveTab(tab);
-    if (typeof window !== 'undefined' && window.innerWidth < 1024) {
-      setSidebarOpen(false);
-    }
-  };
-
-  const accountLabel =
-    (displayName || '').trim() ||
-    sessionProfile?.displayName ||
-    (userRole === 'ADMIN' ? 'System Admin' : 'Sales Employee');
-
-  const isAuthorizedAdmin = userRole === 'ADMIN' || userRole === 'SALES' || userRole === 'GENERAL MANAGER';
-  const isAuthorizedAlly = userRole === 'ADMIN' || userRole === 'SALES' || userRole === 'GENERAL MANAGER';
-
-  const navItems: NavItem[] = [
-    // Quotation Options
-    {id: 'dashboard',label: 'Dashboard', icon: Home, show: true,},
-    {id: 'ai_quotation',label: 'AI Chat Quotation',icon: Bot,show: true,},
-    {id: 'manual-quotation',label: 'Manual Quotation',icon: FileText,show: true,},
-    {id: 'allyvirtual',label: 'AllyVirtual Quotation', icon: ListMinus ,show: isAuthorizedAlly,isParent: true,},
-    {id: 'allyvirtual-contacts', label: 'Contacts',icon: UserCheck,show: isAuthorizedAlly,isSubItem: true,parentId: 'allyvirtual',},
-
-
-    // Sales Options
-    {id: 'pipeline',label: 'My Quotation',icon: FileText,show: true,},
-    {id: 'template',label: 'Templates',icon: FileText,show: true,},
-    {id: 'catalog',label: 'Products/Items',icon: Box,show: true,},
-    {id: 'chats',label: 'Clients',icon: Users,show: isAuthorizedAlly,},
-    {id: 'reports',label: 'Reports',icon: BarChart3,show: true,},
-
-    //Settings
-    {id: 'admin',label: 'Settings',icon: Settings,show: isAuthorizedAdmin,isParent: true,},
-    {id: 'admin-automation',label: 'Automation Settings',icon: Cpu,show: isAuthorizedAdmin,isSubItem: true,parentId: 'admin',},
-  ];
-
-  const filteredItems = React.useMemo(() => {
-    const q = searchQuery.toLowerCase().trim();
-
-    // Normal mode: no active search query
-    if (!q) {
-      return navItems.filter((item) => {
-        if (!item.show) return false;
-        if (item.isSubItem && item.parentId) {
-          return openParentId === item.parentId;
-        }
-        return true;
-      });
-    }
-
-    // Search mode: matches sub-button label OR parent label OR child label
-    return navItems.filter((item) => {
-      if (!item.show) return false;
-
-      // 1. Direct label match (e.g., searching "Catalog" matches "Catalog Management")
-      if (item.label.toLowerCase().includes(q)) return true;
-
-      // 2. Parent item matches if any of its authorized children match
-      if (item.isParent) {
-        const children = navItems.filter((child) => child.show && child.parentId === item.id);
-        if (children.some((child) => child.label.toLowerCase().includes(q))) {
-          return true;
-        }
-      }
-
-      // 3. Sub-item matches if parent's label matches (e.g., searching "Admin" shows all admin sub-buttons)
-      if (item.isSubItem && item.parentId) {
-        const parent = navItems.find((p) => p.id === item.parentId);
-        if (parent && parent.show && parent.label.toLowerCase().includes(q)) {
-          return true;
-        }
-      }
-
-      return false;
-    });
-  }, [navItems, searchQuery, activeTab, openParentId]);
-
-  return (
-    <>
-      {/* Mobile Drawer Overlay */}
-      {sidebarOpen && (
-        <div
-          className="fixed inset-0 z-[200] bg-slate-900/40 backdrop-blur-sm lg:hidden transition-opacity"
-          onClick={() => setSidebarOpen(false)}
-          aria-hidden="true"
-        />
-      )}
-
-      <aside
-        className={`fixed inset-y-0 left-0 z-[999999] lg:relative lg:z-[60] bg-white border-r border-slate-100 shadow-sm transition-all duration-300 ease-in-out flex flex-col justify-between dark:bg-[#0F172A] dark:border-[#334155] ${
-          sidebarOpen
-            ? 'w-[270px] max-w-[85vw] lg:max-w-none lg:w-52 xl:w-64'
-            : 'w-20 -translate-x-full lg:translate-x-0'
-        }`}
-      >
-        <div className="flex flex-col h-full relative">
-          {/* Header Section */}
-          <div
-            className={`p-3 sm:p-4 flex items-center border-b border-slate-100 relative min-h-[72px] dark:border-[#334155] ${
-              sidebarOpen ? 'justify-between' : 'justify-center'
-            }`}
-          >
-            <div className={`flex items-center gap-2 sm:gap-3 min-w-0 ${sidebarOpen ? 'flex-1' : 'justify-center w-full'}`}>
-              <button
-                type="button"
-                onClick={() => setSidebarOpen(!sidebarOpen)}
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-600"
-                title={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
-                aria-label={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
-              >
-                <Bot className="h-5 w-5 text-white" />
-              </button>
-
-              {/* Title (Visible in Expanded Mode) */}
-              {sidebarOpen && (
-                <div className="min-w-0 flex-1">
-                  <h1 className="text-lg font-bold leading-snug text-slate-900 dark:text-[#F8FAFC]">
-                    AI Chat
-                    <br />
-                    Quotation
-                  </h1>
-                </div>
-              )}
-            </div>
-
-            {sidebarOpen && (
-              <button
-                type="button"
-                onClick={() => setSidebarOpen(false)}
-                className="lg:hidden ml-2 w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-slate-100/80 text-slate-500 hover:bg-slate-100 flex items-center justify-center shrink-0 cursor-pointer dark:bg-[#1E293B] dark:text-[#CBD5E1] dark:hover:bg-[#334155]"
-                title="Close navigation menu"
-                aria-label="Close navigation menu"
-              >
-                <X size={20} strokeWidth={2.25} />
-              </button>
-            )}
-          </div>
-
-          {/* Navigation Links List */}
-          <nav className="flex-1 px-3 py-2 space-y-1 overflow-y-auto sidebar-scrollbar">
-            {filteredItems.map((item) => {
-              const Icon = item.icon;
-
-              let isActive = activeTab === item.id;
-              let isParentActive = false;
-              let isMiniActive = false;
-
-              if (item.isParent && item.id === 'admin') {
-                isParentActive = activeTab.startsWith('admin');
-                isActive = isParentActive;
-              } else if (item.isParent && item.id === 'allyvirtual') {
-                isParentActive = activeTab.startsWith('allyvirtual');
-                isActive = isParentActive;
-              }
-
-              if (item.id === 'allyvirtual-contacts' && activeTab === 'allyvirtual') {
-                isActive = true;
-                isMiniActive = true;
-              } else if (item.isSubItem && activeTab === item.id) {
-                isMiniActive = true;
-                isActive = true;
-              }
-
-              const isMaintenance = isTabUnderMaintenance(item.id);
-
-              const handleNavClick = () => {
-                if (item.isParent) {
-                  // Toggle this parent section, automatically closing all other parent sub-menus
-                  setOpenParentId((prev) => (prev === item.id ? null : item.id));
-
-                  if (item.id === 'admin' && !activeTab.startsWith('admin')) {
-                    selectTab('admin-automation');
-                  } else if (item.id === 'allyvirtual' && !activeTab.startsWith('allyvirtual')) {
-                    selectTab('allyvirtual-contacts');
-                  }
-                } else {
-                  if (item.isSubItem && item.parentId) {
-                    setOpenParentId(item.parentId);
-                  } else {
-                    setOpenParentId(null);
-                  }
-                  selectTab(item.id);
-                }
-              };
-
-              const isSectionExpanded = item.isParent && openParentId === item.id;
-
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  disabled={isMaintenance}
-                  onClick={handleNavClick}
-                  title={!sidebarOpen ? `${item.label}${isMaintenance ? ' (Under Maintenance)' : ''}` : undefined}
-                  className={`flex items-center gap-3 px-3 ${item.isSubItem ? 'py-1.5' : 'py-2.5 w-full'} rounded-xl transition-all group disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${
-                    isParentActive
-                      ? 'bg-blue-50/80 text-blue-600 font-semibold text-xs'
-                      : isMiniActive
-                      ? 'bg-blue-50/80 text-blue-600 font-semibold text-[11px] border border-blue-100 dark:bg-blue-950/80 dark:text-blue-300 dark:border-blue-800/80'
-                      : isActive
-                      ? 'bg-blue-50/80 text-blue-600 font-semibold text-xs'
-                      : `text-slate-600 hover:text-slate-900 hover:bg-slate-100/80 font-medium dark:text-[#CBD5E1] dark:hover:text-[#F8FAFC] dark:hover:bg-[#1E293B] ${item.isSubItem ? 'text-[11px]' : 'text-xs'}`
-                  } ${!sidebarOpen ? 'justify-center px-0 w-full' : ''} ${item.isSubItem && sidebarOpen ? 'ml-8 w-[calc(100%-32px)] mt-0.5 mb-0.5' : ''}`}
-                >
-                  <div
-                    className={`shrink-0 flex items-center justify-center relative ${
-                      !sidebarOpen && isActive && !isMiniActive ? 'w-10 h-10 rounded-xl bg-blue-50 text-blue-600 border border-blue-100' : ''
-                    } ${!sidebarOpen && isMiniActive ? 'w-8 h-8 rounded-xl bg-blue-50 text-blue-600 border border-blue-100 dark:bg-blue-950/80 dark:text-blue-300 dark:border-blue-800/80 mx-auto' : ''}`}
-                  >
-                    <Icon size={item.isSubItem ? 15 : 19} className={isParentActive ? 'text-blue-600' : isMiniActive ? 'text-blue-600 dark:text-blue-300' : isActive ? 'text-blue-600' : 'text-slate-500 group-hover:text-slate-700 dark:text-[#CBD5E1] dark:group-hover:text-[#F8FAFC]'} />
-                    {isMaintenance && !sidebarOpen && (
-                      <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-amber-500 ring-2 ring-white dark:ring-[#0F172A]" />
-                    )}
-                    {item.id === 'manual-quotation' && cartCount > 0 && !sidebarOpen && (
-                      <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-emerald-500 text-white text-[9px] font-black flex items-center justify-center ring-2 ring-white dark:ring-[#0F172A] shadow-xs">
-                        {cartCount}
-                      </span>
-                    )}
-                  </div>
-                  {sidebarOpen && (
-                    <>
-                      <span className="truncate flex-1 text-left">{item.label}</span>
-                      {item.id === 'manual-quotation' && cartCount > 0 && (
-                        <span className="ml-auto px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-600 text-white shadow-xs">
-                          {cartCount}
-                        </span>
-                      )}
-                      {item.isParent && !isMaintenance && (
-                        isSectionExpanded ? (
-                          <ChevronUp size={14} className={isParentActive ? 'text-blue-600' : 'text-slate-400 dark:text-[#CBD5E1]'} />
-                        ) : (
-                          <ChevronDown size={14} className={isParentActive ? 'text-blue-600' : 'text-slate-400 dark:text-[#CBD5E1]'} />
-                        )
-                      )}
-                      {isMaintenance && (
-                        <span className="ml-auto px-1.5 py-0.5 rounded-full text-[9px] font-semibold bg-amber-50 text-amber-700 uppercase tracking-tight shrink-0 border border-amber-200">
-                          Unavailable
-                        </span>
-                      )}
-                    </>
-                  )}
-                </button>
-              );
-            })}
-          </nav>
-
-          {/* Quick Tip Card */}
-          <div className="p-3 pt-2 border-t border-slate-100 dark:border-[#334155]">
-            {sidebarOpen ? (
-              <div className="rounded-2xl border border-blue-100/50 bg-blue-50/60 p-4 dark:bg-blue-950/30 dark:border-blue-900/40">
-                <div className="flex items-center gap-2">
-                  <Lightbulb className="h-4 w-4 text-blue-600 dark:text-blue-300 shrink-0" />
-                  <span className="text-sm font-bold text-slate-800 dark:text-[#F8FAFC]">Quick Tip</span>
-                </div>
-                <p className="mt-2 text-xs leading-relaxed text-slate-600 dark:text-[#CBD5E1]">
-                  Start with AI Chat Quotation for fast and intelligent quotation generation.
-                </p>
-                <button
-                  type="button"
-                  className="mt-3 block text-xs font-semibold text-blue-600 dark:text-blue-300 hover:underline focus:outline-none focus-visible:underline"
-                >
-                  Learn more →
-                </button>
-              </div>
-            ) : (
-              <div className="flex justify-center">
-                <div
-                  className="w-10 h-10 rounded-xl bg-blue-50/60 border border-blue-100/50 flex items-center justify-center text-blue-600 dark:bg-blue-950/30 dark:border-blue-900/40 dark:text-blue-300"
-                  title="Start with AI Chat Quotation for fast and intelligent quotation generation."
-                >
-                  <Lightbulb className="h-4 w-4" />
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      </aside>
-    </>
-  );
+const navIcons: Record<string, React.FC<{ size?: number; className?: string }>> = {
+  dashboard: ({ size = 19, className = '' }) => (
+    <svg width={size} height={size} className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" />
+    </svg>
+  ),
+  calendar: ({ size = 19, className = '' }) => (
+    <svg width={size} height={size} className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
+    </svg>
+  ),
+  approval: ({ size = 19, className = '' }) => (
+    <svg width={size} height={size} className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+  ),
+  done: ({ size = 19, className = '' }) => (
+    <svg width={size} height={size} className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+  ),
+  history: ({ size = 19, className = '' }) => (
+    <svg width={size} height={size} className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+  ),
+  'estimation-hub': ({ size = 19, className = '' }) => (
+    <svg width={size} height={size} className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
+    </svg>
+  ),
+  'saved-folders': ({ size = 19, className = '' }) => (
+    <svg width={size} height={size} className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" />
+    </svg>
+  ),
+  'saved-boqs': ({ size = 19, className = '' }) => (
+    <svg width={size} height={size} className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+    </svg>
+  ),
+  notifications: ({ size = 19, className = '' }) => (
+    <svg width={size} height={size} className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
+    </svg>
+  ),
+  ongoing: ({ size = 19, className = '' }) => (
+    <svg width={size} height={size} className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
+    </svg>
+  ),
+  upcoming: ({ size = 19, className = '' }) => (
+    <svg width={size} height={size} className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+  ),
+  'missing-notif': ({ size = 19, className = '' }) => (
+    <svg width={size} height={size} className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+    </svg>
+  ),
 };
 
-export default Sidebar;
+export default function Sidebar({
+  user,
+  currentView,
+  onNavigate,
+  notifications = [],
+  projects = [],
+  aiScans = [],
+  onNewSurvey,
+  isMobile = false,
+  isDark = false,
+}: Props) {
+  const isAdmin = user.role === 'ADMIN';
+  const isAccounting = user.role === 'ACCOUNTING';
+
+  // `isPinned`: persistent lock state via toggle button click
+  // `isHovered`: temporary expand on mouse enter
+  const [isPinned, setIsPinned] = useState(true);
+  const [isHovered, setIsHovered] = useState(false);
+  const [savedBOQCount, setSavedBOQCount] = useState(0);
+
+  // Sidebar is expanded if pinned OR hovered
+  const isExpanded = !isMobile && (isPinned || isHovered);
+
+  const handleTogglePin = () => {
+    setIsPinned(prev => !prev);
+  };
+
+  useEffect(() => {
+    setSavedBOQCount(getSavedBOQCount());
+  }, [currentView]);
+
+  const canApprove = isAdmin || isAccounting;
+  const canUseEstimationHub = isAdmin || isAccounting || user.role === 'TECHNICIAN';
+  const canViewSavedBOQs = isAdmin || isAccounting;
+
+  const isNotificationView = [
+    'notifications', 'ongoing', 'upcoming', 'missing-notif', 'approval-notif'
+  ].includes(currentView);
+
+  const getUnreadCount = (viewName: View) => {
+    if (!notifications) return 0;
+    if (viewName === 'notifications') return notifications.filter(n => !n.read).length;
+    const viewToNotifType: Record<string, string> = {
+      ongoing: 'ongoing',
+      upcoming: 'upcoming',
+      missing: 'missing',
+      'missing-notif': 'missing',
+      'approval-notif': 'approval',
+      'finalize-notif': 'finalize',
+    };
+    const notifType = viewToNotifType[viewName];
+    if (!notifType) return 0;
+    return notifications.filter(n => n.type === notifType && !n.read).length;
+  };
+
+  const navGroups: { label: string; items: { label: string; view: View; accent?: string; _count?: number }[] }[] = isNotificationView ? [
+    {
+      label: 'NOTIFICATION',
+      items: [
+        { view: 'notifications', label: 'All Notifications', accent: '#2563EB' },
+        { view: 'ongoing', label: 'Ongoing Surveys', accent: '#2563EB' },
+        { view: 'upcoming', label: 'Upcoming Surveys', accent: '#10B981' },
+        { view: 'missing-notif', label: 'Missing Alerts', accent: '#F59E0B' },
+        ...(canApprove
+          ? [{ view: 'approval-notif' as View, label: 'Approval Alerts', accent: '#2563EB' }]
+          : []),
+      ],
+    },
+  ] : [
+    {
+      label: isAccounting ? 'FINANCE' : 'SURVEYS',
+      items: [
+        { view: 'dashboard', label: 'Dashboard' },
+        { view: 'calendar', label: isAccounting ? 'Financial Calendar' : 'Survey Calendar' },
+      ],
+    },
+    {
+      label: 'WORKFLOW',
+      items: [
+        ...(canApprove
+          ? [{ view: 'approval' as View, label: isAccounting ? 'Financial Approvals' : 'Approval Pipeline', accent: '#2563EB' }]
+          : [{ view: 'done' as View, label: 'Completed Surveys', accent: '#10B981' }]),
+        { view: 'history', label: 'History Archive', accent: '#64748B' },
+      ],
+    },
+    ...(canUseEstimationHub
+      ? [
+        {
+          label: 'TOOLS',
+          items: [
+            { view: 'estimation-hub' as View, label: 'Estimation Hub', accent: '#2563EB' },
+          ],
+        },
+      ]
+      : []),
+    {
+      label: 'SAVED',
+      items: [
+        { view: 'saved-folders', label: 'AI Scan Folders', accent: '#2563EB', _count: aiScans?.length ?? 0 },
+        ...(canViewSavedBOQs
+          ? [{ view: 'saved-boqs' as View, label: 'Floor Plan BOQs', accent: '#2563EB', _count: savedBOQCount }]
+          : []),
+      ],
+    },
+  ];
+
+  return (
+    <aside
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      className={`h-full border-r shrink-0 flex flex-col justify-between select-none transition-all duration-300 ease-in-out ${
+        isDark
+          ? 'bg-[#0D1527] border-slate-800/80 text-white'
+          : 'bg-white border-slate-200/80 text-slate-800'
+      } ${
+        isExpanded ? 'w-72 xl:w-72' : 'w-20'
+      }`}
+    >
+      <div className="flex flex-col h-full relative">
+
+        {/* ── Header Section with "AI Estimation" Label & Persistent Toggle Button ── */}
+        <div
+          className={`group/header p-4 flex items-center border-b transition-colors relative min-h-[72px] ${
+            isDark ? 'border-slate-800/80' : 'border-slate-100'
+          } ${
+            isExpanded ? 'justify-between' : 'justify-center'
+          }`}
+        >
+          {isExpanded ? (
+            <div className="flex items-center gap-3 min-w-0 flex-1">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white shadow-sm transition-transform duration-300">
+                <svg className="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
+                </svg>
+              </div>
+              <div className="min-w-0 flex-1 pl-0.5">
+                <h1 className={`text-base font-bold leading-tight truncate ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                  AI Estimation
+                </h1>
+              </div>
+            </div>
+          ) : (
+            <div
+              onClick={handleTogglePin}
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white shadow-sm cursor-pointer hover:scale-105 transition-transform"
+              title="Pin Sidebar Expanded"
+            >
+              <svg className="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
+              </svg>
+            </div>
+          )}
+
+          {/* Toggle Button in Expanded State */}
+          {isExpanded && !isMobile && (
+            <button
+              type="button"
+              onClick={handleTogglePin}
+              className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors cursor-pointer shrink-0 ${
+                isPinned
+                  ? 'bg-blue-600/20 text-blue-600 dark:bg-blue-600/30 dark:text-blue-400'
+                  : isDark
+                  ? 'text-slate-400 hover:text-white hover:bg-slate-800'
+                  : 'text-slate-400 hover:text-slate-800 hover:bg-slate-100'
+              }`}
+              title={isPinned ? 'Collapse sidebar (unpin)' : 'Keep sidebar expanded (pin)'}
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <rect x="3" y="3" width="18" height="18" rx="2" />
+                <path d="M9 3v18" />
+              </svg>
+            </button>
+          )}
+        </div>
+
+        {/* ── Action Button: New Survey (Admin only) ── */}
+        {isAdmin && (
+          <div className="p-3 pb-1">
+            <button
+              onClick={() => {
+                if (onNewSurvey) onNewSurvey();
+                else onNavigate('create-survey');
+              }}
+              title="New Survey"
+              className={`w-full flex items-center justify-center gap-2 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-md shadow-blue-500/20 transition-all cursor-pointer ${
+                !isExpanded ? 'h-10 w-10 p-0 rounded-xl mx-auto' : 'py-2.5 px-4'
+              }`}
+            >
+              <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+              </svg>
+              {isExpanded && <span>New Survey</span>}
+            </button>
+          </div>
+        )}
+
+        {/* ── Navigation Groups List ── */}
+        <nav className="flex-1 px-3 py-3 space-y-5 overflow-y-auto no-scrollbar">
+          {navGroups.map((group, groupIdx) => (
+            <div key={group.label}>
+              {groupIdx > 0 && <div className={`my-2.5 border-t ${isDark ? 'border-slate-800/80' : 'border-slate-100'}`} />}
+              {isExpanded && (
+                <p className="px-3 mb-2 text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">
+                  {group.label}
+                </p>
+              )}
+              <div className="space-y-1">
+                {group.items.map(item => {
+                  const isSubViewActive = ['cctv', 'fire_alarm', 'fire_protection', 'access_control', 'burglar_alarm', 'other'].includes(currentView);
+                  const active = currentView === item.view || (item.view === 'dashboard' && isSubViewActive);
+                  const Icon = navIcons[item.view] || navIcons.dashboard;
+                  const unreadCount = getUnreadCount(item.view);
+                  const savedCount = item._count ?? 0;
+                  const badgeCount = savedCount > 0 ? savedCount : unreadCount;
+
+                  if (!isExpanded) {
+                    // Collapsed state icon button
+                    return (
+                      <button
+                        key={item.view}
+                        type="button"
+                        onClick={() => onNavigate(item.view)}
+                        title={item.label}
+                        className={`w-10 h-10 rounded-2xl flex items-center justify-center mx-auto transition-all cursor-pointer relative group ${
+                          active
+                            ? isDark
+                              ? 'bg-[#EFF6FF] text-[#2563EB] font-bold shadow-sm'
+                              : 'bg-blue-50 text-blue-600 font-bold shadow-xs'
+                            : isDark
+                            ? 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                            : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100/80'
+                        }`}
+                      >
+                        <Icon size={19} className={active ? (isDark ? 'text-[#2563EB]' : 'text-blue-600') : (isDark ? 'text-slate-400 group-hover:text-white' : 'text-slate-400 group-hover:text-slate-700')} />
+                        {badgeCount > 0 && (
+                          <span className="absolute -top-1 -right-1 min-w-4 h-4 rounded-full bg-blue-600 text-white text-[9px] font-black flex items-center justify-center px-1 shadow-xs">
+                            {badgeCount}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  }
+
+                  // Expanded state button
+                  return (
+                    <button
+                      key={item.view}
+                      type="button"
+                      onClick={() => onNavigate(item.view)}
+                      className={`w-full flex items-center justify-between px-3.5 py-3 rounded-2xl text-xs font-bold transition-all cursor-pointer group ${
+                        active
+                          ? isDark
+                            ? 'bg-[#EFF6FF] text-[#2563EB] shadow-sm font-bold'
+                            : 'bg-blue-50/90 text-blue-600 shadow-2xs font-bold'
+                          : isDark
+                          ? 'text-slate-300 hover:text-white hover:bg-slate-800/60 font-medium'
+                          : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80 font-medium'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <Icon size={19} className={active ? (isDark ? 'text-[#2563EB]' : 'text-blue-600') : (isDark ? 'text-slate-400 group-hover:text-white' : 'text-slate-400 group-hover:text-slate-700')} />
+                        <span className="truncate">{item.label}</span>
+                      </div>
+
+                      {badgeCount > 0 && (
+                        <span className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-blue-600 px-1.5 text-[10px] font-bold text-white shadow-xs">
+                          {badgeCount}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </nav>
+
+      </div>
+    </aside>
+  );
+}
