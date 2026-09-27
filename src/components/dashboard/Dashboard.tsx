@@ -889,11 +889,7 @@ export default function Dashboard({
               user={user}
               projects={projectList}
               onSelectProject={onSelectProject}
-              onDeleteProject={handleDelete}
-              onEditProject={setEditProject}
-              pinned={pinned}
-              onTogglePin={handlePin}
-              isDark={isDark}
+              onNavigateToCreate={onNavigateToCreate}
             />
           ) : view === 'calendar' ? (
             <CalendarView
