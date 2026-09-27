@@ -1,5 +1,4 @@
-import { ApiClient } from './client';
-import { config } from '../../config';
+import { apiClient } from './index';
 
 export interface BackendProduct {
   prod_ID: number;
@@ -20,13 +19,11 @@ export interface ProductsResponse {
   products: BackendProduct[];
 }
 
-const client = new ApiClient(config.apiBase);
-
 export async function getProducts(
   page: number = 1,
   limit: number = 10000
 ): Promise<ProductsResponse> {
-  const response = await client.get<ProductsResponse>(
+  const response = await apiClient.get<ProductsResponse>(
     '/products/get/products',
     {
       page,

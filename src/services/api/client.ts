@@ -44,6 +44,7 @@ export interface PaginatedResponse<T> {
 export class ApiClient {
   private baseURL: string;
   private defaultHeaders: HeadersInit;
+  private sessionToken: string | null = null;
 
   constructor(baseURL: string, defaultHeaders?: HeadersInit) {
     this.baseURL = baseURL;
@@ -53,8 +54,27 @@ export class ApiClient {
     };
   }
 
+  setSessionToken(token: string | null): void {
+    this.sessionToken = token;
+  }
+
+  getSessionToken(): string | null {
+    return this.sessionToken;
+  }
+
   private mergeHeaders(headers?: HeadersInit): HeadersInit {
-    return { ...this.defaultHeaders, ...headers };
+    const authHeaders: HeadersInit = this.sessionToken
+      ? {
+          Authorization: `Bearer ${this.sessionToken}`,
+          'X-Session-Id': this.sessionToken,
+        }
+      : {};
+
+    return {
+      ...this.defaultHeaders,
+      ...authHeaders,
+      ...headers,
+    };
   }
 
   async request<T>(
@@ -75,9 +95,13 @@ export class ApiClient {
 
       if (!response.ok) {
         let errorMessage = `HTTP ${response.status}`;
+
         try {
           const errorData = await response.json();
-          errorMessage = errorData.message || errorData.error || errorMessage;
+          errorMessage =
+            errorData.message ||
+            errorData.error ||
+            errorMessage;
         } catch {
           // Ignore JSON parse errors for error response
         }
@@ -92,7 +116,11 @@ export class ApiClient {
       }
 
       const data = await response.json();
-      return { success: true, data };
+
+      return {
+        success: true,
+        data,
+      };
     } catch (error) {
       clearTimeout(timeoutId);
 
@@ -109,15 +137,22 @@ export class ApiClient {
       return {
         success: false,
         error: {
-          message: error instanceof Error ? error.message : 'Network error',
+          message:
+            error instanceof Error
+              ? error.message
+              : 'Network error',
           code: 'NETWORK_ERROR',
         },
       };
     }
   }
 
-  async get<T>(url: string, params?: QueryParams): Promise<ApiResponse<T>> {
+  async get<T>(
+    url: string,
+    params?: QueryParams
+  ): Promise<ApiResponse<T>> {
     const searchParams = new URLSearchParams();
+
     if (params) {
       Object.entries(params).forEach(([key, value]) => {
         if (value !== undefined && value !== null) {
@@ -131,21 +166,29 @@ export class ApiClient {
     }
 
     const queryString = searchParams.toString();
-    const fullUrl = queryString ? `${url}?${queryString}` : url;
+    const fullUrl = queryString
+      ? `${url}?${queryString}`
+      : url;
 
     return this.request<T>(fullUrl, {
       method: 'GET',
     });
   }
 
-  async post<T>(url: string, data?: unknown): Promise<ApiResponse<T>> {
+  async post<T>(
+    url: string,
+    data?: unknown
+  ): Promise<ApiResponse<T>> {
     return this.request<T>(url, {
       method: 'POST',
       body: data ? JSON.stringify(data) : undefined,
     });
   }
 
-  async put<T>(url: string, data?: unknown): Promise<ApiResponse<T>> {
+  async put<T>(
+    url: string,
+    data?: unknown
+  ): Promise<ApiResponse<T>> {
     return this.request<T>(url, {
       method: 'PUT',
       body: data ? JSON.stringify(data) : undefined,
