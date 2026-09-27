@@ -20,6 +20,13 @@ export interface ApiResponse<T> {
   };
 }
 
+// Request options: per-request timeout (AI calls can exceed the 30s default)
+// and the ability to drop Content-Type so fetch can set a multipart boundary.
+export interface RequestOptions extends RequestInit {
+  timeoutMs?: number;
+  omitContentType?: boolean;
+}
+
 // Query parameters for pagination, filtering, sorting
 export interface QueryParams {
   page?: number;
@@ -62,32 +69,44 @@ export class ApiClient {
     return this.sessionToken;
   }
 
-  private mergeHeaders(headers?: HeadersInit): HeadersInit {
-    const authHeaders: HeadersInit = this.sessionToken
+  private mergeHeaders(
+    headers?: HeadersInit,
+    omitContentType?: boolean
+  ): Record<string, string> {
+    const authHeaders: Record<string, string> = this.sessionToken
       ? {
           Authorization: `Bearer ${this.sessionToken}`,
           'X-Session-Id': this.sessionToken,
         }
       : {};
 
-    return {
-      ...this.defaultHeaders,
+    const merged: Record<string, string> = {
+      ...(this.defaultHeaders as Record<string, string>),
       ...authHeaders,
-      ...headers,
+      ...(headers as Record<string, string> | undefined),
     };
+
+    if (omitContentType) {
+      delete merged['Content-Type'];
+    }
+
+    return merged;
   }
 
   async request<T>(
     url: string,
-    options: RequestInit = {}
+    options: RequestOptions = {}
   ): Promise<ApiResponse<T>> {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30000);
+    const timeoutId = setTimeout(
+      () => controller.abort(),
+      options.timeoutMs ?? 30000
+    );
 
     try {
       const response = await fetch(`${this.baseURL}${url}`, {
         ...options,
-        headers: this.mergeHeaders(options.headers),
+        headers: this.mergeHeaders(options.headers, options.omitContentType),
         signal: controller.signal,
       });
 
@@ -177,11 +196,28 @@ export class ApiClient {
 
   async post<T>(
     url: string,
-    data?: unknown
+    data?: unknown,
+    options?: RequestOptions
   ): Promise<ApiResponse<T>> {
     return this.request<T>(url, {
+      ...options,
       method: 'POST',
       body: data ? JSON.stringify(data) : undefined,
+    });
+  }
+
+  // Multipart upload: Content-Type is omitted so the browser can set
+  // `multipart/form-data` with the correct boundary.
+  async postForm<T>(
+    url: string,
+    formData: FormData,
+    options?: RequestOptions
+  ): Promise<ApiResponse<T>> {
+    return this.request<T>(url, {
+      ...options,
+      method: 'POST',
+      body: formData,
+      omitContentType: true,
     });
   }
 

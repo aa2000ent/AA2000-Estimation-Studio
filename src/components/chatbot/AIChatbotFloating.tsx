@@ -147,7 +147,7 @@ export const AIChatbotFloating: React.FC<AIChatbotFloatingProps> = ({
     {
       id: 'init-1',
       sender: 'ai',
-      text: `Hello! I am your AA2000 AI Estimation Assistant.\n\nI am connected to the AA2000 product catalog and powered through the AA2000 backend AI service.\n\nYou can chat with me, upload TOR documents, or request pricing estimates for specific equipment. Image analysis will be routed through the backend in a later integration step.\n\nHow can I help you today?`,
+      text: `Hello! I am your AA2000 AI Estimation Assistant.\n\nI am connected to the AA2000 product catalog and powered through the AA2000 backend AI service.\n\nYou can chat with me, upload TOR documents, Excel sheets, or equipment photos, and request pricing estimates for specific equipment.\n\nHow can I help you today?`,
       timestamp: new Date().toLocaleTimeString([], {
         hour: '2-digit',
         minute: '2-digit',
@@ -318,8 +318,15 @@ export const AIChatbotFloating: React.FC<AIChatbotFloatingProps> = ({
       const qTrimmed = textToSend.trim();
       const qLower = qTrimmed.toLowerCase();
 
+      // .xlsx attachments are parsed by the backend (authoritative row data),
+      // so they are excluded here to avoid duplicating the sheet in the prompt.
       const docContexts = currentAttachments
-        .filter((attachment) => attachment.type === 'doc' && attachment.textContext)
+        .filter(
+          (attachment) =>
+            attachment.type === 'doc' &&
+            attachment.textContext &&
+            !/\.xlsx$/i.test(attachment.name)
+        )
         .map(
           (attachment) =>
             `--- DOCUMENT ATTACHMENT: ${attachment.name} ---\n${attachment.textContext?.slice(
@@ -489,15 +496,22 @@ CONVERSATION & RESPONSE RULES:
         },
       ];
 
-      // Current backend task supports text messages. Keep image data out of a
-      // direct provider call so the browser never owns provider credentials.
-      if (imageAttachments.length > 0) {
-        aiText =
-          'Image analysis is not yet routed through the AA2000 backend AI endpoint. Text chat and parsed document analysis are available while backend vision support is being integrated.';
-      } else {
-        const result = await requestEstimationAiChat(apiMessages);
-        aiText = result.content || '';
-      }
+      // Attachments are handed to the backend, which runs the same pipeline as
+      // its quotation AI: OCR/vision for images, ExcelJS for .xlsx rows.
+      const imageFiles = imageAttachments
+        .slice(0, 3)
+        .map((attachment) => attachment.file);
+
+      const spreadsheetAttachment = currentAttachments.find(
+        (attachment) =>
+          attachment.type === 'doc' && /\.xlsx$/i.test(attachment.name)
+      );
+
+      const result = await requestEstimationAiChat(apiMessages, {
+        images: imageFiles.length > 0 ? imageFiles : undefined,
+        spreadsheet: spreadsheetAttachment?.file,
+      });
+      aiText = result.content || '';
 
       if (!aiText) {
         if (currentAttachments.length > 0) {
@@ -904,7 +918,7 @@ CONVERSATION & RESPONSE RULES:
               e.preventDefault();
               handleSendMessage();
             }}
-            className="p-3 bg-slate-950 border-t border-slate-800 flex items-center gap-2"
+            className="p-3 bg-slate-950 border-t border-slate-800 flex items-end gap-2"
           >
             <input
               type="file"
@@ -936,13 +950,26 @@ CONVERSATION & RESPONSE RULES:
               </svg>
             </button>
 
-            <input
-              type="text"
+            <textarea
               value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
+              onChange={(e) => {
+                setInputValue(e.target.value);
+
+                // Auto-grow up to 128px, then scroll; collapses when cleared.
+                const element = e.currentTarget;
+                element.style.height = 'auto';
+                element.style.height = `${Math.min(element.scrollHeight, 128)}px`;
+              }}
               onPaste={handlePaste}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSendMessage();
+                }
+              }}
+              rows={1}
               placeholder="Ask anything, paste images (Ctrl+V), or attach Excel/PDF/CSV..."
-              className="flex-1 px-4 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+              className="flex-1 px-4 py-2.5 bg-slate-900 border border-slate-700 rounded-xl text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 resize-none max-h-32 overflow-y-auto leading-5"
             />
 
             <button

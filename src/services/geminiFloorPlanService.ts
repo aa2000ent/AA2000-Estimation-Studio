@@ -7,9 +7,9 @@ import { parseFile } from './fileParser';
 import { getEstimatedItemPricing } from './pricelistService';
 
 // Vision model — Pixtral supports multi-image input
-const MISTRAL_VISION_MODEL = 'pixtral-12b-2409';
+const MISTRAL_VISION_MODEL = 'mistral-small-latest';
 // BOQ reasoning model
-const MISTRAL_REASONING_MODEL = 'mistral-large-latest';
+const MISTRAL_REASONING_MODEL = 'mistral-small-latest';
 
 export interface FloorPlanEstimation {
   observations: string;
