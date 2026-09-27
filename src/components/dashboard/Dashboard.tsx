@@ -11,6 +11,7 @@ import CompanyDetail from '../projects/CompanyDetail';
 import AccountDropdown from './AccountDropdown';
 import { getRoleTheme } from '../../utils/RoleTheme';
 import CalendarView from './CalendarView';
+import ApprovalPipeline from './ApprovalPipeline';
 import { StatBuilding, StatClipboard, StatBolt, StatCalendar, StatCheckCircle, ChartBar, Bell, RoleWrench, RoleChart, RoleComputer } from '../../utils/Icons';
 import AISidebar from '../ai-sidebar/AISidebar';
 import FloorPlanView from '../floor-plan/FloorPlanView';
@@ -883,7 +884,18 @@ export default function Dashboard({
               isDark={isDark}
             />
           ) : view === 'estimation-hub' ? null
-          : view === 'calendar' ? (
+          : view === 'approval' ? (
+            <ApprovalPipeline
+              user={user}
+              projects={projectList}
+              onSelectProject={onSelectProject}
+              onDeleteProject={handleDelete}
+              onEditProject={setEditProject}
+              pinned={pinned}
+              onTogglePin={handlePin}
+              isDark={isDark}
+            />
+          ) : view === 'calendar' ? (
             <CalendarView
               projects={projectList}
               onSelectProject={onSelectProject}
