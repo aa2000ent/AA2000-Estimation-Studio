@@ -957,10 +957,10 @@ export default function Dashboard({
                         {/* 4 Stat Cards in 2x2 Grid */}
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                           <SparklineCard
-                            label="PROJECTS"
+                            label="OVERALL PROJECTS"
                             value={totalProjects}
                             totalProjects={totalProjects}
-                            sub="Total site surveys"
+                            sub="Total surveys"
                             icon={<StatBuilding className="w-5 h-5" />}
                             valueColor="#2563EB"
                             onClick={() => navigate('assignment')}
@@ -970,7 +970,7 @@ export default function Dashboard({
                             label="IN PROGRESS"
                             value={inProgressCount}
                             totalProjects={totalProjects}
-                            sub="Active site surveys"
+                            sub="Active surveys"
                             icon={<StatBolt className="w-5 h-5" />}
                             valueColor="#2563EB"
                             onClick={() => navigate('workspace')}
