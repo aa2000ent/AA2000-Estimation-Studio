@@ -1,6 +1,7 @@
 import { apiClient } from './api';
 
 const SESSION_TOKEN_KEY = 'aa2000_estimation_session_token';
+const ACCOUNT_ID_KEY = 'aa2000_estimation_account_id';
 
 export interface BackendEmployee {
   Emp_IDno: string;
@@ -73,6 +74,10 @@ export async function loginWithPin(
   // Keep session after page refresh
   sessionStorage.setItem(SESSION_TOKEN_KEY, token);
 
+  // Numeric DB account id, needed when saving projects/estimations
+  const accId = response.data.account?.acc_ID;
+  if (accId) sessionStorage.setItem(ACCOUNT_ID_KEY, String(accId));
+
   return response.data;
 }
 
@@ -90,10 +95,20 @@ export function restoreSessionToken(): string | null {
 }
 
 /**
+ * Numeric account id (acc_ID) of the logged-in user, or null.
+ */
+export function getSessionAccountId(): number | null {
+  const raw = sessionStorage.getItem(ACCOUNT_ID_KEY);
+  const n = raw ? parseInt(raw, 10) : NaN;
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/**
  * Remove the frontend session.
  */
 export function clearSessionToken(): void {
   sessionStorage.removeItem(SESSION_TOKEN_KEY);
+  sessionStorage.removeItem(ACCOUNT_ID_KEY);
   apiClient.setSessionToken(null);
 }
 
