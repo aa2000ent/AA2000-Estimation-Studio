@@ -12,6 +12,7 @@ import {
   requestEstimationAiChat,
   type EstimationAiMessage,
 } from '../../services/api/estimationAi';
+import { MarkdownMessage } from './MarkdownMessage';
 
 export interface AttachedFile {
   id: string;
@@ -35,107 +36,6 @@ export interface ChatMessage {
 export interface AIChatbotFloatingProps {
   userRole?: string;
   activeProjectName?: string;
-}
-
-/**
- * Cleanly renders message text without raw markdown syntax.
- * Converts simple markdown patterns into native React elements.
- */
-function renderFormattedMessage(text: string) {
-  if (!text) return null;
-
-  const lines = text.split('\n');
-
-  return (
-    <div className="space-y-1.5 leading-relaxed font-sans text-xs md:text-sm">
-      {lines.map((line, lineIdx) => {
-        let trimmed = line.trim();
-
-        if (!trimmed) {
-          return <div key={lineIdx} className="h-1.5" />;
-        }
-
-        if (trimmed.startsWith('#')) {
-          const cleanHeader = trimmed.replace(/^#+\s*/, '').replace(/\*+/g, '');
-
-          return (
-            <div
-              key={lineIdx}
-              className="font-bold text-sm text-indigo-300 pt-1 pb-0.5 border-b border-slate-700/50"
-            >
-              {cleanHeader}
-            </div>
-          );
-        }
-
-        const isBullet = trimmed.startsWith('- ') || trimmed.startsWith('* ');
-        const numBulletMatch = trimmed.match(/^(\d+)\.\s+/);
-
-        if (isBullet) {
-          trimmed = trimmed.replace(/^[-*]\s*/, '');
-        } else if (numBulletMatch) {
-          trimmed = trimmed.replace(/^(\d+)\.\s+/, '');
-        }
-
-        const parts = trimmed.split(/(\*\*[^*]+\*\*|`[^`]+`)/g);
-
-        const renderedLine = parts.map((part, pIdx) => {
-          if (part.startsWith('**') && part.endsWith('**')) {
-            return (
-              <strong key={pIdx} className="font-semibold text-white">
-                {part.slice(2, -2)}
-              </strong>
-            );
-          }
-
-          if (part.startsWith('`') && part.endsWith('`')) {
-            return (
-              <code
-                key={pIdx}
-                className="px-1.5 py-0.5 bg-slate-900 text-indigo-300 rounded font-mono text-[11px] border border-slate-700"
-              >
-                {part.slice(1, -1)}
-              </code>
-            );
-          }
-
-          return part.replace(/\*\*/g, '').replace(/`/g, '');
-        });
-
-        if (isBullet) {
-          return (
-            <div
-              key={lineIdx}
-              className="flex items-start gap-2 pl-2 text-slate-200"
-            >
-              <span className="text-indigo-400 mt-1">•</span>
-              <span>{renderedLine}</span>
-            </div>
-          );
-        }
-
-        if (numBulletMatch) {
-          return (
-            <div
-              key={lineIdx}
-              className="flex items-start gap-2 pl-2 text-slate-200"
-            >
-              <span className="font-bold text-indigo-400 text-xs mt-0.5">
-                {numBulletMatch[1]}.
-              </span>
-              <span>{renderedLine}</span>
-            </div>
-          );
-        }
-
-        return (
-          <p key={lineIdx} className="text-slate-200">
-            {renderedLine}
-          </p>
-        );
-      })}
-    </div>
-  );
 }
 
 export const AIChatbotFloating: React.FC<AIChatbotFloatingProps> = ({
@@ -466,14 +366,16 @@ ${
       }
 CONVERSATION & RESPONSE RULES:
 
-1. For general chat, greetings, instructions, or conceptual questions, answer naturally and directly.
+1. For greetings and short pleasantries, answer naturally and briefly. Anything beyond that must serve an estimation request.
 2. Use catalog or pricing data only when it is actually relevant to the user's request.
 3. If official AA2000 catalog data is supplied above, prioritize that data and do not contradict it.
 4. Clearly distinguish official catalog pricing from estimates or alternatives.
 5. Do not invent an official AA2000 price for an item that is not in the official catalog.
 6. Format prices in Philippine Pesos (₱) with commas.
 7. Keep responses concise, polite, and technically accurate.
-8. Never expose API keys, session tokens, passwords, backend credentials, or other secrets.`;
+8. Never expose API keys, session tokens, passwords, backend credentials, or other secrets.
+9. SCOPE: you answer ONLY estimation-related questions — project estimation, BOQ/BOM takeoffs and quantity surveys (including from attachments), product availability in the AA2000 catalog, product codes/models/specifications, product comparisons, pricing and pricelist tiers, VAT/discount/total computations, TOR and technical specifications, and how to use this app.
+10. For anything else (general knowledge, news, sports, entertainment, politics, health/medical/legal/financial advice, homework, coding, creative writing, travel, recipes, unrelated companies or products), do NOT answer. Decline in 1-3 sentences, say you are the AA2000 AI Estimation Assistant limited to estimation, product and pricing topics, then invite the user to ask about their project or equipment.`;
 
       const historyMessages: EstimationAiMessage[] = updatedMessages
         .slice(-6, -1)
@@ -545,11 +447,6 @@ CONVERSATION & RESPONSE RULES:
             'The AA2000 backend AI service did not return a response. Please try again.';
         }
       }
-
-      aiText = aiText
-        .replace(/\*\*/g, '')
-        .replace(/###\s*/g, '')
-        .replace(/`/g, '');
 
       const aiMsg: ChatMessage = {
         id: `ai-${Date.now()}`,
@@ -791,7 +688,7 @@ CONVERSATION & RESPONSE RULES:
                     </div>
                   )}
 
-                  {renderFormattedMessage(msg.text)}
+                  <MarkdownMessage>{msg.text}</MarkdownMessage>
 
                   {msg.estimationData && (
                     <div className="mt-3 pt-3 border-t border-slate-700/80 flex items-center justify-between gap-2">
