@@ -2,6 +2,11 @@ import {
   restoreSessionToken,
   logout as logoutBackend,
 } from './services/authService';
+import {
+  fetchEstimationProjects,
+  mergeProjects,
+  deleteEstimationProject,
+} from './services/estimationProjects';
 
 import { useState, useCallback, useEffect, Component } from 'react';
 import type { ReactNode } from 'react';
@@ -282,6 +287,18 @@ export default function App() {
     saveToStorage(STORAGE_KEYS.projects, projects);
   }, [projects]);
 
+  // Load ESTIMATION projects from the database once signed in (DB status wins over local cache).
+  useEffect(() => {
+    if (!authHydrated || !user) return;
+    let cancelled = false;
+    fetchEstimationProjects()
+      .then(remote => {
+        if (!cancelled) setProjects(prev => mergeProjects(prev, remote));
+      })
+      .catch(err => console.error('Failed to load estimation projects from the database:', err));
+    return () => { cancelled = true; };
+  }, [authHydrated, user?.id]);
+
   useEffect(() => {
     saveToStorage(STORAGE_KEYS.notifications, notifications);
   }, [notifications]);
@@ -518,6 +535,10 @@ export default function App() {
 
   const handleDeleteProject = useCallback((projectId: string) => {
     setProjects(prev => prev.filter(p => p.id !== projectId));
+    // Remove the database row too (no-op for projects that were never submitted).
+    deleteEstimationProject(projectId).then(r => {
+      if (!r.success) console.error('Database delete failed; project may reappear on next load:', r.message);
+    });
     setCurrentProject(null);
     try {
       const surveys = JSON.parse(localStorage.getItem('aa2000_surveys') || '[]');
