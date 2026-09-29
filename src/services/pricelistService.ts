@@ -1,4 +1,6 @@
-import pricelistRaw from '../data/pricelistData.json';
+//import pricelistRaw from '../data/pricelistData.json';
+
+import { fetchProducts } from './api/products';
 
 export interface PricelistItem {
   id: string;
@@ -44,7 +46,76 @@ export interface EstimatedItemPricing {
   confidence: number; // 0 - 100
 }
 
-const catalog: PricelistItem[] = pricelistRaw as PricelistItem[];
+//const catalog: PricelistItem[] = pricelistRaw as PricelistItem[];
+
+
+////////////////////////////////////////////////////////////////////////////
+
+let catalog: PricelistItem[] = [];
+
+export async function loadProductCatalog(): Promise<number> {
+  const nextCatalog: PricelistItem[] = [];
+  let page = 1;
+  let totalPages = 1;
+
+  do {
+    const response = await fetchProducts(page, 100);
+
+    if (
+      !Number.isInteger(response.totalPages) ||
+      response.totalPages < 1
+    ) {
+      throw new Error('Invalid product pagination.');
+    }
+
+    totalPages = response.totalPages;
+
+    for (const product of response.products) {
+      const price = Number(product.prod_price);
+
+      if (
+  product.prod_price === null ||
+  String(product.prod_price).trim() === '' ||
+  !Number.isFinite(price) ||
+  price < 0
+) {
+  console.warn(
+    `Skipping product ${product.prod_ID}: invalid price`,
+    product.prod_price
+  );
+  continue;
+}
+
+      nextCatalog.push({
+        id: String(product.prod_ID),
+        brand: product.brand || '',
+        type: product.category || '',
+        model: product.model || product.prod_Code || '',
+        description: product.item_description || product.prod_Name || '',
+        price,
+
+        // Temporary base-price fallback; no tier discounts applied.
+        contractorPrice: price,
+        dealerPrice: price,
+        endUserPrice: price,
+
+        sourceFile:
+          (import.meta.env.VITE_PRODUCTS_MODE || 'mock') === 'mock'
+            ? 'MOCK DATA — demo prices only'
+            : 'Backend product catalog — base price',
+      });
+    }
+
+    page += 1;
+  } while (page <= totalPages);
+
+  // Replace the catalog only after all pages load successfully.
+  catalog = nextCatalog;
+  return catalog.length;
+}
+
+//////////////////////////////////////////////////////////////////////////////////
+
 
 const KNOWN_BRANDS = [
   'HIKVISION', 'BOSCH', 'AIPHONE', 'ZKTECO', 'DAHUA', 'HONEYWELL',
