@@ -253,7 +253,6 @@ export default function CalendarView({ projects, onSelectProject, userRole, isDa
             <div className="text-[11px] font-bold text-amber-600">Pending</div>
             <div className="text-2xl font-black mt-1">{monthStats.pending} <span className="text-[10px] font-semibold text-amber-600/80">awaiting</span></div>
           </div>
-          <div className="text-xl font-black mt-0.5">{monthStats.pending} <span className="text-xs font-semibold text-amber-600/80">awaiting</span></div>
         </div>
 
         <div
