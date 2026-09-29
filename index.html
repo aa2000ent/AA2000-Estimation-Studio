@@ -29,7 +29,142 @@
 
     <style>
       @import "tailwindcss";
+
       @custom-variant dark (&:where(.dark, .dark *));
+
+      @theme {
+        --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+        --animate-pop: pop 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+
+        @keyframes pop {
+          0% {
+            opacity: 0;
+            transform: scale(0.6);
+          }
+          100% {
+            opacity: 1;
+            transform: scale(1);
+          }
+        }
+
+        --animate-pulse-glow-blue: pulse-glow-blue 2s cubic-bezier(0, 0, 0.2, 1) infinite;
+        @keyframes pulse-glow-blue {
+          0% {
+            box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7);
+          }
+          70%, 100% {
+            box-shadow: 0 0 0 20px rgba(59, 130, 246, 0);
+          }
+        }
+
+        --animate-pulse-glow-emerald: pulse-glow-emerald 2s cubic-bezier(0, 0, 0.2, 1) infinite;
+        @keyframes pulse-glow-emerald {
+          0% {
+            box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.8);
+          }
+          70%, 100% {
+            box-shadow: 0 0 0 20px rgba(16, 185, 129, 0);
+          }
+        }
+      }
+
+      html.dark {
+        color-scheme: dark;
+      }
+
+      html:not(.dark) {
+        color-scheme: light;
+      }
+
+      .bg-dot-pattern {
+        background-image: radial-gradient(#cbd5e1 1px, transparent 1px);
+        background-size: 24px 24px;
+      }
+
+      /* Circle Animation Utilities for AI Bot Icon */
+      @keyframes spin-slow {
+        from { transform: rotate(0deg); }
+        to   { transform: rotate(360deg); }
+      }
+      .animate-spin-slow {
+        animation: spin-slow 14s linear infinite;
+      }
+
+      @keyframes spin-reverse-slow {
+        from { transform: rotate(360deg); }
+        to   { transform: rotate(0deg); }
+      }
+      .animate-spin-reverse-slow {
+        animation: spin-reverse-slow 20s linear infinite;
+      }
+
+      /* Custom Scrollbar for Sidebar */
+      .sidebar-scrollbar {
+        scrollbar-width: thin;
+        scrollbar-color: rgba(148, 163, 184, 0.3) transparent;
+      }
+      .dark .sidebar-scrollbar {
+        scrollbar-color: #334155 transparent;
+      }
+      .sidebar-scrollbar::-webkit-scrollbar {
+        width: 4px;
+      }
+      .sidebar-scrollbar::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      .sidebar-scrollbar::-webkit-scrollbar-thumb {
+        background: #cbd5e1;
+        border-radius: 10px;
+      }
+      .dark .sidebar-scrollbar::-webkit-scrollbar-thumb {
+        background: #334155;
+        border-radius: 10px;
+      }
+
+      .panel-scrollbar::-webkit-scrollbar {
+        width: 6px;
+      }
+      .panel-scrollbar::-webkit-scrollbar-track {
+        background: #f1f5f9;
+        border-radius: 10px;
+      }
+      .dark .panel-scrollbar::-webkit-scrollbar-track {
+        background: #0f172a;
+      }
+      .panel-scrollbar::-webkit-scrollbar-thumb {
+        background: #94a3b8;
+        border-radius: 10px;
+      }
+      .dark .panel-scrollbar::-webkit-scrollbar-thumb {
+        background: #334155;
+      }
+      .panel-scrollbar::-webkit-scrollbar-thumb:hover {
+        background: #64748b;
+      }
+      .dark .panel-scrollbar::-webkit-scrollbar-thumb:hover {
+        background: #475569;
+      }
+
+      /* Global Scrollbar Styles for Dark Mode */
+      .dark ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+      }
+      .dark ::-webkit-scrollbar-track {
+        background: #0f172a;
+      }
+      .dark ::-webkit-scrollbar-thumb {
+        background: #334155;
+        border-radius: 9999px;
+        border: 2px solid #0f172a;
+      }
+      .dark ::-webkit-scrollbar-thumb:hover {
+        background: #475569;
+      }
+
+      html.dark, .dark * {
+        scrollbar-color: #334155 #0f172a;
+      }
 
       /* ─── Reset & Box Model ─── */
       *, *::before, *::after { box-sizing: border-box; }
