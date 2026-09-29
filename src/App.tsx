@@ -1,3 +1,18 @@
+import {
+  restoreSessionToken,
+  logout as logoutBackend,
+} from './services/authService';
+import {
+  fetchEstimationProjects,
+  mergeProjects,
+  deleteEstimationProject,
+} from './services/estimationProjects';
+import {
+  PROJECT_SUBMITTED_EVENT,
+  isSubmittedToDb,
+  sweepSubmittedProjects,
+} from './services/estimationSubmission';
+
 import { useState, useCallback, useEffect, Component } from 'react';
 import type { ReactNode } from 'react';
 import Login from './components/auth/Login';
@@ -188,6 +203,7 @@ export default function App() {
   const [screen, setScreen] = useState<Screen>('login');
   const [screenHistory, setScreenHistory] = useState<Screen[]>([]);
   const [user, setUser] = useState<User | null>(null);
+  const [authHydrated, setAuthHydrated] = useState(false);
   const [currentProject, setCurrentProject] = useState<Project | null>(null);
   const [currentSurveyType, setCurrentSurveyType] = useState<SurveyType | null>(null);
   const [projects, setProjects] = useState<Project[]>(() => loadFromStorage<Project[]>(STORAGE_KEYS.projects, []));
@@ -245,25 +261,95 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    const saved = loadFromStorage<User | null>(STORAGE_KEYS.user, null);
-    if (saved) {
-      setUser(saved);
-      const hasSeen = localStorage.getItem(STORAGE_KEYS.instruction);
-      setScreen(hasSeen ? 'dashboard' : 'instruction');
+  const token = restoreSessionToken();
+
+  const saved = loadFromStorage<User | null>(
+    STORAGE_KEYS.user,
+    null
+  );
+
+  if (token && saved) {
+    setUser(saved);
+
+    const hasSeen = localStorage.getItem(
+      STORAGE_KEYS.instruction
+    );
+
+    setScreen(
+      hasSeen ? 'dashboard' : 'instruction'
+    );
+  } else {
+    setUser(null);
+    localStorage.removeItem(STORAGE_KEYS.user);
+    setScreen('login');
+  }
+
+  // Authentication restoration has finished.
+  setAuthHydrated(true);
+}, []);
+
+  useEffect(() => {
+    // Projects with a DB row are owned by the database: keep them out of localStorage.
+    saveToStorage(
+      STORAGE_KEYS.projects,
+      projects.filter(p => !isSubmittedToDb(p.id)),
+    );
+  }, [projects]);
+
+  // Clean up submissions made earlier (or in another tab): storage no longer holds them.
+  useEffect(() => {
+    const removed = sweepSubmittedProjects();
+    if (removed.length) {
+      setProjects(prev => prev.filter(p => !removed.includes(p.id)));
     }
   }, []);
 
+  // A submit just succeeded in EstimationSummary: drop the local project and
+  // immediately refresh from the DB so it reappears as a DB-backed entry.
   useEffect(() => {
-    saveToStorage(STORAGE_KEYS.projects, projects);
-  }, [projects]);
+    const onSubmitted = (event: Event) => {
+      const projectId = (event as CustomEvent).detail?.projectId as string | undefined;
+      if (!projectId) return;
+      setProjects(prev => prev.filter(p => p.id !== projectId));
+      setCurrentProject(prev => (prev?.id === projectId ? null : prev));
+      // Refresh from DB so the submitted project reappears with fresh data.
+      fetchEstimationProjects()
+        .then(remote => setProjects(prev => mergeProjects(prev, remote)))
+        .catch(err => console.error('Failed to refresh after submit:', err));
+    };
+    window.addEventListener(PROJECT_SUBMITTED_EVENT, onSubmitted);
+    return () => window.removeEventListener(PROJECT_SUBMITTED_EVENT, onSubmitted);
+  }, []);
+
+  // Load ESTIMATION projects from the database once signed in (DB status wins over local cache).
+  useEffect(() => {
+    if (!authHydrated || !user) return;
+    let cancelled = false;
+    fetchEstimationProjects()
+      .then(remote => {
+        if (!cancelled) setProjects(prev => mergeProjects(prev, remote));
+      })
+      .catch(err => console.error('Failed to load estimation projects from the database:', err));
+    return () => { cancelled = true; };
+  }, [authHydrated, user?.id]);
 
   useEffect(() => {
     saveToStorage(STORAGE_KEYS.notifications, notifications);
   }, [notifications]);
 
   useEffect(() => {
+  // Do not overwrite the saved user until
+  // session restoration has finished.
+  if (!authHydrated) {
+    return;
+  }
+
+  if (user) {
     saveToStorage(STORAGE_KEYS.user, user);
-  }, [user]);
+  } else {
+    localStorage.removeItem(STORAGE_KEYS.user);
+  }
+}, [user, authHydrated]);
 
   useEffect(() => {
     saveToStorage(STORAGE_KEYS.aiScans, aiScans);
@@ -382,12 +468,25 @@ export default function App() {
     setScreen(hasSeen ? 'dashboard' : 'instruction');
   }, []);
 
-  const handleLogout = useCallback(() => {
+  const handleLogout = useCallback(async () => {
+  try {
+    await logoutBackend();
+  } catch (error) {
+    console.error(
+      'Backend logout failed:',
+      error
+    );
+  } finally {
     setUser(null);
     setCurrentProject(null);
+    setScreenHistory([]);
     setScreen('login');
-    localStorage.removeItem(STORAGE_KEYS.user);
-  }, []);
+
+    localStorage.removeItem(
+      STORAGE_KEYS.user
+    );
+  }
+}, []);
 
   const handleCreateProject = useCallback((project: Project) => {
     setProjects(prev => {
@@ -470,6 +569,10 @@ export default function App() {
 
   const handleDeleteProject = useCallback((projectId: string) => {
     setProjects(prev => prev.filter(p => p.id !== projectId));
+    // Remove the database row too (no-op for projects that were never submitted).
+    deleteEstimationProject(projectId).then(r => {
+      if (!r.success) console.error('Database delete failed; project may reappear on next load:', r.message);
+    });
     setCurrentProject(null);
     try {
       const surveys = JSON.parse(localStorage.getItem('aa2000_surveys') || '[]');

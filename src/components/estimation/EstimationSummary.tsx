@@ -222,9 +222,11 @@ const AI_STEPS = [
 ];
 
 import { canViewPrices } from '../../constants/roles';
+import { submitEstimationToDB } from '../../services/estimationSubmission';
 
 export default function EstimationSummary({ project, user, onBack, onUpdateStatus, isDark }: Props) {
   const { toast } = useToast();
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const showPrices = canViewPrices(user?.role, user);
 
   // Sync dark theme reactive state
@@ -1031,9 +1033,11 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
     }
   };
 
-  const handleExportPdf = async () => {
-    const exportBtn = document.activeElement as HTMLButtonElement;
+  // asBlob=false: download the PDF (Export button). asBlob=true: return it so it can be uploaded.
+  const generateReportPdf = async (asBlob = false): Promise<Blob | null> => {
+    const exportBtn = asBlob ? null : (document.activeElement as HTMLButtonElement);
     const originalText = exportBtn ? exportBtn.innerHTML : 'Export PDF';
+    let pdfBlob: Blob | null = null;
     if (exportBtn) {
       exportBtn.disabled = true;
       exportBtn.innerText = 'Generating PDF...';
@@ -1373,17 +1377,26 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
         jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' }
       };
 
-      await (window as any).html2pdf().set(opt).from(container).save();
+      if (asBlob) {
+        pdfBlob = await (window as any).html2pdf().set(opt).from(container).outputPdf('blob');
+      } else {
+        await (window as any).html2pdf().set(opt).from(container).save();
+      }
       document.body.removeChild(outer);
     } catch (error) {
       console.error('PDF Export Error:', error);
-      toast.error('An error occurred while generating the PDF. Please try again.');
+      if (!asBlob) toast.error('An error occurred while generating the PDF. Please try again.');
     } finally {
       if (exportBtn) {
         exportBtn.disabled = false;
         exportBtn.innerHTML = originalText;
       }
     }
+    return pdfBlob;
+  };
+
+  const handleExportPdf = async () => {
+    await generateReportPdf(false);
   };
 
   const hasFiles = floorPlanFiles.length > 0;
@@ -2355,7 +2368,8 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
             )}
 
             <button
-              onClick={() => {
+              disabled={isSubmitting}
+              onClick={async () => {
                 const estimationData = {
                   manpower,
                   consumables,
@@ -2369,7 +2383,25 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
                   discrepancyJustifications,
                   updatedAt: new Date().toISOString(),
                 };
+                // Local cache (offline fallback)
                 localStorage.setItem(`aa2000_estimation_${project.id}`, JSON.stringify(estimationData));
+
+                // Persist to the database
+                setIsSubmitting(true);
+                const reportPdf = await generateReportPdf(true); // null if generation failed
+                const result = await submitEstimationToDB({
+                  project: project as any, user: user as any, manpower, consumables, fees, scopeOfWorks,
+                  constraints, priceTier, aiQuotation, aiBaseline,
+                  technicianNotes, discrepancyJustifications, reportPdf,
+                });
+                setIsSubmitting(false);
+                if (result.success && !result.fileUploaded) {
+                  toast.warning('Estimation saved, but the PDF report could not be attached.');
+                }
+                if (!result.success) {
+                  toast.error(`Could not submit to the database: ${result.message}. Your work is saved locally; please try again.`);
+                  return; // keep status unchanged and stay on this screen
+                }
 
                 const isApproved = project.status === 'Completed' || project.status === 'Finalized - Approved';
                 const isAlreadyFinalized = project.status === 'Finalized';
@@ -2391,7 +2423,7 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
               }}
               className="px-8 py-3 rounded-xl text-xs font-bold text-white transition-all shadow-sm hover:opacity-95 bg-blue-600 hover:bg-blue-700 cursor-pointer"
             >
-              Save Estimation
+              {isSubmitting ? 'Submitting...' : 'Save Estimation'}
             </button>
           </div>
         </div>

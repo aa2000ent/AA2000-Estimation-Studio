@@ -1,6 +1,5 @@
-//import pricelistRaw from '../data/pricelistData.json';
-
-import { fetchProducts } from './api/products';
+import pricelistRaw from '../data/pricelistData.json';
+import { getAllProducts, type BackendProduct } from './api/products';
 
 export interface PricelistItem {
   id: string;
@@ -46,77 +45,49 @@ export interface EstimatedItemPricing {
   confidence: number; // 0 - 100
 }
 
-//const catalog: PricelistItem[] = pricelistRaw as PricelistItem[];
+const fallbackCatalog: PricelistItem[] = pricelistRaw as PricelistItem[];
 
+let catalog: PricelistItem[] = fallbackCatalog;
 
-////////////////////////////////////////////////////////////////////////////
+function mapBackendProduct(product: BackendProduct): PricelistItem {
+  const price = Number(product.prod_price) || 0;
 
-let catalog: PricelistItem[] = [];
-
-export async function loadProductCatalog(): Promise<number> {
-  const nextCatalog: PricelistItem[] = [];
-  let page = 1;
-  let totalPages = 1;
-
-  do {
-    const response = await fetchProducts(page, 100);
-
-    if (
-      !Number.isInteger(response.totalPages) ||
-      response.totalPages < 1
-    ) {
-      throw new Error('Invalid product pagination.');
-    }
-
-    totalPages = response.totalPages;
-
-    for (const product of response.products) {
-      const price = Number(product.prod_price);
-
-      if (
-  product.prod_price === null ||
-  String(product.prod_price).trim() === '' ||
-  !Number.isFinite(price) ||
-  price < 0
-) {
-  console.warn(
-    `Skipping product ${product.prod_ID}: invalid price`,
-    product.prod_price
-  );
-  continue;
+  return {
+    id: String(product.prod_ID),
+    brand: product.brand || '',
+    type: product.category || '',
+    model: product.model || product.prod_Name || '',
+    price,
+    contractorPrice: price,
+    dealerPrice: price,
+    endUserPrice: price,
+    description:
+      product.item_description ||
+      product.prod_Name ||
+      product.model ||
+      '',
+    sourceFile: 'AA2000 Backend',
+  };
 }
 
-      nextCatalog.push({
-        id: String(product.prod_ID),
-        brand: product.brand || '',
-        type: product.category || '',
-        model: product.model || product.prod_Code || '',
-        description: product.item_description || product.prod_Name || '',
-        price,
+export async function loadProductCatalog(): Promise<void> {
+  try {
+    const backendProducts = await getAllProducts();
 
-        // Temporary base-price fallback; no tier discounts applied.
-        contractorPrice: price,
-        dealerPrice: price,
-        endUserPrice: price,
+    catalog = backendProducts.map(mapBackendProduct);
 
-        sourceFile:
-          (import.meta.env.VITE_PRODUCTS_MODE || 'mock') === 'mock'
-            ? 'MOCK DATA — demo prices only'
-            : 'Backend product catalog — base price',
-      });
-    }
+    console.log(
+      `[Pricelist] Loaded ${catalog.length} products from AA2000 backend`
+    );
+  } catch (error) {
+    console.warn(
+      '[Pricelist] Backend product loading failed. Using local pricelist fallback.',
+      error
+    );
 
-    page += 1;
-  } while (page <= totalPages);
-
-  // Replace the catalog only after all pages load successfully.
-  catalog = nextCatalog;
-  return catalog.length;
+    catalog = fallbackCatalog;
+  }
 }
-
-//////////////////////////////////////////////////////////////////////////////////
-
-
 const KNOWN_BRANDS = [
   'HIKVISION', 'BOSCH', 'AIPHONE', 'ZKTECO', 'DAHUA', 'HONEYWELL',
   'ASENWARE', 'APOLLO', 'EDWARDS', 'NOTIFIER', 'HOCHIKI', 'FARFISA',
