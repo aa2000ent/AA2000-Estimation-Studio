@@ -304,13 +304,18 @@ export default function App() {
     }
   }, []);
 
-  // A submit just succeeded in EstimationSummary: drop the project from live state too.
+  // A submit just succeeded in EstimationSummary: drop the local project and
+  // immediately refresh from the DB so it reappears as a DB-backed entry.
   useEffect(() => {
     const onSubmitted = (event: Event) => {
       const projectId = (event as CustomEvent).detail?.projectId as string | undefined;
       if (!projectId) return;
       setProjects(prev => prev.filter(p => p.id !== projectId));
       setCurrentProject(prev => (prev?.id === projectId ? null : prev));
+      // Refresh from DB so the submitted project reappears with fresh data.
+      fetchEstimationProjects()
+        .then(remote => setProjects(prev => mergeProjects(prev, remote)))
+        .catch(err => console.error('Failed to refresh after submit:', err));
     };
     window.addEventListener(PROJECT_SUBMITTED_EVENT, onSubmitted);
     return () => window.removeEventListener(PROJECT_SUBMITTED_EVENT, onSubmitted);
