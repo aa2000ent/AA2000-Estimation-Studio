@@ -54,7 +54,11 @@ export class ApiClient {
   private sessionToken: string | null = null;
 
   constructor(baseURL: string, defaultHeaders?: HeadersInit) {
-    this.baseURL = baseURL;
+    const trimmed = (baseURL || '').trim();
+    this.baseURL =
+      trimmed && !/^https?:\/\//i.test(trimmed) && !trimmed.startsWith('/')
+        ? `http://${trimmed}`
+        : trimmed;
     this.defaultHeaders = {
       'Content-Type': 'application/json',
       ...defaultHeaders,
