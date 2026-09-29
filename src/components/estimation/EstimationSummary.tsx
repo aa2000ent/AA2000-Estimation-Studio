@@ -2390,7 +2390,7 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
                 setIsSubmitting(true);
                 const reportPdf = await generateReportPdf(true); // null if generation failed
                 const result = await submitEstimationToDB({
-                  project, user, manpower, consumables, fees, scopeOfWorks,
+                  project: project as any, user: user as any, manpower, consumables, fees, scopeOfWorks,
                   constraints, priceTier, aiQuotation, aiBaseline,
                   technicianNotes, discrepancyJustifications, reportPdf,
                 });

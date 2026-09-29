@@ -7,6 +7,11 @@ import {
   mergeProjects,
   deleteEstimationProject,
 } from './services/estimationProjects';
+import {
+  PROJECT_SUBMITTED_EVENT,
+  isSubmittedToDb,
+  sweepSubmittedProjects,
+} from './services/estimationSubmission';
 
 import { useState, useCallback, useEffect, Component } from 'react';
 import type { ReactNode } from 'react';
@@ -284,8 +289,32 @@ export default function App() {
 }, []);
 
   useEffect(() => {
-    saveToStorage(STORAGE_KEYS.projects, projects);
+    // Projects with a DB row are owned by the database: keep them out of localStorage.
+    saveToStorage(
+      STORAGE_KEYS.projects,
+      projects.filter(p => !isSubmittedToDb(p.id)),
+    );
   }, [projects]);
+
+  // Clean up submissions made earlier (or in another tab): storage no longer holds them.
+  useEffect(() => {
+    const removed = sweepSubmittedProjects();
+    if (removed.length) {
+      setProjects(prev => prev.filter(p => !removed.includes(p.id)));
+    }
+  }, []);
+
+  // A submit just succeeded in EstimationSummary: drop the project from live state too.
+  useEffect(() => {
+    const onSubmitted = (event: Event) => {
+      const projectId = (event as CustomEvent).detail?.projectId as string | undefined;
+      if (!projectId) return;
+      setProjects(prev => prev.filter(p => p.id !== projectId));
+      setCurrentProject(prev => (prev?.id === projectId ? null : prev));
+    };
+    window.addEventListener(PROJECT_SUBMITTED_EVENT, onSubmitted);
+    return () => window.removeEventListener(PROJECT_SUBMITTED_EVENT, onSubmitted);
+  }, []);
 
   // Load ESTIMATION projects from the database once signed in (DB status wins over local cache).
   useEffect(() => {

@@ -58,6 +58,57 @@ export const getSavedDbProjId = (hubProjectId: string): number | null => {
   return raw ? Number(raw) : null;
 };
 
+/** True once a DB row exists for this Hub project (written on submit and on DB import). */
+export const isSubmittedToDb = (hubProjectId: string): boolean => Boolean(getSavedDbProjId(hubProjectId));
+
+/** Fired after a successful submit so App can drop the project from state immediately. */
+export const PROJECT_SUBMITTED_EVENT = 'aa2000:project-submitted';
+
+/**
+ * Drops a submitted project's local footprint: its aa2000_projects entry, surveys,
+ * Cost Estimation cache and AI baseline. The aa2000_db_proj_* mapping is kept so the
+ * DB row stays addressable (status updates, re-import after reload).
+ */
+export function removeSubmittedProjectLocally(hubProjectId: string): void {
+  if (!hubProjectId) return;
+  try {
+    const raw = localStorage.getItem('aa2000_projects');
+    const projects = raw ? JSON.parse(raw) : [];
+    if (Array.isArray(projects)) {
+      localStorage.setItem(
+        'aa2000_projects',
+        JSON.stringify(projects.filter((p: any) => p?.id !== hubProjectId)),
+      );
+    }
+    const surveysRaw = localStorage.getItem('aa2000_surveys');
+    const surveys = surveysRaw ? JSON.parse(surveysRaw) : [];
+    if (Array.isArray(surveys)) {
+      localStorage.setItem(
+        'aa2000_surveys',
+        JSON.stringify(surveys.filter((s: any) => s?.projectId !== hubProjectId)),
+      );
+    }
+  } catch { /* corrupted storage: leave it alone */ }
+  try {
+    localStorage.removeItem(`aa2000_estimation_${hubProjectId}`);
+    localStorage.removeItem(`aa2000_ai_baseline_${hubProjectId}`);
+  } catch { /* ignore */ }
+}
+
+/** Removes every locally stored project that already lives in the DB. Returns removed ids. */
+export function sweepSubmittedProjects(): string[] {
+  let projects: any[] = [];
+  try {
+    projects = JSON.parse(localStorage.getItem('aa2000_projects') || '[]');
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(projects)) return [];
+  const submitted = projects.filter((p) => p?.id && isSubmittedToDb(p.id));
+  submitted.forEach((p) => removeSubmittedProjectLocally(p.id));
+  return submitted.map((p) => String(p.id));
+}
+
 const num = (v: unknown) => (typeof v === 'number' && !isNaN(v) ? v : 0);
 
 function readProjectSurveys(projectId: string) {
@@ -200,6 +251,16 @@ export async function submitEstimationToDB(input: EstimationSubmissionInput): Pr
       return { success: false, message: 'Server replied OK but returned no Proj_ID; treating as not saved.' };
     }
     localStorage.setItem(dbProjKey(input.project.id), String(projId));
+    // The DB row now owns this project: drop the local copy (state is updated by App
+    // via PROJECT_SUBMITTED_EVENT; the mapping above is kept for status updates).
+    removeSubmittedProjectLocally(input.project.id);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent(PROJECT_SUBMITTED_EVENT, {
+          detail: { projectId: input.project.id, projId },
+        }),
+      );
+    }
     return { success: true, message: json?.message, projId, fileUploaded: !!fileName };
   } catch (err: any) {
     return {
