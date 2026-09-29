@@ -52,7 +52,7 @@ function getSessionToken(): string {
   return restoreSessionToken() || '';
 }
 
-const dbProjKey = (hubProjectId: string) => `aa2000_db_proj_${hubProjectId}`;
+export const dbProjKey = (hubProjectId: string) => `aa2000_db_proj_${hubProjectId}`;
 export const getSavedDbProjId = (hubProjectId: string): number | null => {
   const raw = localStorage.getItem(dbProjKey(hubProjectId));
   return raw ? Number(raw) : null;
