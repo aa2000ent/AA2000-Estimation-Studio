@@ -435,12 +435,14 @@ export default function App() {
     setAiScans(prev => [saved, ...prev.filter(s => s.id !== saved.id)]);
   }, []);
 
+  // The server keeps the stored files when the request carries none, so a rename
+  // needs nothing but the id and the new name. Reading the current row out of
+  // state first meant a rename on a folder that had not finished loading was a
+  // silent no-op reported to the user as success.
   const handleRenameAIScan = useCallback(async (id: string, name: string) => {
-    const current = aiScans.find(s => s.id === id);
-    if (!current) return;
-    const saved = await updateAIScan({ ...current, name });
+    const saved = await updateAIScan({ id, name, createdAt: '', files: [] });
     setAiScans(prev => prev.map(s => (s.id === id ? saved : s)));
-  }, [aiScans]);
+  }, []);
 
   const handleDeleteAIScan = useCallback(async (id: string) => {
     await deleteAIScan(id);

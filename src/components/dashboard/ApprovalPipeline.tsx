@@ -20,8 +20,19 @@ export default function ApprovalPipeline({
   const [searchQuery, setSearchQuery] = useState('');
   const [sortOrder, setSortOrder] = useState<'Newest' | 'Oldest'>('Newest');
 
+  // This page reviews approvals that came out of the estimation workflow, so it
+  // must only list projects the database actually holds a row for.
+  //
+  // `projects` arrives as the union of the DB rows and the localStorage drafts
+  // (App.tsx:204 hydrates from `aa2000_projects`, which by construction keeps
+  // exactly the projects that were never submitted, and fetchEstimationProjects
+  // merges the DB rows on top). Filtering by status alone therefore listed
+  // browser-only drafts that have no database row at all — misleading, because
+  // there is nothing for a reviewer here to approve.
+  const submittedProjects = projects.filter((p) => Boolean(p.dbProjId));
+
   // Filter actual projects by tab and search
-  const filteredProjects = projects.filter((p) => {
+  const filteredProjects = submittedProjects.filter((p) => {
     // Map status category
     const isPending = p.status === 'Pending' || p.status === 'Finalized';
     const isInProgress = p.status === 'In Progress';
@@ -58,8 +69,8 @@ export default function ApprovalPipeline({
         <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
           {(['All', 'Pending', 'In Progress', 'Completed'] as const).map((tab) => {
             const count = tab === 'All'
-              ? projects.length
-              : projects.filter(p => {
+              ? submittedProjects.length
+              : submittedProjects.filter(p => {
                   if (tab === 'Pending') return p.status === 'Pending' || p.status === 'Finalized';
                   if (tab === 'In Progress') return p.status === 'In Progress';
                   if (tab === 'Completed') return p.status === 'Completed' || p.status === 'Finalized - Approved';
