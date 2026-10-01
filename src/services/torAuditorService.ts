@@ -141,7 +141,11 @@ export async function analyzeProposalOnly(
   return requestTorAudit({
     mode: 'proposal',
     fileName,
-    torText: fileText,
+    // The proposal text belongs in `proposalText`, not `torText`. The backend
+    // rejects a proposal-mode request whose proposal side is empty, so sending
+    // it as the TOR made this mode fail with "A technician proposal is
+    // required" on every call.
+    proposalText: fileText,
   }) as Promise<AuditDetails>;
 }
 

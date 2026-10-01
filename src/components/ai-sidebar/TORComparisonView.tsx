@@ -368,12 +368,26 @@ export default function TORComparisonView({ userRole, onSaveAIScan, onScanningCh
   const hasProposal = !!proposalFile;
   const canRunComparison = (hasTor || hasProposal) && !torFile?.loading && !proposalFile?.loading && !auditing;
 
+  // The label has to name the mode that will actually run. It used to read
+  // "Audit TOR Specifications" unconditionally, so a proposal-only upload
+  // promised a TOR audit it never performed.
   const getButtonLabel = () => {
-    if (auditing) return 'Auditing TOR Specifications...';
-    return 'Audit TOR Specifications';
+    if (auditing) {
+      if (hasBothFiles) return 'Comparing TOR vs Proposal...';
+      return hasTor ? 'Auditing TOR Specifications...' : 'Analyzing Proposal...';
+    }
+    if (hasBothFiles) return 'Compare TOR vs Proposal';
+    return hasTor ? 'Audit TOR Specifications' : 'Analyze Technician Proposal';
   };
+
   const getButtonIcon = () => 'M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09Z';
-  const getButtonStyle = () => 'linear-gradient(135deg, #2563EB, #1D4ED8)';
+
+  // Amber for the proposal-only path so the control matches what it will do.
+  const getButtonStyle = () => (hasBothFiles
+    ? 'linear-gradient(135deg, #2563EB, #1D4ED8)'
+    : hasProposal
+      ? 'linear-gradient(135deg, #D97706, #B45309)'
+      : 'linear-gradient(135deg, #2563EB, #1D4ED8)');
 
   const handleDownload = async () => {
     if (!auditResult) return;
@@ -489,21 +503,39 @@ export default function TORComparisonView({ userRole, onSaveAIScan, onScanningCh
           <div className="p-4 bg-blue-50/70 dark:bg-[#131B2E] border border-blue-200/80 dark:border-slate-800 rounded-xl transition-colors">
             <p className="text-sm text-blue-900 dark:text-blue-200 font-medium leading-relaxed">
               Upload a <span className="font-bold text-blue-950 dark:text-white">Terms of Reference (TOR)</span> or technical specifications document (PDF, XLSX, DOCX).
-              The AI will extract hardware requirements, identify scope and compliance gaps, and provide a detailed audit with cost recommendations.
+              Add the <span className="font-bold text-amber-800 dark:text-amber-300">Technician Proposal</span> you are evaluating to get a line-by-line comparison and cost variance.
             </p>
           </div>
 
-          {/* Drop Zone */}
-          <div className="w-full">
+          {/* Drop Zones. Both are optional, but the comparison mode — variance,
+              under/over-budget findings — only runs when both are present, so the
+              second zone is what makes the comparison reachable at all. */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 w-full">
             <DropZone
               label="Upload TOR Document"
-              description="PDF, XLSX, DOCX, TXT, CSV"
+              description="The scope of what must be supplied"
               file={torFile}
               onFiles={handleTorFiles}
               onRemove={removeTorFile}
               color="blue"
             />
+            <DropZone
+              label="Upload Technician Proposal"
+              description="The bid you want checked against the TOR"
+              file={proposalFile}
+              onFiles={handleProposalFiles}
+              onRemove={removeProposalFile}
+              color="amber"
+            />
           </div>
+
+          {hasProposal && !hasTor && (
+            <p className="text-xs text-slate-500 dark:text-slate-400 text-center">
+              Without a TOR there is nothing to compare against, so the proposal is only
+              read for scope completeness — no cost variance is reported. Add the TOR to
+              unlock the comparison.
+            </p>
+          )}
 
           {/* Action Button */}
           <div className="flex justify-center gap-4 pt-4">
@@ -627,12 +659,25 @@ export default function TORComparisonView({ userRole, onSaveAIScan, onScanningCh
 
                 {/* Document Information Strip */}
                 <div className="pt-2 border-t border-blue-100/80 flex flex-wrap items-center justify-between gap-2 text-[11px]">
-                  <div className="flex items-center gap-2 text-slate-600 font-medium">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                    <span>Active File:</span>
-                    <span className="font-bold text-slate-800 truncate max-w-xs">
-                      {torFile?.parsed.fileName || proposalFile?.parsed.fileName}
-                    </span>
+                  <div className="flex items-center gap-2 text-slate-600 font-medium min-w-0">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+                    {/* Both documents in comparison mode: naming only the TOR hid
+                        the very proposal being checked. */}
+                    {hasBothFiles ? (
+                      <span className="min-w-0">
+                        <span>Comparing</span>
+                        <span className="font-bold text-slate-800 ml-1 truncate">{torFile?.parsed.fileName}</span>
+                        <span className="mx-1.5 text-slate-400">vs</span>
+                        <span className="font-bold text-slate-800 truncate">{proposalFile?.parsed.fileName}</span>
+                      </span>
+                    ) : (
+                      <>
+                        <span>Active File:</span>
+                        <span className="font-bold text-slate-800 truncate max-w-xs">
+                          {torFile?.parsed.fileName || proposalFile?.parsed.fileName}
+                        </span>
+                      </>
+                    )}
                   </div>
                   <span className="text-[10px] font-bold text-blue-600/90">
                     Applying Philippine Electrical Code (PEC) &amp; Security Standards
