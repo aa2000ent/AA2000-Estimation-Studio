@@ -64,6 +64,13 @@ export interface Project {
   startDate?: string;
   assignedTechnicians: { id: string; fullName: string; email: string }[];
   technicianName?: string;
+  /**
+   * The `project_details.Proj_ID` this project came from, set only on projects
+   * loaded from the database. It is what marks a row as DB-backed, which matters
+   * because a DB project's status comes from the database and can be a
+   * terminal one (APPROVED, COMPLETED) that the active-work views filter out.
+   */
+  dbProjId?: number;
   createdAt: string;
   isNewBuilding?: boolean;
   rooms?: number;

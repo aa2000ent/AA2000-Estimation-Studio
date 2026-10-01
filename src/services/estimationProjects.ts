@@ -75,6 +75,10 @@ export function mapDbRowToProject(row: any): Project {
   const submitter = snap.submittedBy;
   return {
     id: hubId,
+    // Marks this as database-backed. The Workspace view uses it to keep a DB
+    // project visible even when its DB status is terminal (APPROVED / COMPLETED),
+    // which the active-work status filter would otherwise drop.
+    dbProjId: Number(row.Proj_ID) || undefined,
     name: snap.projectName || row.activity || `Project ${row.Proj_ID}`,
     clientName: snap.clientName || '',
     location: snap.locationName || '',
