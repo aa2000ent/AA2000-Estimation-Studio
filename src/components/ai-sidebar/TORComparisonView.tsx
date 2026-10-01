@@ -17,7 +17,7 @@ import { canViewPrices } from '../../constants/roles';
 
 interface Props {
   userRole?: string;
-  onSaveAIScan?: (scan: AIScanGroup) => void;
+  onSaveAIScan?: (scan: AIScanGroup) => Promise<void>;
   onScanningChange?: (scanning: boolean) => void;
 }
 
@@ -189,6 +189,7 @@ export default function TORComparisonView({ userRole, onSaveAIScan, onScanningCh
   const [scanGroupName, setScanGroupName] = useState('');
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   
   // Baseline cost override editing
   const [isEditingBaseline, setIsEditingBaseline] = useState(false);
@@ -312,7 +313,7 @@ export default function TORComparisonView({ userRole, onSaveAIScan, onScanningCh
     }
   }, [torFile, proposalFile, toast, onScanningChange]);
 
-  const handleSave = useCallback(() => {
+  const handleSave = useCallback(async () => {
     if (!onSaveAIScan || !scanGroupName.trim() || (!torFile && !proposalFile) || !auditResult) return;
 
     const files: AIScanFile[] = [];
@@ -346,10 +347,20 @@ export default function TORComparisonView({ userRole, onSaveAIScan, onScanningCh
       files,
     };
 
-    onSaveAIScan(group);
-    setIsSaved(true);
-    setShowSaveModal(false);
-    toast.success(torFile && proposalFile ? 'Comparison saved successfully!' : 'Analysis saved successfully!');
+    // The audit is written to the backend, not to browser storage. Waiting for
+    // that write is what makes the success toast honest: a failed save must not
+    // report "Analysis saved successfully!" over an unsaved audit.
+    setIsSaving(true);
+    try {
+      await onSaveAIScan(group);
+      setIsSaved(true);
+      setShowSaveModal(false);
+      toast.success(torFile && proposalFile ? 'Comparison saved successfully!' : 'Analysis saved successfully!');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'The analysis could not be saved.');
+    } finally {
+      setIsSaving(false);
+    }
   }, [onSaveAIScan, scanGroupName, torFile, proposalFile, auditResult, toast]);
 
   const hasBothFiles = torFile && proposalFile;
@@ -1180,7 +1191,7 @@ export default function TORComparisonView({ userRole, onSaveAIScan, onScanningCh
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 animate-fade-in">
           <div className="bg-white rounded-2xl p-6 max-w-md w-full animate-scale-in">
             <h3 className="text-lg font-black text-slate-800 mb-1">Save Comparison</h3>
-            <p className="text-sm text-slate-500 mb-4">Enter a name for this TOR comparison to save it to your projects.</p>
+            <p className="text-sm text-slate-500 mb-4">Enter a name for this TOR comparison. It is saved to your account and stays available on any device you sign in from.</p>
             <input
               type="text"
               value={scanGroupName}
@@ -1191,15 +1202,17 @@ export default function TORComparisonView({ userRole, onSaveAIScan, onScanningCh
             <div className="flex justify-end gap-3">
               <button
                 onClick={() => setShowSaveModal(false)}
-                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 transition-colors"
+                disabled={isSaving}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 transition-colors disabled:opacity-50"
               >
                 Cancel
               </button>
               <button
                 onClick={handleSave}
-                className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 transition-colors shadow-sm"
+                disabled={isSaving || !scanGroupName.trim()}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Save Comparison
+                {isSaving ? 'Saving...' : 'Save Comparison'}
               </button>
             </div>
           </div>

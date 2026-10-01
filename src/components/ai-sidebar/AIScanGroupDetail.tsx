@@ -6,9 +6,11 @@ import { useToast } from '../utils/Toast';
 interface Props {
   scan: AIScanGroup;
   onBack: () => void;
-  onRename: (id: string, name: string) => void;
-  onDelete: (id: string) => void;
-  onUpdateScan?: (updatedScan: AIScanGroup) => void;
+  // These persist to the backend, so they are async: the caller reports the
+  // outcome and only then changes what is on screen.
+  onRename: (id: string, name: string) => void | Promise<void>;
+  onDelete: (id: string) => void | Promise<void>;
+  onUpdateScan?: (updatedScan: AIScanGroup) => void | Promise<void>;
 }
 
 function formatDate(iso: string) {
@@ -460,7 +462,9 @@ export default function AIScanGroupDetail({ scan, onBack, onRename, onDelete, on
         {confirmDelete ? (
           <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-2">
             <span className="text-xs font-bold text-red-700">Delete this folder?</span>
-            <button onClick={() => { onDelete(scan.id); onBack(); }} className="px-3 py-1 rounded-lg text-xs font-bold bg-red-600 text-white hover:bg-red-700">Yes, Delete</button>
+              {/* Navigating away is the parent's job once the delete succeeds, so a
+                  failed delete cannot leave the user looking at an empty detail view. */}
+              <button onClick={async () => { await onDelete(scan.id); onBack(); }} className="px-3 py-1 rounded-lg text-xs font-bold bg-red-600 text-white hover:bg-red-700">Yes, Delete</button>
             <button onClick={() => setConfirmDelete(false)} className="px-3 py-1 rounded-lg text-xs font-bold bg-white text-slate-600 border border-slate-200">Cancel</button>
           </div>
         ) : (

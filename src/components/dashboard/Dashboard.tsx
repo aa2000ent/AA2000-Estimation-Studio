@@ -37,10 +37,10 @@ interface Props {
   onDeleteProject?: (projectId: string) => void;
   onUpdateProject?: (project: Project) => void;
   aiScans?: AIScanGroup[];
-  onSaveAIScan?: (scan: AIScanGroup) => void;
-  onRenameAIScan?: (id: string, name: string) => void;
-  onDeleteAIScan?: (id: string) => void;
-  onUpdateAIScan?: (scan: AIScanGroup) => void;
+  onSaveAIScan?: (scan: AIScanGroup) => Promise<void>;
+  onRenameAIScan?: (id: string, name: string) => Promise<void>;
+  onDeleteAIScan?: (id: string) => Promise<void>;
+  onUpdateAIScan?: (scan: AIScanGroup) => Promise<void>;
   contentOverride?: React.ReactNode;
   activeViewOverride?: View;
   onExitOverride?: () => void;
