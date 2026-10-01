@@ -930,6 +930,35 @@ export default function TORComparisonView({ userRole, onSaveAIScan, onScanningCh
                   })()}
                 </div>
 
+                {/* Catalog pricing coverage */}
+                {auditResult.pricingSummary && auditResult.pricingSummary.linesPriced > 0 && (
+                  <div className="mb-6 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                        Catalog Pricing
+                      </span>
+                      <span className="text-[10px] font-bold text-slate-500">
+                        {auditResult.pricingSummary.catalogPriced} of {auditResult.pricingSummary.linesPriced} lines from AA2000 catalog
+                      </span>
+                    </div>
+                    <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-slate-200">
+                      <div
+                        className="h-full rounded-full bg-emerald-500 transition-all duration-500"
+                        style={{
+                          width: `${Math.round(
+                            (auditResult.pricingSummary.catalogPriced / auditResult.pricingSummary.linesPriced) * 100,
+                          )}%`,
+                        }}
+                      />
+                    </div>
+                    <p className="mt-2 text-[10px] leading-tight text-slate-400">
+                      {auditResult.pricingSummary.benchmarkPriced} line(s) priced from market benchmarks,{' '}
+                      {auditResult.pricingSummary.unpricedLines} unpriced. Totals above are the audit&apos;s own
+                      figures and include labour, so they are not the sum of these lines.
+                    </p>
+                  </div>
+                )}
+
                 {/* Equipment Comparison */}
                 {auditResult.equipmentComparison.length > 0 && (
                   <div className="mb-6">
@@ -956,11 +985,19 @@ export default function TORComparisonView({ userRole, onSaveAIScan, onScanningCh
                         </thead>
                         <tbody>
                           {auditResult.equipmentComparison.map((item, i) => {
-                            const unitPrice = item.unitPrice ?? 0;
-                            const totalPrice = item.totalPrice ?? (unitPrice * (item.aiQty || 1));
+                            const unitPrice = item.unitPrice ?? item.srp ?? 0;
+                            const lineQty = item.pricedQuantity ?? item.aiQty ?? 1;
+                            const totalPrice = item.extendedPrice ?? (unitPrice * lineQty);
                             return (
                               <tr key={i} className="border-t border-slate-50 hover:bg-slate-50/50">
-                                <td className="p-2.5 font-semibold text-slate-700">{item.name}</td>
+                                <td className="p-2.5 font-semibold text-slate-700">
+                                  {item.name}
+                                  {item.catalogPriced && item.catalogCode && (
+                                    <span className="ml-1.5 align-middle rounded bg-emerald-50 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700" title={`Catalog: ${item.brand || ''} ${item.catalogModel || ''}`.trim()}>
+                                      {item.catalogCode}
+                                    </span>
+                                  )}
+                                </td>
                                 <td className="p-2.5 text-right text-slate-500">{item.technicianQty}</td>
                                 <td className="p-2.5 text-right font-bold text-slate-800">{item.aiQty}</td>
                                 <td className="p-2.5 text-center">
