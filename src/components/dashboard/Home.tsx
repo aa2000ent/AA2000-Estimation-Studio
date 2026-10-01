@@ -383,9 +383,9 @@ interface HomeProps {
   onDeleteProject?: (projectId: string) => void;
   onUpdateProject?: (project: Project) => void;
   aiScans?: AIScanGroup[];
-  onRenameAIScan?: (id: string, name: string) => void;
-  onDeleteAIScan?: (id: string) => void;
-  onUpdateAIScan?: (scan: AIScanGroup) => void;
+  onRenameAIScan?: (id: string, name: string) => Promise<void>;
+  onDeleteAIScan?: (id: string) => Promise<void>;
+  onUpdateAIScan?: (scan: AIScanGroup) => Promise<void>;
   isDark?: boolean;
 }
 
@@ -765,15 +765,17 @@ export default function Home({
       <AIScanGroupDetail
         scan={activeScan}
         onBack={() => setSelectedScanGroup(null)}
-        onRename={(id, name) => {
-          if (onRenameAIScan) onRenameAIScan(id, name);
+        onRename={async (id, name) => {
+          await onRenameAIScan?.(id, name);
         }}
-        onDelete={(id) => {
-          if (onDeleteAIScan) onDeleteAIScan(id);
+        // Only leave the detail view once the delete has actually been accepted
+        // by the backend; otherwise the row is still there on the next render.
+        onDelete={async (id) => {
+          await onDeleteAIScan?.(id);
           setSelectedScanGroup(null);
         }}
-        onUpdateScan={(updated) => {
-          if (onUpdateAIScan) onUpdateAIScan(updated);
+        onUpdateScan={async (updated) => {
+          await onUpdateAIScan?.(updated);
           setSelectedScanGroup(updated);
         }}
       />

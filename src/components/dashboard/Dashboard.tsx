@@ -37,10 +37,10 @@ interface Props {
   onDeleteProject?: (projectId: string) => void;
   onUpdateProject?: (project: Project) => void;
   aiScans?: AIScanGroup[];
-  onSaveAIScan?: (scan: AIScanGroup) => void;
-  onRenameAIScan?: (id: string, name: string) => void;
-  onDeleteAIScan?: (id: string) => void;
-  onUpdateAIScan?: (scan: AIScanGroup) => void;
+  onSaveAIScan?: (scan: AIScanGroup) => Promise<void>;
+  onRenameAIScan?: (id: string, name: string) => Promise<void>;
+  onDeleteAIScan?: (id: string) => Promise<void>;
+  onUpdateAIScan?: (scan: AIScanGroup) => Promise<void>;
   contentOverride?: React.ReactNode;
   activeViewOverride?: View;
   onExitOverride?: () => void;
@@ -81,7 +81,20 @@ function filterProjects(projects: Project[], view: string): Project[] {
   const now = new Date();
   const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
   switch (view) {
-    case 'workspace': case 'todo': case 'manual-survey':
+    case 'workspace':
+      // "View All Workspace" is the entry point to everything this account can
+      // reach, so a project backed by a database row is always listed even when
+      // its DB status is terminal (APPROVED / COMPLETED) and would otherwise be
+      // treated as finished work. Locally-created projects keep the active-only
+      // behaviour, so the active-work queues below are unchanged.
+      return actualProjects.filter(p =>
+        Boolean(p.dbProjId)
+        || p.status === 'Pending'
+        || p.status === 'In Progress'
+        || p.status === 'Finalized'
+        || p.status === 'Finalized - Rejected'
+      );
+    case 'todo': case 'manual-survey':
       return actualProjects.filter(p => p.status === 'Pending' || p.status === 'In Progress' || p.status === 'Finalized' || p.status === 'Finalized - Rejected');
     case 'assignment': case 'floor-plan': return actualProjects;
     case 'missing': return actualProjects.filter(p => {

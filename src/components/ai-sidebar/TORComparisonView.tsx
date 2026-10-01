@@ -17,7 +17,7 @@ import { canViewPrices } from '../../constants/roles';
 
 interface Props {
   userRole?: string;
-  onSaveAIScan?: (scan: AIScanGroup) => void;
+  onSaveAIScan?: (scan: AIScanGroup) => Promise<void>;
   onScanningChange?: (scanning: boolean) => void;
 }
 
@@ -189,6 +189,7 @@ export default function TORComparisonView({ userRole, onSaveAIScan, onScanningCh
   const [scanGroupName, setScanGroupName] = useState('');
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   
   // Baseline cost override editing
   const [isEditingBaseline, setIsEditingBaseline] = useState(false);
@@ -312,7 +313,7 @@ export default function TORComparisonView({ userRole, onSaveAIScan, onScanningCh
     }
   }, [torFile, proposalFile, toast, onScanningChange]);
 
-  const handleSave = useCallback(() => {
+  const handleSave = useCallback(async () => {
     if (!onSaveAIScan || !scanGroupName.trim() || (!torFile && !proposalFile) || !auditResult) return;
 
     const files: AIScanFile[] = [];
@@ -346,10 +347,20 @@ export default function TORComparisonView({ userRole, onSaveAIScan, onScanningCh
       files,
     };
 
-    onSaveAIScan(group);
-    setIsSaved(true);
-    setShowSaveModal(false);
-    toast.success(torFile && proposalFile ? 'Comparison saved successfully!' : 'Analysis saved successfully!');
+    // The audit is written to the backend, not to browser storage. Waiting for
+    // that write is what makes the success toast honest: a failed save must not
+    // report "Analysis saved successfully!" over an unsaved audit.
+    setIsSaving(true);
+    try {
+      await onSaveAIScan(group);
+      setIsSaved(true);
+      setShowSaveModal(false);
+      toast.success(torFile && proposalFile ? 'Comparison saved successfully!' : 'Analysis saved successfully!');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'The analysis could not be saved.');
+    } finally {
+      setIsSaving(false);
+    }
   }, [onSaveAIScan, scanGroupName, torFile, proposalFile, auditResult, toast]);
 
   const hasBothFiles = torFile && proposalFile;
@@ -357,12 +368,26 @@ export default function TORComparisonView({ userRole, onSaveAIScan, onScanningCh
   const hasProposal = !!proposalFile;
   const canRunComparison = (hasTor || hasProposal) && !torFile?.loading && !proposalFile?.loading && !auditing;
 
+  // The label has to name the mode that will actually run. It used to read
+  // "Audit TOR Specifications" unconditionally, so a proposal-only upload
+  // promised a TOR audit it never performed.
   const getButtonLabel = () => {
-    if (auditing) return 'Auditing TOR Specifications...';
-    return 'Audit TOR Specifications';
+    if (auditing) {
+      if (hasBothFiles) return 'Comparing TOR vs Proposal...';
+      return hasTor ? 'Auditing TOR Specifications...' : 'Analyzing Proposal...';
+    }
+    if (hasBothFiles) return 'Compare TOR vs Proposal';
+    return hasTor ? 'Audit TOR Specifications' : 'Analyze Technician Proposal';
   };
+
   const getButtonIcon = () => 'M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09Z';
-  const getButtonStyle = () => 'linear-gradient(135deg, #2563EB, #1D4ED8)';
+
+  // Amber for the proposal-only path so the control matches what it will do.
+  const getButtonStyle = () => (hasBothFiles
+    ? 'linear-gradient(135deg, #2563EB, #1D4ED8)'
+    : hasProposal
+      ? 'linear-gradient(135deg, #D97706, #B45309)'
+      : 'linear-gradient(135deg, #2563EB, #1D4ED8)');
 
   const handleDownload = async () => {
     if (!auditResult) return;
@@ -478,21 +503,39 @@ export default function TORComparisonView({ userRole, onSaveAIScan, onScanningCh
           <div className="p-4 bg-blue-50/70 dark:bg-[#131B2E] border border-blue-200/80 dark:border-slate-800 rounded-xl transition-colors">
             <p className="text-sm text-blue-900 dark:text-blue-200 font-medium leading-relaxed">
               Upload a <span className="font-bold text-blue-950 dark:text-white">Terms of Reference (TOR)</span> or technical specifications document (PDF, XLSX, DOCX).
-              The AI will extract hardware requirements, identify scope and compliance gaps, and provide a detailed audit with cost recommendations.
+              Add the <span className="font-bold text-amber-800 dark:text-amber-300">Technician Proposal</span> you are evaluating to get a line-by-line comparison and cost variance.
             </p>
           </div>
 
-          {/* Drop Zone */}
-          <div className="w-full">
+          {/* Drop Zones. Both are optional, but the comparison mode — variance,
+              under/over-budget findings — only runs when both are present, so the
+              second zone is what makes the comparison reachable at all. */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 w-full">
             <DropZone
               label="Upload TOR Document"
-              description="PDF, XLSX, DOCX, TXT, CSV"
+              description="The scope of what must be supplied"
               file={torFile}
               onFiles={handleTorFiles}
               onRemove={removeTorFile}
               color="blue"
             />
+            <DropZone
+              label="Upload Technician Proposal"
+              description="The bid you want checked against the TOR"
+              file={proposalFile}
+              onFiles={handleProposalFiles}
+              onRemove={removeProposalFile}
+              color="amber"
+            />
           </div>
+
+          {hasProposal && !hasTor && (
+            <p className="text-xs text-slate-500 dark:text-slate-400 text-center">
+              Without a TOR there is nothing to compare against, so the proposal is only
+              read for scope completeness — no cost variance is reported. Add the TOR to
+              unlock the comparison.
+            </p>
+          )}
 
           {/* Action Button */}
           <div className="flex justify-center gap-4 pt-4">
@@ -616,12 +659,25 @@ export default function TORComparisonView({ userRole, onSaveAIScan, onScanningCh
 
                 {/* Document Information Strip */}
                 <div className="pt-2 border-t border-blue-100/80 flex flex-wrap items-center justify-between gap-2 text-[11px]">
-                  <div className="flex items-center gap-2 text-slate-600 font-medium">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                    <span>Active File:</span>
-                    <span className="font-bold text-slate-800 truncate max-w-xs">
-                      {torFile?.parsed.fileName || proposalFile?.parsed.fileName}
-                    </span>
+                  <div className="flex items-center gap-2 text-slate-600 font-medium min-w-0">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+                    {/* Both documents in comparison mode: naming only the TOR hid
+                        the very proposal being checked. */}
+                    {hasBothFiles ? (
+                      <span className="min-w-0">
+                        <span>Comparing</span>
+                        <span className="font-bold text-slate-800 ml-1 truncate">{torFile?.parsed.fileName}</span>
+                        <span className="mx-1.5 text-slate-400">vs</span>
+                        <span className="font-bold text-slate-800 truncate">{proposalFile?.parsed.fileName}</span>
+                      </span>
+                    ) : (
+                      <>
+                        <span>Active File:</span>
+                        <span className="font-bold text-slate-800 truncate max-w-xs">
+                          {torFile?.parsed.fileName || proposalFile?.parsed.fileName}
+                        </span>
+                      </>
+                    )}
                   </div>
                   <span className="text-[10px] font-bold text-blue-600/90">
                     Applying Philippine Electrical Code (PEC) &amp; Security Standards
@@ -930,6 +986,35 @@ export default function TORComparisonView({ userRole, onSaveAIScan, onScanningCh
                   })()}
                 </div>
 
+                {/* Catalog pricing coverage */}
+                {auditResult.pricingSummary && auditResult.pricingSummary.linesPriced > 0 && (
+                  <div className="mb-6 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                        Catalog Pricing
+                      </span>
+                      <span className="text-[10px] font-bold text-slate-500">
+                        {auditResult.pricingSummary.catalogPriced} of {auditResult.pricingSummary.linesPriced} lines from AA2000 catalog
+                      </span>
+                    </div>
+                    <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-slate-200">
+                      <div
+                        className="h-full rounded-full bg-emerald-500 transition-all duration-500"
+                        style={{
+                          width: `${Math.round(
+                            (auditResult.pricingSummary.catalogPriced / auditResult.pricingSummary.linesPriced) * 100,
+                          )}%`,
+                        }}
+                      />
+                    </div>
+                    <p className="mt-2 text-[10px] leading-tight text-slate-400">
+                      {auditResult.pricingSummary.benchmarkPriced} line(s) priced from market benchmarks,{' '}
+                      {auditResult.pricingSummary.unpricedLines} unpriced. Totals above are the audit&apos;s own
+                      figures and include labour, so they are not the sum of these lines.
+                    </p>
+                  </div>
+                )}
+
                 {/* Equipment Comparison */}
                 {auditResult.equipmentComparison.length > 0 && (
                   <div className="mb-6">
@@ -956,11 +1041,19 @@ export default function TORComparisonView({ userRole, onSaveAIScan, onScanningCh
                         </thead>
                         <tbody>
                           {auditResult.equipmentComparison.map((item, i) => {
-                            const unitPrice = item.unitPrice ?? 0;
-                            const totalPrice = item.totalPrice ?? (unitPrice * (item.aiQty || 1));
+                            const unitPrice = item.unitPrice ?? item.srp ?? 0;
+                            const lineQty = item.pricedQuantity ?? item.aiQty ?? 1;
+                            const totalPrice = item.extendedPrice ?? (unitPrice * lineQty);
                             return (
                               <tr key={i} className="border-t border-slate-50 hover:bg-slate-50/50">
-                                <td className="p-2.5 font-semibold text-slate-700">{item.name}</td>
+                                <td className="p-2.5 font-semibold text-slate-700">
+                                  {item.name}
+                                  {item.catalogPriced && item.catalogCode && (
+                                    <span className="ml-1.5 align-middle rounded bg-emerald-50 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700" title={`Catalog: ${item.brand || ''} ${item.catalogModel || ''}`.trim()}>
+                                      {item.catalogCode}
+                                    </span>
+                                  )}
+                                </td>
                                 <td className="p-2.5 text-right text-slate-500">{item.technicianQty}</td>
                                 <td className="p-2.5 text-right font-bold text-slate-800">{item.aiQty}</td>
                                 <td className="p-2.5 text-center">
@@ -1143,7 +1236,7 @@ export default function TORComparisonView({ userRole, onSaveAIScan, onScanningCh
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 animate-fade-in">
           <div className="bg-white rounded-2xl p-6 max-w-md w-full animate-scale-in">
             <h3 className="text-lg font-black text-slate-800 mb-1">Save Comparison</h3>
-            <p className="text-sm text-slate-500 mb-4">Enter a name for this TOR comparison to save it to your projects.</p>
+            <p className="text-sm text-slate-500 mb-4">Enter a name for this TOR comparison. It is saved to your account and stays available on any device you sign in from.</p>
             <input
               type="text"
               value={scanGroupName}
@@ -1154,15 +1247,17 @@ export default function TORComparisonView({ userRole, onSaveAIScan, onScanningCh
             <div className="flex justify-end gap-3">
               <button
                 onClick={() => setShowSaveModal(false)}
-                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 transition-colors"
+                disabled={isSaving}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 transition-colors disabled:opacity-50"
               >
                 Cancel
               </button>
               <button
                 onClick={handleSave}
-                className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 transition-colors shadow-sm"
+                disabled={isSaving || !scanGroupName.trim()}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Save Comparison
+                {isSaving ? 'Saving...' : 'Save Comparison'}
               </button>
             </div>
           </div>

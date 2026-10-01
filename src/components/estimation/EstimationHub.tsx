@@ -7,7 +7,7 @@ interface Props {
   projects?: Project[];
   onCreateProject?: (project: Project, keepOnHome?: boolean) => void;
   onSelectProject?: (project: Project) => void;
-  onSaveAIScan?: (scan: AIScanGroup) => void;
+  onSaveAIScan?: (scan: AIScanGroup) => Promise<void>;
   onNavigateToCreate?: () => void;
   isDark?: boolean;
 }
