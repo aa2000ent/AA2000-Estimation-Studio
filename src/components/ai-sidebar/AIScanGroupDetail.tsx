@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import type { AIScanGroup, AIScanFile, FileRole } from '../../App';
 import { auditTorDocument, type AuditDetails } from '../../services/torAuditorService';
 import { useToast } from '../utils/Toast';
@@ -6,9 +6,11 @@ import { useToast } from '../utils/Toast';
 interface Props {
   scan: AIScanGroup;
   onBack: () => void;
-  onRename: (id: string, name: string) => void;
-  onDelete: (id: string) => void;
-  onUpdateScan?: (updatedScan: AIScanGroup) => void;
+  // These persist to the backend, so they are async: the caller reports the
+  // outcome and only then changes what is on screen.
+  onRename: (id: string, name: string) => void | Promise<void>;
+  onDelete: (id: string) => void | Promise<void>;
+  onUpdateScan?: (updatedScan: AIScanGroup) => void | Promise<void>;
 }
 
 function formatDate(iso: string) {
@@ -56,15 +58,29 @@ function FileRoleBadge({ role }: { role: string }) {
   );
 }
 
-function ScanFileCard({ file, onRunAudit, onUpdateRole }: { file: AIScanFile; onRunAudit: (file: AIScanFile) => Promise<void>; onUpdateRole?: (file: AIScanFile, newRole: FileRole) => void }) {
+function ScanFileCard({ file, onRunAudit, onUpdateRole }: { file: AIScanFile; onRunAudit: (file: AIScanFile) => Promise<void>; onUpdateRole?: (file: AIScanFile, newRole: FileRole) => void | Promise<void> }) {
   const [expanded, setExpanded] = useState(false);
   const [auditing, setAuditing] = useState(false);
+  const [changingRole, setChangingRole] = useState(false);
   const { toast } = useToast();
   const audit = file.aiResult?.auditDetails;
-  
-  const handleRoleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    if (onUpdateRole) {
-      onUpdateRole(file, e.target.value as FileRole);
+
+  // The select is driven by `file.role`, so a rejected write puts the stored role
+  // back on screen on the next render. Reporting it here keeps the change from
+  // looking like it took effect.
+  const handleRoleChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
+    if (!onUpdateRole) return;
+
+    const nextRole = e.target.value as FileRole;
+    if (nextRole === file.role) return;
+
+    setChangingRole(true);
+    try {
+      await onUpdateRole(file, nextRole);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'The file role could not be saved.');
+    } finally {
+      setChangingRole(false);
     }
   };
 
@@ -191,7 +207,8 @@ function ScanFileCard({ file, onRunAudit, onUpdateRole }: { file: AIScanFile; on
               <select
                 value={file.role || 'other'}
                 onChange={handleRoleChange}
-                className="text-[10px] font-bold px-1.5 py-0.5 rounded-full border bg-white text-slate-600"
+                disabled={changingRole}
+                className="text-[10px] font-bold px-1.5 py-0.5 rounded-full border bg-white text-slate-600 disabled:opacity-60"
               >
                 <option value="tor">TOR</option>
                 <option value="technician_proposal">Technician Proposal</option>
@@ -347,14 +364,33 @@ export default function AIScanGroupDetail({ scan, onBack, onRename, onDelete, on
   const [editingName, setEditingName] = useState(false);
   const [nameInput, setNameInput] = useState(scan.name);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [savingName, setSavingName] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const { toast } = useToast();
 
-  const handleSaveName = () => {
-    if (nameInput.trim()) onRename(scan.id, nameInput.trim());
-    else setNameInput(scan.name);
-    setEditingName(false);
+  // A rename that the backend rejects leaves the parent holding the stored name
+  // again, so the input has to follow it instead of keeping the rejected text.
+  useEffect(() => {
+    if (!editingName) setNameInput(scan.name);
+  }, [scan.name, editingName]);
+
+  const handleSaveName = async () => {
+    const next = nameInput.trim();
+    if (!next) { setNameInput(scan.name); setEditingName(false); return; }
+
+    setSavingName(true);
+    try {
+      await onRename(scan.id, next);
+      setEditingName(false);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'The folder could not be renamed.');
+      setNameInput(scan.name);
+    } finally {
+      setSavingName(false);
+    }
   };
 
-  const handleUpdateFileRole = useCallback((file: AIScanFile, newRole: FileRole) => {
+  const handleUpdateFileRole = useCallback(async (file: AIScanFile, newRole: FileRole) => {
     const updatedFiles = scan.files.map(f => {
       if (f.fileName === file.fileName) {
         return { ...f, role: newRole };
@@ -367,7 +403,9 @@ export default function AIScanGroupDetail({ scan, onBack, onRename, onDelete, on
       files: updatedFiles,
     };
 
-    onUpdateScan?.(updatedScan);
+    // Rethrown so the card can report it: the role change is stored server-side,
+    // and a rejected write must not read as a saved one.
+    await onUpdateScan?.(updatedScan);
   }, [scan, onUpdateScan]);
 
   const handleRunAuditForFile = async (targetFile: AIScanFile) => {
@@ -404,7 +442,8 @@ export default function AIScanGroupDetail({ scan, onBack, onRename, onDelete, on
       files: updatedFiles,
     };
 
-    onUpdateScan?.(updatedScan);
+    // Awaited: a completed audit that was never stored would vanish on reload.
+    await onUpdateScan?.(updatedScan);
   };
 
   const totalFiles = scan.files.length;
@@ -433,10 +472,13 @@ export default function AIScanGroupDetail({ scan, onBack, onRename, onDelete, on
                     if (e.key === 'Enter') handleSaveName();
                     if (e.key === 'Escape') { setNameInput(scan.name); setEditingName(false); }
                   }}
-                  className="px-3 py-1 rounded-xl text-sm font-bold border border-blue-400 outline-none text-slate-800"
+                  disabled={savingName}
+                  className="px-3 py-1 rounded-xl text-sm font-bold border border-blue-400 outline-none text-slate-800 disabled:opacity-60"
                   autoFocus
                 />
-                <button onClick={handleSaveName} className="px-3 py-1 rounded-xl bg-blue-600 text-white text-xs font-bold hover:bg-blue-700">Save</button>
+                <button onClick={handleSaveName} disabled={savingName} className="px-3 py-1 rounded-xl bg-blue-600 text-white text-xs font-bold hover:bg-blue-700 disabled:opacity-60">
+                  {savingName ? 'Saving...' : 'Save'}
+                </button>
                 <button onClick={() => { setNameInput(scan.name); setEditingName(false); }} className="px-3 py-1 rounded-xl bg-slate-200 text-slate-600 text-xs font-bold hover:bg-slate-300">Cancel</button>
               </div>
             ) : (
@@ -460,7 +502,24 @@ export default function AIScanGroupDetail({ scan, onBack, onRename, onDelete, on
         {confirmDelete ? (
           <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-2">
             <span className="text-xs font-bold text-red-700">Delete this folder?</span>
-            <button onClick={() => { onDelete(scan.id); onBack(); }} className="px-3 py-1 rounded-lg text-xs font-bold bg-red-600 text-white hover:bg-red-700">Yes, Delete</button>
+              {/* The parent closes the detail view once the delete is accepted, so a
+                  rejected delete leaves the user on the folder they still own. */}
+              <button
+                onClick={async () => {
+                  setDeleting(true);
+                  try {
+                    await onDelete(scan.id);
+                  } catch (err) {
+                    toast.error(err instanceof Error ? err.message : 'The folder could not be deleted.');
+                  } finally {
+                    setDeleting(false);
+                  }
+                }}
+                disabled={deleting}
+                className="px-3 py-1 rounded-lg text-xs font-bold bg-red-600 text-white hover:bg-red-700 disabled:opacity-60"
+              >
+                {deleting ? 'Deleting...' : 'Yes, Delete'}
+              </button>
             <button onClick={() => setConfirmDelete(false)} className="px-3 py-1 rounded-lg text-xs font-bold bg-white text-slate-600 border border-slate-200">Cancel</button>
           </div>
         ) : (
