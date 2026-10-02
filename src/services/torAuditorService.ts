@@ -94,6 +94,29 @@ export interface AuditDetails {
    * backend's variance rules, which cover labour as well as materials.
    */
   pricingSummary?: AuditPricingSummary;
+
+  /**
+   * How each document's text was obtained, when a file was uploaded alongside
+   * it. `source: 'ocr'` means the document was a scan with no text layer, so the
+   * figures below came from OCR and are less exact than parsed text.
+   */
+  documentExtraction?: AuditDocumentExtraction;
+}
+
+/** Backend view of document extraction, mirrored from the audit response. */
+export interface AuditDocumentExtraction {
+  tor?: AuditDocumentExtractionSide;
+  proposal?: AuditDocumentExtractionSide;
+}
+
+export interface AuditDocumentExtractionSide {
+  source: 'client' | 'ocr';
+  chars: number;
+  filename?: string;
+  provider?: string;
+  model?: string;
+  error?: string;
+  reason?: string;
 }
 
 /**
@@ -102,6 +125,8 @@ export interface AuditDetails {
  * @param fileName - Name of the TOR/technical specification document
  * @param fileText - Extracted text content from the TOR document
  * @param options.technicianProposalText - Extracted proposal text, for a comparison
+ * @param options.torFile - Original TOR file, used server-side for OCR when the
+ *   document is a scan and `fileText` came back empty
  * @returns AuditDetails with cost comparison and rationale
  */
 export async function auditTorDocument(
@@ -110,6 +135,8 @@ export async function auditTorDocument(
   options: {
     technicianProposalText?: string;
     baselineCost?: number;
+    torFile?: File | null;
+    proposalFile?: File | null;
   } = {}
 ): Promise<AuditDetails> {
   const proposalText = options.technicianProposalText?.trim() || '';
@@ -123,6 +150,8 @@ export async function auditTorDocument(
     fileName,
     torText: fileText,
     proposalText: proposalText || undefined,
+    torFile: options.torFile,
+    proposalFile: options.proposalFile,
   }) as Promise<AuditDetails>;
 }
 
@@ -132,11 +161,14 @@ export async function auditTorDocument(
  *
  * @param fileName - Name of the Technician Proposal document
  * @param fileText - Extracted text content from the Technician Proposal
+ * @param file - Original proposal file, used server-side for OCR when the
+ *   document is a scan and `fileText` came back empty
  * @returns AuditDetails with analysis and AI recommendations
  */
 export async function analyzeProposalOnly(
   fileName: string,
-  fileText: string
+  fileText: string,
+  file?: File | null
 ): Promise<AuditDetails> {
   return requestTorAudit({
     mode: 'proposal',
@@ -146,6 +178,7 @@ export async function analyzeProposalOnly(
     // it as the TOR made this mode fail with "A technician proposal is
     // required" on every call.
     proposalText: fileText,
+    proposalFile: file,
   }) as Promise<AuditDetails>;
 }
 

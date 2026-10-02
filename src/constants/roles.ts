@@ -73,6 +73,11 @@ export type SurveyStatus =
   typeof SURVEY_STATUS[keyof typeof SURVEY_STATUS];
 
 // Project status states
+//
+// The vocabulary only. How these roll up into the Pending / On Going /
+// Completed KPIs, and every predicate over them, lives in ./status — use that
+// module rather than re-deriving the buckets, which is how the KPI counts came
+// to disagree between pages.
 export const PROJECT_STATUS = {
   PENDING: 'Pending',
   IN_PROGRESS: 'In Progress',

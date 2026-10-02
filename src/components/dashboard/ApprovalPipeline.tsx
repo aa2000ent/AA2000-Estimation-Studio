@@ -1,5 +1,18 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import type { User, Project as AppProject } from '../../App';
+import { computeStatusKpis, statusBucket, type StatusBucket } from '../../constants/status';
+
+/** Maps a tab to the shared status bucket it shows, so tabs and KPIs cannot drift. */
+const TAB_TO_BUCKET: Record<Exclude<TabType, 'All'>, StatusBucket> = {
+  Rejected: 'rejected',
+  Pending: 'pending',
+  Active: 'active',
+  Completed: 'completed',
+};
+
+function tabToBucket(tab: Exclude<TabType, 'All'>): StatusBucket {
+  return TAB_TO_BUCKET[tab];
+}
 
 interface Props {
   user?: User;
@@ -8,7 +21,9 @@ interface Props {
   onNavigateToCreate?: () => void;
 }
 
-type TabType = 'All' | 'Pending' | 'In Progress' | 'Completed';
+// Rejected was previously its own state with no tab to show it, so sent-back
+// projects were invisible here and in every count.
+type TabType = 'All' | 'Rejected' | 'Pending' | 'Active' | 'Completed';
 
 export default function ApprovalPipeline({
   user,
@@ -31,17 +46,19 @@ export default function ApprovalPipeline({
   // there is nothing for a reviewer here to approve.
   const submittedProjects = projects.filter((p) => Boolean(p.dbProjId));
 
+  // Tab membership and the tab counts below come from the shared status buckets,
+  // so the number on a tab always equals the number of rows it reveals. These
+  // used to be re-derived inline, and the 'Pending' tab disagreed with the
+  // Dashboard's pending KPI.
+  const tabKpis = useMemo(
+    () => computeStatusKpis(submittedProjects),
+    [submittedProjects]
+  );
+
   // Filter actual projects by tab and search
   const filteredProjects = submittedProjects.filter((p) => {
-    // Map status category
-    const isPending = p.status === 'Pending' || p.status === 'Finalized';
-    const isInProgress = p.status === 'In Progress';
-    const isCompleted = p.status === 'Completed' || p.status === 'Finalized - Approved';
-
-    let matchesTab = true;
-    if (activeTab === 'Pending') matchesTab = isPending;
-    else if (activeTab === 'In Progress') matchesTab = isInProgress;
-    else if (activeTab === 'Completed') matchesTab = isCompleted;
+    const matchesTab = activeTab === 'All'
+      || statusBucket(p.status) === tabToBucket(activeTab);
 
     const matchesSearch =
       p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -67,15 +84,10 @@ export default function ApprovalPipeline({
         </div>
 
         <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
-          {(['All', 'Pending', 'In Progress', 'Completed'] as const).map((tab) => {
-            const count = tab === 'All'
-              ? submittedProjects.length
-              : submittedProjects.filter(p => {
-                  if (tab === 'Pending') return p.status === 'Pending' || p.status === 'Finalized';
-                  if (tab === 'In Progress') return p.status === 'In Progress';
-                  if (tab === 'Completed') return p.status === 'Completed' || p.status === 'Finalized - Approved';
-                  return false;
-                }).length;
+          {(['All', 'Rejected', 'Pending', 'Active', 'Completed'] as const).map((tab) => {
+            const tabCount = tab === 'All'
+              ? tabKpis.total
+              : tabKpis[tabToBucket(tab)];
             const isActive = activeTab === tab;
             return (
               <button
@@ -91,7 +103,7 @@ export default function ApprovalPipeline({
                 <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${
                   isActive ? 'bg-blue-700 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
                 }`}>
-                  {count}
+                  {tabCount}
                 </span>
               </button>
             );

@@ -17,6 +17,16 @@ export interface TorAuditRequest {
   torText?: string;
   /** Text extracted from the technician's proposal, for a comparison audit. */
   proposalText?: string;
+  /**
+   * The original TOR file, sent only as OCR fallback.
+   *
+   * fileParser.ts reads a PDF's text layer, so a scanned TOR arrives with no
+   * usable text. The backend then routes this file through its OCR pool. It is
+   * never parsed client-side again, and it costs nothing when the text is fine.
+   */
+  torFile?: File | null;
+  /** The original proposal file, for the same OCR fallback. */
+  proposalFile?: File | null;
 }
 
 // Mirrors the backend contract in services/Applications/ESTIMATION/torAudit/result.js
@@ -40,6 +50,20 @@ export interface TorAuditResult {
     catalogEquipmentTotal: number;
     catalogMaterialsTotal: number;
   };
+  /**
+   * How each document's text was obtained, present when a file was uploaded.
+   * A `source` of `'ocr'` means the document had no text layer and was scanned,
+   * which is worth telling the user: OCR output is less exact than parsed text.
+   */
+  documentExtraction?: Record<string, {
+    source: 'client' | 'ocr';
+    chars: number;
+    filename?: string;
+    provider?: string;
+    model?: string;
+    error?: string;
+    reason?: string;
+  }>;
 }
 
 const TIMEOUT_MS = 300_000; // a full forensic audit of a proposal runs long
@@ -57,7 +81,16 @@ interface TorAuditEnvelope {
  * @throws Error with a user-facing message when the audit fails.
  */
 export async function requestTorAudit(request: TorAuditRequest): Promise<TorAuditResult> {
-  const response = await apiClient.post<TorAuditEnvelope>('/service/estimation/ai/tor-audit', request, {
+  // Multipart even when no file is attached: the backend reads the audit fields
+  // from the `payload` part, and sending one shape keeps this path from having
+  // two different envelopes to unwrap.
+  const form = new FormData();
+  const { torFile, proposalFile, ...payload } = request;
+  form.append('payload', JSON.stringify(payload));
+  if (torFile) form.append('torDocument', torFile, torFile.name);
+  if (proposalFile) form.append('proposalDocument', proposalFile, proposalFile.name);
+
+  const response = await apiClient.postForm<TorAuditEnvelope>('/service/estimation/ai/tor-audit', form, {
     timeoutMs: TIMEOUT_MS,
   });
 

@@ -283,7 +283,13 @@ export default function TORComparisonView({ userRole, onSaveAIScan, onScanningCh
         auditDetails = await auditTorDocument(
           torFile!.parsed.fileName,
           torFile!.parsed.content,
-          { technicianProposalText: proposalFile!.parsed.content }
+          {
+            technicianProposalText: proposalFile!.parsed.content,
+            // A scan parses to nothing client-side, so the originals ride along
+            // and the backend OCRs whichever side came back unextracted.
+            torFile: torFile!.file,
+            proposalFile: proposalFile!.file,
+          }
         );
         toast.success('AI comparison completed!');
       } else if (hasTor && !hasProposal) {
@@ -291,14 +297,15 @@ export default function TORComparisonView({ userRole, onSaveAIScan, onScanningCh
         auditDetails = await auditTorDocument(
           torFile!.parsed.fileName,
           torFile!.parsed.content,
-          {}
+          { torFile: torFile!.file }
         );
         toast.success('AI TOR audit completed!');
       } else {
         toast.info('Running AI analysis on Technician Proposal...');
         auditDetails = await analyzeProposalOnly(
           proposalFile!.parsed.fileName,
-          proposalFile!.parsed.content
+          proposalFile!.parsed.content,
+          proposalFile!.file
         );
         toast.success('AI Proposal analysis completed!');
       }

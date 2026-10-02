@@ -2,19 +2,26 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import type { User, Project, AIScanGroup } from '../../App';
 import AIScanGroupDetail from '../ai-sidebar/AIScanGroupDetail';
 import { getRoleTheme } from '../../utils/RoleTheme';
+import { computeStatusKpis, deriveFolderStatus, isCompleted } from '../../constants/status';
 import { SkeletonCompanyRow } from '../utils/Skeleton';
 import { StatBuilding, StatBolt, StatCalendar, StatCheckCircle, StatPin, RoleWrench, RoleChart, RoleComputer, RoleCalculator, RoleBox, Folder, ExclamationTriangle, ArrowUpTray, Plus, ChartBar, Document, ChartBar as ViewPipeline, Document as GenerateQuote, SysPhone, User as UserIcon, Check, Users, StatClipboard } from '../../utils/Icons';
 
 // Status Overview Banner matching exact layout from user with Minimalistic Donut / Pie Graph & Smooth Animations
+//
+// Segment geometry and the breakdown rows are both generated from one list, so
+// adding or reordering a status bucket is a one-line change. The rows used to be
+// hand-copied per status, which is how the donut and the counts drifted apart.
 function StatusOverviewBanner({
   totalProjects,
-  inProgressCount,
+  rejectedCount,
   pendingCount,
+  activeCount,
   completedCount,
 }: {
   totalProjects: number;
-  inProgressCount: number;
+  rejectedCount: number;
   pendingCount: number;
+  activeCount: number;
   completedCount: number;
 }) {
   const [hoveredStatus, setHoveredStatus] = React.useState<string | null>(null);
@@ -22,13 +29,63 @@ function StatusOverviewBanner({
   const r = 38;
   const C = 2 * Math.PI * r; // ~238.76
 
-  const inProgLen = totalProjects > 0 ? (inProgressCount / totalProjects) * C : 0;
-  const pendingLen = totalProjects > 0 ? (pendingCount / totalProjects) * C : 0;
-  const compLen = totalProjects > 0 ? (completedCount / totalProjects) * C : 0;
+  const segments = [
+    {
+      key: 'rejected',
+      label: 'Rejected',
+      count: rejectedCount,
+      stroke: '#DC2626',
+      glow: 'rgba(220,38,38,0.4)',
+      dot: 'bg-red-500',
+      ping: 'bg-red-400',
+      value: 'text-red-600',
+      row: 'hover:bg-red-50/70',
+    },
+    {
+      key: 'pending',
+      label: 'Pending',
+      count: pendingCount,
+      stroke: '#F59E0B',
+      glow: 'rgba(245,158,11,0.4)',
+      dot: 'bg-amber-500',
+      ping: 'bg-amber-400',
+      value: 'text-amber-600',
+      row: 'hover:bg-amber-50/70',
+    },
+    {
+      key: 'active',
+      label: 'Active',
+      count: activeCount,
+      stroke: '#2563EB',
+      glow: 'rgba(37,99,235,0.4)',
+      dot: 'bg-blue-600',
+      ping: 'bg-blue-400',
+      value: 'text-blue-600',
+      row: 'hover:bg-blue-50/70',
+    },
+    {
+      key: 'completed',
+      label: 'Completed',
+      count: completedCount,
+      stroke: '#10B981',
+      glow: 'rgba(16,185,129,0.4)',
+      dot: 'bg-emerald-500',
+      ping: null,
+      value: 'text-emerald-600',
+      row: 'hover:bg-emerald-50/70',
+    },
+  ];
 
-  const inProgOffset = 0;
-  const pendingOffset = -inProgLen;
-  const compOffset = -(inProgLen + pendingLen);
+  // Shares are taken over the same total the rows report, so the arcs always add
+  // up to a full ring. An unknown status is excluded from the buckets, so the arcs
+  // can cover less than the ring — that gap is the unclassified remainder.
+  let consumed = 0;
+  const arcs = segments.map((segment) => {
+    const length = totalProjects > 0 ? (segment.count / totalProjects) * C : 0;
+    const offset = -consumed;
+    consumed += length;
+    return { ...segment, length, offset };
+  });
 
   return (
     <div className="bg-white rounded-3xl p-6 sm:p-7 border border-blue-100/80 shadow-sm hover:shadow-md transition-all duration-300 flex flex-col sm:flex-row items-center justify-between gap-8 animate-fade-in-up">
@@ -59,65 +116,25 @@ function StatusOverviewBanner({
                 className="animate-donut-draw"
               />
             ) : (
-              <>
-                {/* In Progress Segment (AA2000 Blue) */}
-                {inProgressCount > 0 && (
-                  <circle
-                    cx="48"
-                    cy="48"
-                    r={r}
-                    stroke="#2563EB"
-                    strokeWidth={hoveredStatus === 'in-progress' ? 10 : 8}
-                    fill="none"
-                    strokeDasharray={`${inProgLen} ${C}`}
-                    strokeDashoffset={inProgOffset}
-                    strokeLinecap="round"
-                    className="transition-all duration-500 animate-donut-draw cursor-pointer"
-                    style={{
-                      opacity: hoveredStatus && hoveredStatus !== 'in-progress' ? 0.35 : 1,
-                      filter: hoveredStatus === 'in-progress' ? 'drop-shadow(0 0 6px rgba(37,99,235,0.4))' : undefined,
-                    }}
-                  />
-                )}
-                {/* Pending Segment (Orange / Amber) */}
-                {pendingCount > 0 && (
-                  <circle
-                    cx="48"
-                    cy="48"
-                    r={r}
-                    stroke="#F59E0B"
-                    strokeWidth={hoveredStatus === 'pending' ? 10 : 8}
-                    fill="none"
-                    strokeDasharray={`${pendingLen} ${C}`}
-                    strokeDashoffset={pendingOffset}
-                    strokeLinecap="round"
-                    className="transition-all duration-500 animate-donut-draw cursor-pointer"
-                    style={{
-                      opacity: hoveredStatus && hoveredStatus !== 'pending' ? 0.35 : 1,
-                      filter: hoveredStatus === 'pending' ? 'drop-shadow(0 0 6px rgba(245,158,11,0.4))' : undefined,
-                    }}
-                  />
-                )}
-                {/* Completed Segment (Emerald / Green) */}
-                {completedCount > 0 && (
-                  <circle
-                    cx="48"
-                    cy="48"
-                    r={r}
-                    stroke="#10B981"
-                    strokeWidth={hoveredStatus === 'completed' ? 10 : 8}
-                    fill="none"
-                    strokeDasharray={`${compLen} ${C}`}
-                    strokeDashoffset={compOffset}
-                    strokeLinecap="round"
-                    className="transition-all duration-500 animate-donut-draw cursor-pointer"
-                    style={{
-                      opacity: hoveredStatus && hoveredStatus !== 'completed' ? 0.35 : 1,
-                      filter: hoveredStatus === 'completed' ? 'drop-shadow(0 0 6px rgba(16,185,129,0.4))' : undefined,
-                    }}
-                  />
-                )}
-              </>
+              arcs.map((arc) => arc.count > 0 && (
+                <circle
+                  key={arc.key}
+                  cx="48"
+                  cy="48"
+                  r={r}
+                  stroke={arc.stroke}
+                  strokeWidth={hoveredStatus === arc.key ? 10 : 8}
+                  fill="none"
+                  strokeDasharray={`${arc.length} ${C}`}
+                  strokeDashoffset={arc.offset}
+                  strokeLinecap="round"
+                  className="transition-all duration-500 animate-donut-draw cursor-pointer"
+                  style={{
+                    opacity: hoveredStatus && hoveredStatus !== arc.key ? 0.35 : 1,
+                    filter: hoveredStatus === arc.key ? `drop-shadow(0 0 6px ${arc.glow})` : undefined,
+                  }}
+                />
+              ))
             )}
           </svg>
 
@@ -139,56 +156,25 @@ function StatusOverviewBanner({
           STATUS OVERVIEW
         </span>
 
-        {/* In Progress Row */}
-        <div
-          onMouseEnter={() => setHoveredStatus('in-progress')}
-          onMouseLeave={() => setHoveredStatus(null)}
-          className="flex items-center justify-between gap-8 text-xs sm:text-sm px-2.5 py-1.5 rounded-xl transition-all duration-200 cursor-pointer hover:bg-blue-50/70"
-        >
-          <span className="flex items-center gap-2.5 font-bold text-slate-700">
-            <span className="relative flex h-3 w-3 items-center justify-center">
-              {inProgressCount > 0 && (
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
-              )}
-              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-blue-600" />
+        {arcs.map((arc) => (
+          <div
+            key={arc.key}
+            onMouseEnter={() => setHoveredStatus(arc.key)}
+            onMouseLeave={() => setHoveredStatus(null)}
+            className={`flex items-center justify-between gap-8 text-xs sm:text-sm px-2.5 py-1.5 rounded-xl transition-all duration-200 cursor-pointer ${arc.row}`}
+          >
+            <span className="flex items-center gap-2.5 font-bold text-slate-700">
+              <span className="relative flex h-3 w-3 items-center justify-center">
+                {arc.ping && arc.count > 0 && (
+                  <span className={`animate-ping absolute inline-flex h-full w-full rounded-full ${arc.ping} opacity-75`} />
+                )}
+                <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${arc.dot}`} />
+              </span>
+              {arc.label}
             </span>
-            In Progress
-          </span>
-          <span className="font-black text-slate-900 text-sm sm:text-base">{inProgressCount}</span>
-        </div>
-
-        {/* Pending Row */}
-        <div
-          onMouseEnter={() => setHoveredStatus('pending')}
-          onMouseLeave={() => setHoveredStatus(null)}
-          className="flex items-center justify-between gap-8 text-xs sm:text-sm px-2.5 py-1.5 rounded-xl transition-all duration-200 cursor-pointer hover:bg-amber-50/70"
-        >
-          <span className="flex items-center gap-2.5 font-bold text-slate-700">
-            <span className="relative flex h-3 w-3 items-center justify-center">
-              {pendingCount > 0 && (
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
-              )}
-              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500" />
-            </span>
-            Pending
-          </span>
-          <span className="font-black text-amber-600 text-sm sm:text-base">{pendingCount}</span>
-        </div>
-
-        {/* Completed Row */}
-        <div
-          onMouseEnter={() => setHoveredStatus('completed')}
-          onMouseLeave={() => setHoveredStatus(null)}
-          className="flex items-center justify-between gap-8 text-xs sm:text-sm px-2.5 py-1.5 rounded-xl transition-all duration-200 cursor-pointer hover:bg-emerald-50/70"
-        >
-          <span className="flex items-center gap-2.5 font-bold text-slate-700">
-            <span className="relative flex h-3 w-3 items-center justify-center">
-              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500" />
-            </span>
-            Completed
-          </span>
-          <span className="font-black text-emerald-600 text-sm sm:text-base">{completedCount}</span>
-        </div>
+            <span className={`font-black ${arc.value} text-sm sm:text-base`}>{arc.count}</span>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -620,27 +606,22 @@ export default function Home({
     const children = actualProjects.filter(
       p => clean(p.clientName) === folderName || clean(p.clientName) === folderClientName
     );
-    if (children.length === 0) {
-      folderStatusMap[folder.id] = folder.status;
-    } else {
-      const priority = ['Completed', 'Finalized - Approved', 'Finalized', 'Finalized - Rejected', 'In Progress', 'Pending'];
-      let found = folder.status;
-      for (const s of priority) {
-        if (children.some(c => c.status === s)) { found = s; break; }
-      }
-      folderStatusMap[folder.id] = found;
-    }
+    folderStatusMap[folder.id] = deriveFolderStatus(children, folder.status);
   }
 
-  const pendingCount = categoryFiltered.filter(p => (folderStatusMap[p.id] || p.status) === 'Pending').length;
-  const inProgressCount = categoryFiltered.filter(p => {
-    const s = folderStatusMap[p.id] || p.status;
-    return s === 'In Progress' || s === 'Finalized' || s === 'Finalized - Rejected';
-  }).length;
-  const completedCount = categoryFiltered.filter(p => {
-    const s = folderStatusMap[p.id] || p.status;
-    return s === 'Completed' || s === 'Finalized - Approved';
-  }).length;
+  // Shared status KPIs. This page previously rolled its own predicates and used a
+  // different denominator for the ring than for its three numerators, so the
+  // percentages could not add up.
+  //
+  // Company folders are counted by the same rolled-up status their badge shows,
+  // so a folder's row and its contribution to the donut can never disagree.
+  const statusKpis = computeStatusKpis(
+    categoryFiltered.map(p => ({ ...p, status: folderStatusMap[p.id] || p.status }))
+  );
+  const rejectedCount = statusKpis.rejected;
+  const pendingCount = statusKpis.pending;
+  const activeCount = statusKpis.active;
+  const completedCount = statusKpis.completed;
   const today = new Date().toISOString().split('T')[0];
   const todayCount = actualProjects.filter(p => p.startDate === today).length;
 
@@ -874,7 +855,7 @@ export default function Home({
           {/* Right: KPI pills */}
           <div className="flex flex-row md:flex-col flex-wrap gap-2 shrink-0">
             <StatPill label="Total Companies" value={userProjects.length} color={theme.primary} icon={<StatBuilding className="w-4 h-4" />} delay={50} />
-            <StatPill label="In Progress" value={inProgressCount} color={theme.primary} icon={<StatBolt className="w-4 h-4" />} delay={100} />
+            <StatPill label="Active" value={activeCount} color={theme.primary} icon={<StatBolt className="w-4 h-4" />} delay={100} />
             <StatPill label="Pending" value={pendingCount} color={theme.primary} icon={<StatCalendar className="w-4 h-4" />} delay={150} />
             {todayCount > 0 && (
               <StatPill label="Surveys Today" value={todayCount} color={theme.primary} icon={<StatPin className="w-4 h-4" />} delay={200} />
@@ -888,10 +869,14 @@ export default function Home({
       {/* ══════════════════════════════════════════
           STATUS OVERVIEW & STAT CARDS (2x2)
       ══════════════════════════════════════════ */}
+      // Numerators and denominator now come from the same KPI set. They used to be
+      // filtered by category but divided by the unfiltered project count, so the
+      // three shares could never add up to 100%.
       <StatusOverviewBanner
-        totalProjects={actualProjects.length}
-        inProgressCount={inProgressCount}
+        totalProjects={statusKpis.total}
+        rejectedCount={rejectedCount}
         pendingCount={pendingCount}
+        activeCount={activeCount}
         completedCount={completedCount}
       />
 
@@ -906,10 +891,10 @@ export default function Home({
           delay={0}
         />
         <SparklineCard
-          label="IN PROGRESS"
-          value={inProgressCount}
+          label="ACTIVE"
+          value={activeCount}
           totalProjects={actualProjects.length}
-          sub="Active site surveys"
+          sub="Approved, scheduled or under way"
           icon={<StatBolt className="w-5 h-5" />}
           valueColor="#2563EB"
           delay={50}
@@ -1074,22 +1059,20 @@ export default function Home({
                 const childProjects = projectList.filter(
                   p => p.buildingType !== 'Other' && (clean(p.clientName) === folderName || clean(p.clientName) === folderClientName)
                 );
+                // Uses the shared Completed bucket. This used to count anything
+                // containing "Finalized", so a folder sitting in "Finalized"
+                // (awaiting approval) rendered as 100% done.
                 const progressPct =
                   childProjects.length > 0
                     ? Math.round(
-                      (childProjects.filter(p => p.status === 'Completed' || p.status?.includes('Finalized'))
-                        .length /
+                      (childProjects.filter(p => isCompleted(p.status)).length /
                         childProjects.length) *
                       100
                     )
                     : 0;
                 const displayStatus = (() => {
                   if (childProjects.length === 0) return project.status;
-                  const priority = ['Completed', 'Finalized - Approved', 'Finalized', 'Finalized - Rejected', 'In Progress', 'Pending'];
-                  for (const s of priority) {
-                    if (childProjects.some(c => c.status === s)) return s;
-                  }
-                  return project.status;
+                  return deriveFolderStatus(childProjects, project.status);
                 })();
 
                 return (
