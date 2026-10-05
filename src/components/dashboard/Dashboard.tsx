@@ -10,7 +10,9 @@ import Home from './Home';
 import CompanyDetail from '../projects/CompanyDetail';
 import AccountDropdown from './AccountDropdown';
 import { getRoleTheme } from '../../utils/RoleTheme';
+import { computeStatusKpis, deriveFolderStatus } from '../../constants/status';
 import CalendarView from './CalendarView';
+import ApprovalPipeline from './ApprovalPipeline';
 import { StatBuilding, StatClipboard, StatBolt, StatCalendar, StatCheckCircle, ChartBar, Bell, RoleWrench, RoleChart, RoleComputer } from '../../utils/Icons';
 import AISidebar from '../ai-sidebar/AISidebar';
 import FloorPlanView from '../floor-plan/FloorPlanView';
@@ -19,6 +21,7 @@ import SavedBOQsView from '../floor-plan/SavedBOQsView';
 import SavedEstimationsView from '../estimation/SavedEstimationsView';
 import SavedFoldersView from '../ai-sidebar/SavedFoldersView';
 import { AIChatbotFloating } from '../chatbot/AIChatbotFloating';
+import SparklineCard from './cards/SparklineCard';
 
 interface Props {
   user: User;
@@ -35,10 +38,10 @@ interface Props {
   onDeleteProject?: (projectId: string) => void;
   onUpdateProject?: (project: Project) => void;
   aiScans?: AIScanGroup[];
-  onSaveAIScan?: (scan: AIScanGroup) => void;
-  onRenameAIScan?: (id: string, name: string) => void;
-  onDeleteAIScan?: (id: string) => void;
-  onUpdateAIScan?: (scan: AIScanGroup) => void;
+  onSaveAIScan?: (scan: AIScanGroup) => Promise<void>;
+  onRenameAIScan?: (id: string, name: string) => Promise<void>;
+  onDeleteAIScan?: (id: string) => Promise<void>;
+  onUpdateAIScan?: (scan: AIScanGroup) => Promise<void>;
   contentOverride?: React.ReactNode;
   activeViewOverride?: View;
   onExitOverride?: () => void;
@@ -79,7 +82,20 @@ function filterProjects(projects: Project[], view: string): Project[] {
   const now = new Date();
   const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
   switch (view) {
-    case 'workspace': case 'todo': case 'manual-survey':
+    case 'workspace':
+      // "View All Workspace" is the entry point to everything this account can
+      // reach, so a project backed by a database row is always listed even when
+      // its DB status is terminal (APPROVED / COMPLETED) and would otherwise be
+      // treated as finished work. Locally-created projects keep the active-only
+      // behaviour, so the active-work queues below are unchanged.
+      return actualProjects.filter(p =>
+        Boolean(p.dbProjId)
+        || p.status === 'Pending'
+        || p.status === 'In Progress'
+        || p.status === 'Finalized'
+        || p.status === 'Finalized - Rejected'
+      );
+    case 'todo': case 'manual-survey':
       return actualProjects.filter(p => p.status === 'Pending' || p.status === 'In Progress' || p.status === 'Finalized' || p.status === 'Finalized - Rejected');
     case 'assignment': case 'floor-plan': return actualProjects;
     case 'missing': return actualProjects.filter(p => {
@@ -162,38 +178,85 @@ const typeConfig = {
   finalize: { color: '#059669', bg: 'rgba(5,150,105,0.08)', label: 'Finalize', dot: '#059669' },
 };
 
-// Status Overview Banner matching exact layout from user with Minimalistic Donut / Pie Graph & Smooth Animations
+// Status Overview Banner matching exact decluttered layout
+//
+// Arcs and rows are generated from one list, so the four status buckets cannot
+// drift apart the way the hand-copied segments did.
 function StatusOverviewBanner({
   totalProjects,
-  inProgressCount,
+  rejectedCount,
   pendingCount,
+  activeCount,
   completedCount,
 }: {
   totalProjects: number;
-  inProgressCount: number;
+  rejectedCount: number;
   pendingCount: number;
+  activeCount: number;
   completedCount: number;
 }) {
   const [hoveredStatus, setHoveredStatus] = React.useState<string | null>(null);
 
   const r = 38;
-  const C = 2 * Math.PI * r; // ~238.76
+  const C = 2 * Math.PI * r;
 
-  const inProgLen = totalProjects > 0 ? (inProgressCount / totalProjects) * C : 0;
-  const pendingLen = totalProjects > 0 ? (pendingCount / totalProjects) * C : 0;
-  const compLen = totalProjects > 0 ? (completedCount / totalProjects) * C : 0;
+  const segments = [
+    {
+      key: 'rejected',
+      label: 'Rejected',
+      count: rejectedCount,
+      stroke: '#DC2626',
+      dot: 'bg-red-500',
+      ping: 'bg-red-400',
+      value: 'text-red-600 dark:text-red-400',
+      row: 'hover:bg-red-50/70 dark:hover:bg-red-950/40',
+    },
+    {
+      key: 'pending',
+      label: 'Pending',
+      count: pendingCount,
+      stroke: '#F59E0B',
+      dot: 'bg-amber-500',
+      ping: 'bg-amber-400',
+      value: 'text-amber-600 dark:text-amber-400',
+      row: 'hover:bg-amber-50/70 dark:hover:bg-amber-950/40',
+    },
+    {
+      key: 'active',
+      label: 'Active',
+      count: activeCount,
+      stroke: '#2563EB',
+      dot: 'bg-blue-600',
+      ping: 'bg-blue-400',
+      value: 'text-blue-600 dark:text-blue-400',
+      row: 'hover:bg-blue-50/70 dark:hover:bg-blue-950/40',
+    },
+    {
+      key: 'completed',
+      label: 'Completed',
+      count: completedCount,
+      stroke: '#10B981',
+      dot: 'bg-emerald-500',
+      ping: null,
+      value: 'text-emerald-600 dark:text-emerald-400',
+      row: 'hover:bg-emerald-50/70 dark:hover:bg-emerald-950/40',
+    },
+  ];
 
-  const inProgOffset = 0;
-  const pendingOffset = -inProgLen;
-  const compOffset = -(inProgLen + pendingLen);
+  let consumed = 0;
+  const arcs = segments.map((segment) => {
+    const length = totalProjects > 0 ? (segment.count / totalProjects) * C : 0;
+    const offset = -consumed;
+    consumed += length;
+    return { ...segment, length, offset };
+  });
 
   return (
     <div className="bg-white dark:bg-[#131B2E] rounded-3xl p-6 sm:p-7 border border-blue-100/80 dark:border-slate-800 shadow-sm hover:shadow-md transition-all duration-300 flex flex-col sm:flex-row items-center justify-between gap-8 animate-fade-in-up">
-      {/* Left: Minimalistic Pie / Donut Chart with total projects & interactive animations */}
+      {/* Left: Minimalistic Donut Chart */}
       <div className="flex items-center gap-6">
         <div className="relative w-32 h-32 sm:w-36 sm:h-36 flex items-center justify-center shrink-0 group/donut transition-transform duration-300 hover:scale-105">
           <svg className="w-full h-full transform -rotate-90 filter drop-shadow-xs" viewBox="0 0 96 96">
-            {/* Background track */}
             <circle
               cx="48"
               cy="48"
@@ -217,319 +280,69 @@ function StatusOverviewBanner({
                 className="animate-donut-draw"
               />
             ) : (
-              <>
-                {/* In Progress Segment (AA2000 Blue) */}
-                {inProgressCount > 0 && (
-                  <circle
-                    cx="48"
-                    cy="48"
-                    r={r}
-                    stroke="#2563EB"
-                    strokeWidth={hoveredStatus === 'in-progress' ? 10 : 8}
-                    fill="none"
-                    strokeDasharray={`${inProgLen} ${C}`}
-                    strokeDashoffset={inProgOffset}
-                    strokeLinecap="round"
-                    className="transition-all duration-500 animate-donut-draw cursor-pointer"
-                    style={{
-                      opacity: hoveredStatus && hoveredStatus !== 'in-progress' ? 0.35 : 1,
-                      filter: hoveredStatus === 'in-progress' ? 'drop-shadow(0 0 6px rgba(37,99,235,0.4))' : undefined,
-                    }}
-                  />
-                )}
-                {/* Pending Segment (Orange / Amber) */}
-                {pendingCount > 0 && (
-                  <circle
-                    cx="48"
-                    cy="48"
-                    r={r}
-                    stroke="#F59E0B"
-                    strokeWidth={hoveredStatus === 'pending' ? 10 : 8}
-                    fill="none"
-                    strokeDasharray={`${pendingLen} ${C}`}
-                    strokeDashoffset={pendingOffset}
-                    strokeLinecap="round"
-                    className="transition-all duration-500 animate-donut-draw cursor-pointer"
-                    style={{
-                      opacity: hoveredStatus && hoveredStatus !== 'pending' ? 0.35 : 1,
-                      filter: hoveredStatus === 'pending' ? 'drop-shadow(0 0 6px rgba(245,158,11,0.4))' : undefined,
-                    }}
-                  />
-                )}
-                {/* Completed Segment (Emerald / Green) */}
-                {completedCount > 0 && (
-                  <circle
-                    cx="48"
-                    cy="48"
-                    r={r}
-                    stroke="#10B981"
-                    strokeWidth={hoveredStatus === 'completed' ? 10 : 8}
-                    fill="none"
-                    strokeDasharray={`${compLen} ${C}`}
-                    strokeDashoffset={compOffset}
-                    strokeLinecap="round"
-                    className="transition-all duration-500 animate-donut-draw cursor-pointer"
-                    style={{
-                      opacity: hoveredStatus && hoveredStatus !== 'completed' ? 0.35 : 1,
-                      filter: hoveredStatus === 'completed' ? 'drop-shadow(0 0 6px rgba(16,185,129,0.4))' : undefined,
-                    }}
-                  />
-                )}
-              </>
+              arcs.map((arc) => arc.count > 0 && (
+                <circle
+                  key={arc.key}
+                  cx="48"
+                  cy="48"
+                  r={r}
+                  stroke={arc.stroke}
+                  strokeWidth={hoveredStatus === arc.key ? 10 : 8}
+                  fill="none"
+                  strokeDasharray={`${arc.length} ${C}`}
+                  strokeDashoffset={arc.offset}
+                  strokeLinecap="round"
+                  className="transition-all duration-500 animate-donut-draw cursor-pointer"
+                  style={{
+                    opacity: hoveredStatus && hoveredStatus !== arc.key ? 0.35 : 1,
+                  }}
+                />
+              ))
             )}
           </svg>
 
-          {/* Center Value */}
           <div className="absolute inset-0 flex flex-col items-center justify-center text-center select-none pointer-events-none transition-transform duration-300 group-hover/donut:scale-110">
             <span className="text-3xl sm:text-4xl font-black text-slate-900 dark:text-white leading-none animate-count">
               {totalProjects}
             </span>
             <span className="text-[9px] sm:text-[10px] font-black text-blue-600 dark:text-blue-400 uppercase tracking-widest mt-1.5">
-              PROJECTS
+              PROGRESS
             </span>
           </div>
         </div>
       </div>
 
-      {/* Right: Status Overview Breakdown with interactive hover */}
+      {/* Right: Status Overview Breakdown */}
       <div className="w-full sm:w-auto flex flex-col gap-2 sm:min-w-[220px]">
         <span className="text-[11px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider block mb-0.5">
           STATUS OVERVIEW
         </span>
 
-        {/* In Progress Row */}
-        <div
-          onMouseEnter={() => setHoveredStatus('in-progress')}
-          onMouseLeave={() => setHoveredStatus(null)}
-          className="flex items-center justify-between gap-8 text-xs sm:text-sm px-2.5 py-1.5 rounded-xl transition-all duration-200 cursor-pointer hover:bg-blue-50/70 dark:hover:bg-blue-950/40"
-        >
-          <span className="flex items-center gap-2.5 font-bold text-slate-700 dark:text-slate-300">
-            <span className="relative flex h-3 w-3 items-center justify-center">
-              {inProgressCount > 0 && (
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
-              )}
-              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-blue-600" />
-            </span>
-            In Progress
-          </span>
-          <span className="font-black text-slate-900 dark:text-white text-sm sm:text-base">{inProgressCount}</span>
-        </div>
-
-        {/* Pending Row */}
-        <div
-          onMouseEnter={() => setHoveredStatus('pending')}
-          onMouseLeave={() => setHoveredStatus(null)}
-          className="flex items-center justify-between gap-8 text-xs sm:text-sm px-2.5 py-1.5 rounded-xl transition-all duration-200 cursor-pointer hover:bg-amber-50/70 dark:hover:bg-amber-950/40"
-        >
-          <span className="flex items-center gap-2.5 font-bold text-slate-700 dark:text-slate-300">
-            <span className="relative flex h-3 w-3 items-center justify-center">
-              {pendingCount > 0 && (
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
-              )}
-              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500" />
-            </span>
-            Pending
-          </span>
-          <span className="font-black text-amber-600 dark:text-amber-400 text-sm sm:text-base">{pendingCount}</span>
-        </div>
-
-        {/* Completed Row */}
-        <div
-          onMouseEnter={() => setHoveredStatus('completed')}
-          onMouseLeave={() => setHoveredStatus(null)}
-          className="flex items-center justify-between gap-8 text-xs sm:text-sm px-2.5 py-1.5 rounded-xl transition-all duration-200 cursor-pointer hover:bg-emerald-50/70 dark:hover:bg-emerald-950/40"
-        >
-          <span className="flex items-center gap-2.5 font-bold text-slate-700 dark:text-slate-300">
-            <span className="relative flex h-3 w-3 items-center justify-center">
-              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500" />
-            </span>
-            Completed
-          </span>
-          <span className="font-black text-emerald-600 dark:text-emerald-400 text-sm sm:text-base">{completedCount}</span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// Helper to generate clear, intuitive sparkline paths that reflect the exact status count and rate
-function getSparklineData(value: number, total: number = 0) {
-  if (value === 0) {
-    return {
-      linePath: 'M 2 28 L 98 28',
-      areaPath: 'M 2 28 L 98 28 L 98 32 L 2 32 Z',
-      dots: [{ cx: 98, cy: 28 }],
-    };
-  }
-
-  // Calculate percentage of total to scale height
-  const pct = total > 0 ? Math.min(1, value / total) : 1;
-  // Peak Y: higher percentage = reaches closer to top (y = 6 to y = 22)
-  const peakY = Math.max(5, 26 - Math.round(pct * 21));
-  const midY = Math.round((28 + peakY) / 2);
-
-  return {
-    linePath: `M 2 28 C 24 28, 44 ${midY + 2}, 64 ${midY - 2} S 84 ${peakY + 2}, 98 ${peakY}`,
-    areaPath: `M 2 28 C 24 28, 44 ${midY + 2}, 64 ${midY - 2} S 84 ${peakY + 2}, 98 ${peakY} L 98 32 L 2 32 Z`,
-    dots: [
-      { cx: 64, cy: midY - 2 },
-      { cx: 98, cy: peakY },
-    ],
-  };
-}
-
-// Sparkline Card matching exact layout from user with Clear, Understandable Trendline & Context Badge
-function SparklineCard({
-  label,
-  value,
-  totalProjects = 0,
-  sub,
-  icon,
-  onClick,
-  delay = 0,
-  valueColor,
-}: {
-  label: string;
-  value: number;
-  totalProjects?: number;
-  sub: string;
-  icon: React.ReactNode;
-  onClick?: () => void;
-  delay?: number;
-  valueColor?: string;
-}) {
-  const color = valueColor || '#2563EB';
-  const total = totalProjects > 0 ? totalProjects : Math.max(1, value);
-  const percentage = totalProjects > 0 ? Math.round((value / totalProjects) * 100) : (value > 0 ? 100 : 0);
-
-  const badgeText = label === 'PROJECTS'
-    ? `${value} Total`
-    : label === 'COMPLETED'
-    ? `${percentage}% Done`
-    : label === 'PENDING'
-    ? `${percentage}% Queue`
-    : `${percentage}% Active`;
-
-  const { linePath, areaPath, dots } = getSparklineData(value, total);
-  const gradId = `spark-grad-${label.toLowerCase().replace(/[^a-z0-9]/g, '-')}-${value}`;
-
-  return (
-    <div
-      onClick={onClick}
-      className="bg-white dark:bg-[#131B2E] rounded-3xl p-5 sm:p-6 border border-blue-100/70 dark:border-slate-800 shadow-sm relative overflow-hidden transition-all duration-300 hover:shadow-lg hover:border-blue-300 dark:hover:border-blue-500/50 hover:-translate-y-1 cursor-pointer flex flex-col justify-between min-h-[145px] group animate-fade-in-up"
-      style={{ animationDelay: `${delay}ms` }}
-    >
-      {/* Subtle top gradient accent on hover matching status color */}
-      <div
-        className="absolute top-0 left-0 right-0 h-1 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
-        style={{
-          background: `linear-gradient(90deg, ${color} 0%, #3B82F6 100%)`,
-        }}
-      />
-
-      {/* Top row: Label (Left) & Icon (Top-Right) */}
-      <div className="flex items-center justify-between mb-3">
-        <span className="text-[11px] font-black text-slate-900 dark:text-white uppercase tracking-wider transition-colors duration-200 group-hover:text-blue-600 dark:group-hover:text-blue-400">
-          {label}
-        </span>
-        <div
-          className="w-10 h-10 rounded-2xl bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0 transition-all duration-300 group-hover:scale-110 group-hover:rotate-6 group-hover:bg-blue-600 group-hover:text-white shadow-2xs"
-        >
-          {icon}
-        </div>
-      </div>
-
-      {/* Bottom row: Value & Subtitle (Left) + Understandable Analytics Graph (Bottom-Right) */}
-      <div className="flex items-end justify-between gap-4 mt-auto">
-        <div className="min-w-0">
-          <p
-            className="text-3xl sm:text-4xl font-black leading-none mb-1 transition-transform duration-200 group-hover:scale-105 origin-left animate-count"
-            style={{ color }}
+        {arcs.map((arc) => (
+          <div
+            key={arc.key}
+            onMouseEnter={() => setHoveredStatus(arc.key)}
+            onMouseLeave={() => setHoveredStatus(null)}
+            className={`flex items-center justify-between gap-8 text-xs sm:text-sm px-2.5 py-1.5 rounded-xl transition-all duration-200 cursor-pointer ${arc.row}`}
           >
-            {value}
-          </p>
-          <p className="text-xs text-slate-400 dark:text-slate-500 font-medium truncate">
-            {sub}
-          </p>
-        </div>
-
-        {/* Bottom-right: Clear Status Line Graph with Percentage Badge */}
-        <div className="flex flex-col items-end gap-1.5 shrink-0">
-          {/* Understandable Percentage Pill */}
-          <span
-            className="text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider transition-all duration-200"
-            style={{
-              backgroundColor: value === 0 ? '#F1F5F9' : `${color}15`,
-              color: value === 0 ? '#94A3B8' : color,
-              border: `1px solid ${value === 0 ? '#E2E8F0' : `${color}30`}`,
-            }}
-          >
-            {badgeText}
-          </span>
-
-          {/* SVG Sparkline with Baseline and Trend Curve */}
-          <div className="w-24 sm:w-28 h-8 transition-all duration-300 group-hover:scale-105">
-            <svg viewBox="0 0 100 35" fill="none" className="w-full h-full overflow-visible">
-              <defs>
-                <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor={color} stopOpacity={value === 0 ? "0.04" : "0.25"} />
-                  <stop offset="100%" stopColor={color} stopOpacity="0" />
-                </linearGradient>
-              </defs>
-
-              {/* Baseline Reference Grid Line */}
-              <line
-                x1="2"
-                y1="28"
-                x2="98"
-                y2="28"
-                stroke="currentColor"
-                className="text-slate-200 dark:text-slate-700 opacity-70"
-                strokeWidth="1"
-                strokeDasharray="2 2"
-              />
-
-              {/* Area fill under curve */}
-              {value > 0 && (
-                <path
-                  d={areaPath}
-                  fill={`url(#${gradId})`}
-                  className="transition-all duration-700"
-                />
-              )}
-
-              {/* Dynamic Line Graph */}
-              <path
-                d={linePath}
-                stroke={value === 0 ? '#CBD5E1' : color}
-                strokeWidth={value === 0 ? "1.75" : "2.5"}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeDasharray={value === 0 ? "4 3" : undefined}
-                className="animate-wave-draw transition-all duration-700"
-              />
-
-              {/* Indicator Data Points */}
-              {dots.map((d, i) => (
-                <circle
-                  key={i}
-                  cx={d.cx}
-                  cy={d.cy}
-                  r={value === 0 ? "2" : "3"}
-                  fill={value === 0 ? '#CBD5E1' : color}
-                  className="transition-all duration-700"
-                  style={{
-                    filter: value > 0 ? `drop-shadow(0 0 3px ${color}80)` : undefined,
-                  }}
-                />
-              ))}
-            </svg>
+            <span className="flex items-center gap-2.5 font-bold text-slate-700 dark:text-slate-300">
+              <span className="relative flex h-3 w-3 items-center justify-center">
+                {arc.ping && arc.count > 0 && (
+                  <span className={`animate-ping absolute inline-flex h-full w-full rounded-full ${arc.ping} opacity-75`} />
+                )}
+                <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${arc.dot}`} />
+              </span>
+              {arc.label}
+            </span>
+            <span className={`font-black ${arc.value} text-sm sm:text-base`}>{arc.count}</span>
           </div>
-        </div>
+        ))}
       </div>
     </div>
   );
 }
+
+
 
 export default function Dashboard({
   user,
@@ -558,7 +371,7 @@ export default function Dashboard({
 }: Props) {
   const [view, setView] = useState<View>('dashboard');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768);
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 1024);
   const [showCreate, setShowCreate] = useState(false);
   const [isCompanyMode, setIsCompanyMode] = useState(false);
   const [activeNotifTab, setActiveNotifTab] = useState<'ongoing' | 'upcoming' | 'missing' | 'approval' | 'finalize'>('ongoing');
@@ -567,7 +380,7 @@ export default function Dashboard({
 
   useEffect(() => {
     const handleResize = () => {
-      const mobile = window.innerWidth < 768;
+      const mobile = window.innerWidth < 1024;
       setIsMobile(mobile);
       if (!mobile) setMobileMenuOpen(false);
     };
@@ -696,7 +509,7 @@ export default function Dashboard({
     (user.role === 'ADMIN' ? 'Admin' :
      user.role === 'TECHNICIAN' ? 'Technician' : 'Accounting');
 
-  // Derive display status for each company folder (matching Home.tsx logic)
+  // Derive display status for each company folder
   const folderStatusMap: Record<string, string> = {};
   const clean = (s?: string) => (s || '').trim().toLowerCase();
   for (const folder of companyFolders) {
@@ -705,21 +518,16 @@ export default function Dashboard({
     const children = actualProjects.filter(
       p => clean(p.clientName) === folderName || clean(p.clientName) === folderClientName
     );
-    if (children.length === 0) {
-      folderStatusMap[folder.id] = folder.status;
-    } else {
-      const priority = ['Completed', 'Finalized - Approved', 'Finalized', 'Finalized - Rejected', 'In Progress', 'Pending'];
-      let found = folder.status;
-      for (const s of priority) {
-        if (children.some(c => c.status === s)) { found = s; break; }
-      }
-      folderStatusMap[folder.id] = found;
-    }
+    folderStatusMap[folder.id] = deriveFolderStatus(children, folder.status);
   }
 
-  const pendingCount = actualProjects.filter(p => p.status === 'Pending').length;
-  const inProgressCount = actualProjects.filter(p => p.status === 'In Progress' || p.status === 'Finalized' || p.status === 'Finalized - Rejected').length;
-  const completedCount = actualProjects.filter(p => p.status === 'Completed' || p.status === 'Finalized - Approved').length;
+  // Status KPIs come from the shared definition so this page cannot disagree
+  // with Home, CalendarView or ApprovalPipeline about the same number.
+  const statusKpis = computeStatusKpis(actualProjects);
+  const pendingCount = statusKpis.pending;
+  const activeCount = statusKpis.active;
+  const completedCount = statusKpis.completed;
+  const rejectedCount = statusKpis.rejected;
 
   const countOngoing = notifications.filter(n => n.type === 'ongoing').length;
   const countUpcoming = notifications.filter(n => n.type === 'upcoming').length;
@@ -767,8 +575,6 @@ export default function Dashboard({
     setMenuOpen(null);
   };
 
-  const [viewHistory, setViewHistory] = useState<View[]>([]);
-
   const navigate = (v: View) => {
     setMobileMenuOpen(false);
     setSelectedCompanyProject(null);
@@ -777,19 +583,7 @@ export default function Dashboard({
     if (contentOverride && onExitOverride) {
       onExitOverride();
     }
-    setView(prevView => {
-      if (v !== prevView) {
-        setViewHistory(prev => [...prev, prevView]);
-      }
-      return v;
-    });
-  };
-
-  const goBack = () => {
-    if (viewHistory.length === 0) return;
-    const prevView = viewHistory[viewHistory.length - 1];
-    setViewHistory(prev => prev.slice(0, -1));
-    setView(prevView);
+    setView(v);
   };
 
   const navigateNotif = (type: string) => {
@@ -799,18 +593,14 @@ export default function Dashboard({
       missing: 'missing-notif', approval: 'approval-notif', finalize: 'finalize-notif',
     };
     const targetView = m[type] || 'dashboard';
-    setView(prevView => {
-      if (targetView !== prevView) {
-        setViewHistory(prev => [...prev, prevView]);
-      }
-      return targetView as View;
-    });
+    setView(targetView as View);
     if (type === 'notifications' && onMarkNotificationsAsRead) onMarkNotificationsAsRead('all');
   };
 
   const pipelineStages = [
+    { label: 'Rejected', count: rejectedCount, color: '#DC2626', bg: 'rgba(220,38,38,0.08)' },
     { label: 'Pending', count: pendingCount, color: '#D97706', bg: 'rgba(217,119,6,0.08)' },
-    { label: 'In Progress', count: inProgressCount, color: theme.primary, bg: theme.primaryAlpha08 },
+    { label: 'Active', count: activeCount, color: theme.primary, bg: theme.primaryAlpha08 },
     { label: 'Completed', count: completedCount, color: '#059669', bg: 'rgba(5,150,105,0.08)' },
   ];
 
@@ -889,105 +679,95 @@ export default function Dashboard({
 
       <main className="flex-1 flex flex-col min-w-0 relative overflow-hidden">
 
-        {/* ══════════════════════════════════════════
-            TOP NAVIGATION BAR (Glassmorphism)
-        ══════════════════════════════════════════ */}
+        {/*TOP NAVIGATION BAR (Glassmorphism)*/}
         {!contentOverride && (
           <div
-            className={`sticky top-0 z-50 px-4 sm:px-6 h-14 flex items-center justify-between shrink-0 border-b backdrop-blur-md transition-colors ${
-              isDark ? 'bg-[#0B0F19]/90 border-slate-800' : 'bg-white/80 border-slate-200/80'
+            className={`sticky top-0 z-40 px-4 sm:px-6 h-16 flex items-center gap-4 shrink-0 border-b backdrop-blur-md transition-colors ${
+              isDark ? 'bg-[#0D1527]/95 border-slate-800' : 'bg-white/95 border-slate-200'
             }`}
           >
-          {/* Left: Mobile menu toggle + Back button + System status + date */}
-          <div className="flex items-center gap-2 sm:gap-3">
+          {/* Left: Mobile navigation and global search */}
+          <div className="flex flex-1 min-w-0 items-center gap-2 sm:gap-3">
             <button
               onClick={() => setMobileMenuOpen(true)}
-              className="p-1.5 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 md:hidden transition-colors cursor-pointer"
+              className="p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 lg:hidden transition-colors cursor-pointer"
               title="Open navigation menu"
             >
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
               </svg>
             </button>
-            {view !== 'dashboard' && viewHistory.length > 0 && (
-              <button
-                onClick={goBack}
-                className="flex items-center gap-1.5 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition-colors p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
-                title="Go back"
-              >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-                </svg>
-                <span className="text-[10px] font-bold hidden sm:inline">Back</span>
-              </button>
-            )}
-            <div className="flex items-center gap-1.5 bg-slate-50/80 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-full px-3 py-1">
-              <span className="relative flex h-1.5 w-1.5">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500" />
-              </span>
-              <span className="text-[9px] font-bold text-emerald-700 dark:text-emerald-400 tracking-wider">ONLINE</span>
-            </div>
-            <span className="text-[10px] font-medium text-slate-400 hidden sm:block">{todayLabel}</span>
-          </div>
-
-          {/* Right: Search + Dark Mode Toggle + Notifications + Account */}
-          <div className="flex items-center gap-2.5 sm:gap-3 overflow-visible">
-            {/* Search */}
-            <div className="relative hidden sm:block">
+            {/* <div className="relative block flex-1 min-w-0 max-w-lg">
               <svg
-                className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400"
+                className="absolute left-3.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400"
                 fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}
               >
                 <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
               <input
                 type="text"
-                placeholder="Search projects..."
+                placeholder="Search projects, surveys, clients..."
                 value={search}
                 onChange={e => setSearch(e.target.value)}
-                className="search-input w-48 lg:w-56 pl-9 pr-3 py-1.5 rounded-xl text-[11px] font-medium bg-slate-50/80 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 outline-none text-slate-700 dark:text-slate-200 focus:bg-white dark:focus:bg-slate-800 transition-all"
+                className="search-input w-full h-9 pl-10 pr-4 rounded-xl text-[11px] font-medium bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 outline-none text-slate-700 dark:text-slate-200 focus:bg-white dark:focus:bg-slate-800 focus:border-blue-400 transition-all"
               />
-            </div>
+            </div> */}
+          </div>
 
-            {/* Digital Clock */}
+          {/* Right: Time, appearance, notifications, and account */}
+          <div className="flex items-center gap-2 sm:gap-3 overflow-visible shrink-0">
             <div
-              className={`hidden sm:flex items-center gap-2 pl-3 pr-2 py-1.5 rounded-xl border text-[11px] font-black tracking-wider font-mono ${
+              className={`hidden sm:flex h-9 items-center gap-2.5 px-3 rounded-xl border text-[10px] ${
                 isDark
                   ? 'bg-slate-800/80 border-slate-700 text-slate-200'
-                  : 'bg-slate-50/80 border-slate-200 text-slate-700'
+                  : 'bg-white border-slate-200 text-slate-600'
               }`}
               title={now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
             >
-              <svg className="w-3.5 h-3.5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <svg className="w-3.5 h-3.5 text-slate-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              <span>{digitalClock}</span>
+              <span className="font-mono font-black tracking-wide">{digitalClock}</span>
+              <span className="h-4 w-px bg-slate-200 dark:bg-slate-600" />
+              <span className="hidden lg:inline font-bold whitespace-nowrap">{todayLabel}</span>
             </div>
 
-            {/* Dark / Night Mode Toggle */}
-            <button
-              onClick={handleToggleTheme}
-              className="p-1.5 sm:p-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-600 dark:text-amber-400 transition-all duration-200 flex items-center justify-center cursor-pointer shadow-2xs group"
-              title={isDark ? 'Switch to Light Mode' : 'Switch to Night Mode'}
-              aria-label="Toggle Night Mode"
-            >
-              {isDark ? (
-                <svg className="w-4 h-4 text-amber-400 transition-transform duration-300 group-hover:rotate-45" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <div className="relative hidden sm:flex w-[68px] h-9 items-center rounded-full border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 p-0.5 shadow-2xs overflow-hidden">
+              <span
+                className={`absolute top-0.5 left-0.5 w-8 h-8 rounded-full bg-blue-600 shadow-sm pointer-events-none transition-transform duration-300 ease-out ${
+                  isDark ? 'translate-x-8' : 'translate-x-0'
+                }`}
+              />
+              <button
+                onClick={() => { if (isDark) handleToggleTheme(); }}
+                className={`relative z-10 w-8 h-8 rounded-full flex items-center justify-center transition-colors duration-300 cursor-pointer ${
+                  !isDark ? 'text-white' : 'text-amber-400'
+                }`}
+                title="Use light mode"
+                aria-label="Use light mode"
+                aria-pressed={!isDark}
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.773-4.227l-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z" />
                 </svg>
-              ) : (
-                <svg className="w-4 h-4 text-slate-600 transition-transform duration-300 group-hover:-rotate-12" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              </button>
+              <button
+                onClick={() => { if (!isDark) handleToggleTheme(); }}
+                className={`relative z-10 w-8 h-8 rounded-full flex items-center justify-center transition-colors duration-300 cursor-pointer ${
+                  isDark ? 'text-white' : 'text-slate-500'
+                }`}
+                title="Use dark mode"
+                aria-label="Use dark mode"
+                aria-pressed={isDark}
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z" />
                 </svg>
-              )}
-            </button>
+              </button>
+            </div>
 
             {/* Notification Bell */}
             <NotificationBell notifications={notifications} onViewAll={navigateNotif} />
-
-            {/* Divider */}
-            <div className="w-px h-5 bg-slate-200 dark:bg-slate-700" />
 
             {/* Account dropdown */}
             <AccountDropdown user={user} onLogout={onLogout} onSettings={onSettings} />
@@ -1072,7 +852,14 @@ export default function Dashboard({
               isDark={isDark}
             />
           ) : view === 'estimation-hub' ? null
-          : view === 'calendar' ? (
+          : view === 'approval' ? (
+            <ApprovalPipeline
+              user={user}
+              projects={projectList}
+              onSelectProject={onSelectProject}
+              onNavigateToCreate={onNavigateToCreate}
+            />
+          ) : view === 'calendar' ? (
             <CalendarView
               projects={projectList}
               onSelectProject={onSelectProject}
@@ -1114,7 +901,6 @@ export default function Dashboard({
                         >
                           <span className="text-slate-900 dark:text-white">{timeGreeting},</span>
                           <span className="text-blue-600 dark:text-blue-400">{userGreetingName}!</span>
-                          <span className="inline-block animate-wave origin-bottom-right">👋</span>
                         </h1>
                         <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 font-medium leading-relaxed mt-2 max-w-2xl">
                           Welcome to the system control center. Create estimation projects, assign technical teams, review surveys, and approve final equipment pricing estimates.
@@ -1123,202 +909,180 @@ export default function Dashboard({
                     </div>
                   </div>
 
-                  {/* Status Overview & Stat Cards (2x2 Grid) */}
-                  <div className="px-6 pt-6 space-y-4">
-                    <StatusOverviewBanner
-                      totalProjects={totalProjects}
-                      inProgressCount={inProgressCount}
-                      pendingCount={pendingCount}
-                      completedCount={completedCount}
-                    />
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <SparklineCard
-                        label="PROJECTS"
-                        value={totalProjects}
-                        totalProjects={totalProjects}
-                        sub="Total site surveys"
-                        icon={<StatBuilding className="w-5 h-5" />}
-                        valueColor="#2563EB"
-                        onClick={() => navigate('assignment')}
-                        delay={0}
-                      />
-                      <SparklineCard
-                        label="IN PROGRESS"
-                        value={inProgressCount}
-                        totalProjects={totalProjects}
-                        sub="Active site surveys"
-                        icon={<StatBolt className="w-5 h-5" />}
-                        valueColor="#2563EB"
-                        onClick={() => navigate('workspace')}
-                        delay={50}
-                      />
-                      <SparklineCard
-                        label="PENDING"
-                        value={pendingCount}
-                        totalProjects={totalProjects}
-                        sub="Awaiting kickoff"
-                        icon={<StatCalendar className="w-5 h-5" />}
-                        valueColor="#F59E0B"
-                        onClick={() => navigate('workspace')}
-                        delay={100}
-                      />
-                      <SparklineCard
-                        label="COMPLETED"
-                        value={completedCount}
-                        totalProjects={totalProjects}
-                        sub="Finalized surveys"
-                        icon={<StatCheckCircle className="w-5 h-5" />}
-                        valueColor="#16A34A"
-                        onClick={() => navigate('done')}
-                        delay={150}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Pending Surveys & Active Projects */}
+                  {/* 2-Column Dashboard Layout: Right = Pending Surveys & Active Projects, left = Status Banner + Stat Cards */}
                   <div className="px-6 pt-6">
-                    <div className="bg-white rounded-2xl p-6 border border-slate-200/80 shadow-sm animate-fade-in-up flex flex-col flex-1">
-                      <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
-                        <div>
-                          <h3 className="text-sm font-black tracking-wider text-slate-800 uppercase flex items-center gap-2">
-                            <span>Pending Surveys &amp; Active Projects</span>
-                            {pendingCount > 0 && (
-                              <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500 text-white">
-                                {pendingCount} Pending
-                              </span>
-                            )}
-                          </h3>
-                          <p className="text-[11px] font-medium text-slate-500 mt-0.5">
-                            Click any project below to open site survey, upload floor plan, or build BOQ
-                          </p>
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                      {/* Left Column: Screenshot Group (Status Overview Banner + 4 Stat Cards in 2x2) */}
+                      <div className="lg:col-span-5 flex flex-col gap-6">
+                        {/* Status Overview Banner */}
+                        <StatusOverviewBanner
+                          totalProjects={totalProjects}
+                          rejectedCount={rejectedCount}
+                          pendingCount={pendingCount}
+                          activeCount={activeCount}
+                          completedCount={completedCount}
+                        />
+
+                        {/* 4 Stat Cards in 2x2 Grid */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          <SparklineCard
+                            label="OVERALL PROJECTS"
+                            value={totalProjects}
+                            totalProjects={totalProjects}
+                            sub="Total surveys"
+                            icon={<StatBuilding className="w-5 h-5" />}
+                            valueColor="#2563EB"
+                            onClick={() => navigate('assignment')}
+                            delay={0}
+                          />
+                          <SparklineCard
+                            label="ACTIVE"
+                            value={activeCount}
+                            totalProjects={totalProjects}
+                            sub="Approved, scheduled or under way"
+                            icon={<StatBolt className="w-5 h-5" />}
+                            valueColor="#2563EB"
+                            onClick={() => navigate('workspace')}
+                            delay={50}
+                          />
+                          <SparklineCard
+                            label="PENDING"
+                            value={pendingCount}
+                            totalProjects={totalProjects}
+                            sub="Awaiting kickoff"
+                            icon={<StatCalendar className="w-5 h-5" />}
+                            valueColor="#F59E0B"
+                            onClick={() => navigate('workspace')}
+                            delay={100}
+                          />
+                          <SparklineCard
+                            label="COMPLETED"
+                            value={completedCount}
+                            totalProjects={totalProjects}
+                            sub="Finalized surveys"
+                            icon={<StatCheckCircle className="w-5 h-5" />}
+                            valueColor="#16A34A"
+                            onClick={() => navigate('done')}
+                            delay={150}
+                          />
                         </div>
-                        <button
-                          onClick={() => navigate('workspace')}
-                          className="text-xs font-bold text-blue-700 hover:text-blue-900 transition-colors"
-                        >
-                          View All Workspace →
-                        </button>
                       </div>
 
-                      {/* Project Cards Grid */}
-                      {actualProjects.length > 0 ? (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-                          {actualProjects.slice(0, 6).map((p, index) => {
-                            const isPending = p.status === 'Pending';
-                            const isAwaitingApproval = p.status === 'Finalized';
-                            const isRejected = p.status === 'Finalized - Rejected';
-                            const isCompleted = p.status === 'Completed' || p.status === 'Finalized - Approved';
-                            return (
-                              <div
-                                key={p.id}
-                                onClick={() => onSelectProject(p)}
-                                className={`p-4.5 rounded-2xl border transition-all duration-300 cursor-pointer flex flex-col justify-between group/card relative overflow-hidden animate-fade-in-up hover:-translate-y-1.5 hover:shadow-xl ${
-                                  isPending
-                                    ? 'bg-amber-50/20 dark:bg-amber-950/20 border-amber-200/90 dark:border-amber-900/50 hover:border-amber-400'
-                                    : isAwaitingApproval
-                                    ? 'bg-blue-50/20 dark:bg-blue-950/20 border-blue-200/90 dark:border-blue-900/50 hover:border-blue-400'
-                                    : 'bg-white dark:bg-[#131B2E] border-slate-200 dark:border-slate-800 hover:border-blue-400 dark:hover:border-blue-500 hover:shadow-slate-100 dark:hover:shadow-none'
-                                }`}
-                                style={{ animationDelay: `${index * 60}ms` }}
-                              >
-                                {/* Top Accent bar on hover */}
-                                <div
-                                  className={`absolute top-0 left-0 right-0 h-1 transition-opacity duration-300 opacity-0 group-hover/card:opacity-100 ${
-                                    isPending
-                                      ? 'bg-gradient-to-r from-amber-400 to-amber-600'
-                                      : isAwaitingApproval
-                                      ? 'bg-gradient-to-r from-blue-500 to-indigo-600'
-                                      : isRejected
-                                      ? 'bg-gradient-to-r from-rose-400 to-rose-600'
-                                      : 'bg-gradient-to-r from-emerald-400 to-teal-500'
-                                  }`}
-                                />
-
-                                <div>
-                                  <div className="flex items-center justify-between gap-2 mb-2.5">
-                                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 truncate">
-                                      {p.clientName}
-                                    </span>
-                                    <span
-                                      className={`text-[9px] font-extrabold px-2.5 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1.5 transition-transform duration-200 group-hover/card:scale-105 ${
-                                        isPending
-                                          ? 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800'
-                                          : isAwaitingApproval
-                                          ? 'bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800'
-                                          : isRejected
-                                          ? 'bg-rose-100 dark:bg-rose-950 text-rose-800 dark:text-rose-300 border border-rose-200 dark:border-rose-800'
-                                          : isCompleted
-                                          ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
-                                          : 'bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-300 border border-blue-200 dark:border-blue-800'
-                                      }`}
-                                    >
-                                      {/* Live status pulsing dot */}
-                                      <span className="relative flex h-1.5 w-1.5">
-                                        {(isPending || isAwaitingApproval) && (
-                                          <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${isPending ? 'bg-amber-400' : 'bg-blue-400'}`} />
-                                        )}
-                                        <span className={`relative inline-flex rounded-full h-1.5 w-1.5 ${isPending ? 'bg-amber-500' : isAwaitingApproval ? 'bg-blue-600' : isRejected ? 'bg-rose-500' : 'bg-emerald-500'}`} />
-                                      </span>
-                                      <span>
-                                        {isAwaitingApproval
-                                          ? 'Awaiting Approval'
-                                          : isCompleted
-                                          ? 'Approved'
-                                          : isRejected
-                                          ? 'Rejected'
-                                          : p.status}
-                                      </span>
-                                    </span>
-                                  </div>
-                                  <h4 className="text-xs font-black text-slate-800 dark:text-white mb-1 leading-snug transition-colors duration-200 group-hover/card:text-blue-600 dark:group-hover/card:text-blue-400">{p.name}</h4>
-                                  <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium truncate mb-3 flex items-center gap-1">
-                                    <span className="group-hover/card:scale-125 transition-transform duration-200 inline-block">📍</span>
-                                    <span>{p.location || 'Location not set'}</span>
-                                  </p>
-                                </div>
-
-                                <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
-                                  <span className="text-[10px] font-bold text-slate-400 truncate">
-                                    {p.systemTypes?.slice(0, 2).join(', ') || 'General System'}
+                      {/* Right Column: Pending Surveys & Active Projects */}
+                      <div className="lg:col-span-7 flex flex-col">
+                        <div className="bg-white dark:bg-[#131B2E] rounded-3xl p-6 border border-slate-200/80 dark:border-slate-800 shadow-sm animate-fade-in-up flex-1 flex flex-col relative min-h-[380px]">
+                          <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100 dark:border-slate-800">
+                            <div>
+                              <h3 className="text-sm font-black tracking-wider text-slate-800 dark:text-white uppercase flex items-center gap-2">
+                                <span>Pending Surveys &amp; Active Projects</span>
+                                {pendingCount > 0 && (
+                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500 text-white">
+                                    {pendingCount} Pending
                                   </span>
-                                  <button
-                                    onClick={(e) => { e.stopPropagation(); onSelectProject(p); }}
-                                    className="px-3.5 py-1.5 rounded-xl text-xs font-black text-white transition-all duration-300 shadow-sm flex items-center gap-1 shrink-0 group-hover/card:shadow-md hover:scale-105 active:scale-95"
-                                    style={{
-                                      background: isPending ? 'linear-gradient(135deg, #D97706 0%, #B45309 100%)' : 'linear-gradient(135deg, #1D4ED8 0%, #1E40AF 100%)',
-                                      color: '#FFFFFF'
-                                    }}
-                                  >
-                                    <span>Open Survey</span>
-                                    <svg className="w-3.5 h-3.5 text-white transition-transform duration-300 group-hover/card:translate-x-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                                      <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
-                                    </svg>
-                                  </button>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      ) : (
-                        <div className="py-12 text-center flex flex-col items-center justify-center">
-                          <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center mb-3">
-                            <StatClipboard className="w-6 h-6" />
-                          </div>
-                          <h4 className="text-sm font-black text-slate-800 mb-1">No site surveys created yet</h4>
-                          <p className="text-xs text-slate-500 max-w-sm mb-4">
-                            {isAdmin ? 'Click below to start your first survey and build low-voltage estimations.' : 'No active site surveys have been assigned or submitted yet.'}
-                          </p>
-                          {isAdmin && (
+                                )}
+                              </h3>
+                              <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mt-0.5">
+                                Click any project below to open site survey, upload floor plan, or build BOQ
+                              </p>
+                            </div>
                             <button
-                              onClick={onNavigateToCreate}
-                              className="px-5 py-2.5 rounded-xl font-black text-xs text-white bg-blue-700 hover:bg-blue-800 shadow-md transition-all cursor-pointer"
+                              onClick={() => navigate('workspace')}
+                              className="text-xs font-bold text-blue-700 dark:text-blue-400 hover:text-blue-900 dark:hover:text-blue-300 transition-colors shrink-0"
                             >
-                              Start New Survey
+                              View All Workspace →
                             </button>
+                          </div>
+
+                          {/* Project Cards Grid or Empty State */}
+                          {actualProjects.length > 0 ? (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-16">
+                              {actualProjects.slice(0, 6).map((p, index) => {
+                                const isPending = p.status === 'Pending';
+                                const isAwaitingApproval = p.status === 'Finalized';
+                                const isRejected = p.status === 'Finalized - Rejected';
+                                const isCompleted = p.status === 'Completed' || p.status === 'Finalized - Approved';
+                                return (
+                                  <div
+                                    key={p.id}
+                                    onClick={() => onSelectProject(p)}
+                                    className={`p-4 rounded-2xl border transition-all duration-300 cursor-pointer flex flex-col justify-between group/card relative overflow-hidden animate-fade-in-up hover:-translate-y-1.5 hover:shadow-xl ${
+                                      isPending
+                                        ? 'bg-amber-50/20 dark:bg-amber-950/20 border-amber-200/90 dark:border-amber-900/50 hover:border-amber-400'
+                                        : isAwaitingApproval
+                                        ? 'bg-blue-50/20 dark:bg-blue-950/20 border-blue-200/90 dark:border-blue-900/50 hover:border-blue-400'
+                                        : 'bg-white dark:bg-[#131B2E] border-slate-200 dark:border-slate-800 hover:border-blue-400 dark:hover:border-blue-500'
+                                    }`}
+                                    style={{ animationDelay: `${index * 60}ms` }}
+                                  >
+                                    <div
+                                      className={`absolute top-0 left-0 right-0 h-1 transition-opacity duration-300 opacity-0 group-hover/card:opacity-100 ${
+                                        isPending
+                                          ? 'bg-gradient-to-r from-amber-400 to-amber-600'
+                                          : isAwaitingApproval
+                                          ? 'bg-gradient-to-r from-blue-500 to-indigo-600'
+                                          : isRejected
+                                          ? 'bg-gradient-to-r from-rose-400 to-rose-600'
+                                          : 'bg-gradient-to-r from-emerald-400 to-teal-500'
+                                      }`}
+                                    />
+                                    <div>
+                                      <div className="flex items-center justify-between gap-2 mb-2.5">
+                                        <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 truncate">
+                                          {p.clientName}
+                                        </span>
+                                        <span
+                                          className={`text-[9px] font-extrabold px-2.5 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1.5 ${
+                                            isPending
+                                              ? 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300'
+                                              : isAwaitingApproval
+                                              ? 'bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300'
+                                              : isRejected
+                                              ? 'bg-rose-100 dark:bg-rose-950 text-rose-800 dark:text-rose-300'
+                                              : 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300'
+                                          }`}
+                                        >
+                                          {p.status}
+                                        </span>
+                                      </div>
+                                      <h4 className="text-xs font-black text-slate-800 dark:text-white mb-1 leading-snug group-hover/card:text-blue-600 dark:group-hover/card:text-blue-400">{p.name}</h4>
+                                      <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium truncate mb-3 flex items-center gap-1">
+                                        <span>📍</span>
+                                        <span>{p.location || 'Location not set'}</span>
+                                      </p>
+                                    </div>
+
+                                    <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
+                                      <span className="text-[10px] font-bold text-slate-400 truncate">
+                                        {p.systemTypes?.slice(0, 2).join(', ') || 'General System'}
+                                      </span>
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); onSelectProject(p); }}
+                                        className="px-3.5 py-1.5 rounded-xl text-xs font-black text-white shadow-sm flex items-center gap-1 shrink-0"
+                                        style={{
+                                          background: isPending ? 'linear-gradient(135deg, #D97706 0%, #B45309 100%)' : 'linear-gradient(135deg, #1D4ED8 0%, #1E40AF 100%)',
+                                        }}
+                                      >
+                                        <span>Open Survey</span>
+                                      </button>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <div className="py-16 text-center flex flex-col items-center justify-center my-auto">
+                              <div className="w-12 h-12 rounded-2xl bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 flex items-center justify-center mb-3">
+                                <StatClipboard className="w-6 h-6" />
+                              </div>
+                              <h4 className="text-sm font-black text-slate-800 dark:text-white mb-1">No site surveys created yet</h4>
+                              <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mb-4">
+                                No active site surveys have been assigned or submitted yet.
+                              </p>
+                            </div>
                           )}
                         </div>
-                      )}
+                      </div>
+
                     </div>
                   </div>
                 </>

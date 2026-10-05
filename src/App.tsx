@@ -1,4 +1,20 @@
+import {
+  restoreSessionToken,
+  logout as logoutBackend,
+} from './services/authService';
+import {
+  fetchEstimationProjects,
+  mergeProjects,
+  deleteEstimationProject,
+} from './services/estimationProjects';
+import {
+  PROJECT_SUBMITTED_EVENT,
+  isSubmittedToDb,
+  sweepSubmittedProjects,
+} from './services/estimationSubmission';
+
 import { useState, useCallback, useEffect, Component } from 'react';
+import { fetchAIScans, saveAIScan, updateAIScan, deleteAIScan } from './services/api/aiScans';
 import type { ReactNode } from 'react';
 import Login from './components/auth/Login';
 import Dashboard from './components/dashboard/Dashboard';
@@ -48,6 +64,13 @@ export interface Project {
   startDate?: string;
   assignedTechnicians: { id: string; fullName: string; email: string }[];
   technicianName?: string;
+  /**
+   * The `project_details.Proj_ID` this project came from, set only on projects
+   * loaded from the database. It is what marks a row as DB-backed, which matters
+   * because a DB project's status comes from the database and can be a
+   * terminal one (APPROVED, COMPLETED) that the active-work views filter out.
+   */
+  dbProjId?: number;
   createdAt: string;
   isNewBuilding?: boolean;
   rooms?: number;
@@ -77,9 +100,15 @@ const STORAGE_KEYS = {
   projects: 'aa2000_projects',
   notifications: 'aa2000_notifications',
   user: 'aa2000_user',
-  aiScans: 'aa2000_ai_scans',
   instruction: 'aa2000_has_seen_instruction',
 };
+
+// AI scans are deliberately absent from STORAGE_KEYS. They used to be mirrored
+// into localStorage under `aa2000_ai_scans`, which made every audit
+// per-browser, shared between accounts on that browser, and destroyed by the
+// version migration below. They are per-account rows on the backend now, so
+// keeping the key would only resurrect stale per-browser copies that no longer
+// match the server.
 
 // Migrate / clear stale data from older app versions to prevent white screen crashes
 (function migrateStorage() {
@@ -93,30 +122,11 @@ const STORAGE_KEYS = {
       localStorage.removeItem('aa2000_surveys');
       localStorage.setItem('aa2000_app_version', APP_VERSION);
     }
-    
-    // Migrate existing AI scans to add role property
-    const aiScansRaw = localStorage.getItem(STORAGE_KEYS.aiScans);
-    if (aiScansRaw) {
-      try {
-        const aiScans = JSON.parse(aiScansRaw) as AIScanGroup[];
-        const needsMigration = aiScans.some(scan => 
-          scan.files.some(file => !('role' in file))
-        );
-        
-        if (needsMigration) {
-          const migratedScans = aiScans.map(scan => ({
-            ...scan,
-            files: scan.files.map(file => ({
-              ...file,
-              role: (file as any).role || 'other'
-            }))
-          }));
-          localStorage.setItem(STORAGE_KEYS.aiScans, JSON.stringify(migratedScans));
-        }
-      } catch (e) {
-        console.error('Failed to migrate AI scans:', e);
-      }
-    }
+
+    // Drop any per-browser AI scans left behind by the localStorage era. They
+    // were never scoped to an account, so they cannot be attributed to the
+    // signed-in user and must not be uploaded as theirs.
+    localStorage.removeItem('aa2000_ai_scans');
   } catch { }
 })();
 
@@ -188,13 +198,16 @@ export default function App() {
   const [screen, setScreen] = useState<Screen>('login');
   const [screenHistory, setScreenHistory] = useState<Screen[]>([]);
   const [user, setUser] = useState<User | null>(null);
+  const [authHydrated, setAuthHydrated] = useState(false);
   const [currentProject, setCurrentProject] = useState<Project | null>(null);
   const [currentSurveyType, setCurrentSurveyType] = useState<SurveyType | null>(null);
   const [projects, setProjects] = useState<Project[]>(() => loadFromStorage<Project[]>(STORAGE_KEYS.projects, []));
   const [notifications, setNotifications] = useState<Notification[]>(() => loadFromStorage<Notification[]>(STORAGE_KEYS.notifications, defaultNotifications));
   const [prefilledCompanyName, setPrefilledCompanyName] = useState<string>('');
   const [currentCompanyProject, setCurrentCompanyProject] = useState<Project | null>(null);
-  const [aiScans, setAiScans] = useState<AIScanGroup[]>(() => loadFromStorage<AIScanGroup[]>(STORAGE_KEYS.aiScans, []));
+  // Saved audits live on the backend, per account. Loaded once the session has
+  // hydrated, because the request needs the session token the account carries.
+  const [aiScans, setAiScans] = useState<AIScanGroup[]>([]);
   const [isDark, setIsDark] = useState<boolean>(() => {
     try {
       const theme = localStorage.getItem('aa2000_theme');
@@ -245,29 +258,110 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    const saved = loadFromStorage<User | null>(STORAGE_KEYS.user, null);
-    if (saved) {
-      setUser(saved);
-      const hasSeen = localStorage.getItem(STORAGE_KEYS.instruction);
-      setScreen(hasSeen ? 'dashboard' : 'instruction');
+  const token = restoreSessionToken();
+
+  const saved = loadFromStorage<User | null>(
+    STORAGE_KEYS.user,
+    null
+  );
+
+  if (token && saved) {
+    setUser(saved);
+
+    const hasSeen = localStorage.getItem(
+      STORAGE_KEYS.instruction
+    );
+
+    setScreen(
+      hasSeen ? 'dashboard' : 'instruction'
+    );
+  } else {
+    setUser(null);
+    localStorage.removeItem(STORAGE_KEYS.user);
+    setScreen('login');
+  }
+
+  // Authentication restoration has finished.
+  setAuthHydrated(true);
+}, []);
+
+  useEffect(() => {
+    // Projects with a DB row are owned by the database: keep them out of localStorage.
+    saveToStorage(
+      STORAGE_KEYS.projects,
+      projects.filter(p => !isSubmittedToDb(p.id)),
+    );
+  }, [projects]);
+
+  // Clean up submissions made earlier (or in another tab): storage no longer holds them.
+  useEffect(() => {
+    const removed = sweepSubmittedProjects();
+    if (removed.length) {
+      setProjects(prev => prev.filter(p => !removed.includes(p.id)));
     }
   }, []);
 
+  // A submit just succeeded in EstimationSummary: drop the local project and
+  // immediately refresh from the DB so it reappears as a DB-backed entry.
   useEffect(() => {
-    saveToStorage(STORAGE_KEYS.projects, projects);
-  }, [projects]);
+    const onSubmitted = (event: Event) => {
+      const projectId = (event as CustomEvent).detail?.projectId as string | undefined;
+      if (!projectId) return;
+      setProjects(prev => prev.filter(p => p.id !== projectId));
+      setCurrentProject(prev => (prev?.id === projectId ? null : prev));
+      // Refresh from DB so the submitted project reappears with fresh data.
+      fetchEstimationProjects()
+        .then(remote => setProjects(prev => mergeProjects(prev, remote)))
+        .catch(err => console.error('Failed to refresh after submit:', err));
+    };
+    window.addEventListener(PROJECT_SUBMITTED_EVENT, onSubmitted);
+    return () => window.removeEventListener(PROJECT_SUBMITTED_EVENT, onSubmitted);
+  }, []);
+
+  // Load ESTIMATION projects from the database once signed in (DB status wins over local cache).
+  useEffect(() => {
+    if (!authHydrated || !user) return;
+    let cancelled = false;
+    fetchEstimationProjects()
+      .then(remote => {
+        if (!cancelled) setProjects(prev => mergeProjects(prev, remote));
+      })
+      .catch(err => console.error('Failed to load estimation projects from the database:', err));
+    return () => { cancelled = true; };
+  }, [authHydrated, user?.id]);
 
   useEffect(() => {
     saveToStorage(STORAGE_KEYS.notifications, notifications);
   }, [notifications]);
 
   useEffect(() => {
-    saveToStorage(STORAGE_KEYS.user, user);
-  }, [user]);
+  // Do not overwrite the saved user until
+  // session restoration has finished.
+  if (!authHydrated) {
+    return;
+  }
 
+  if (user) {
+    saveToStorage(STORAGE_KEYS.user, user);
+  } else {
+    localStorage.removeItem(STORAGE_KEYS.user);
+  }
+}, [user, authHydrated]);
+
+  // Load this account's saved audits from the server. Not mirrored to
+  // localStorage: the server is the only copy, so there is nothing to persist.
   useEffect(() => {
-    saveToStorage(STORAGE_KEYS.aiScans, aiScans);
-  }, [aiScans]);
+    if (!authHydrated || !user) {
+      setAiScans([]);
+      return;
+    }
+
+    let cancelled = false;
+    fetchAIScans()
+      .then(scans => { if (!cancelled) setAiScans(scans); })
+      .catch(err => console.error('Failed to load saved AI scans:', err));
+    return () => { cancelled = true; };
+  }, [user, authHydrated]);
 
   // Sync notifications from projects automatically
   useEffect(() => {
@@ -333,20 +427,31 @@ export default function App() {
     );
   }, []);
 
-  const handleSaveAIScan = useCallback((scan: AIScanGroup) => {
-    setAiScans(prev => [scan, ...prev]);
+  // State is only updated once the server has accepted the change, so what the
+  // user sees is what is actually stored. A failed write surfaces as a rejected
+  // promise for the caller to report rather than silently diverging.
+  const handleSaveAIScan = useCallback(async (scan: AIScanGroup) => {
+    const saved = await saveAIScan(scan);
+    setAiScans(prev => [saved, ...prev.filter(s => s.id !== saved.id)]);
   }, []);
 
-  const handleRenameAIScan = useCallback((id: string, name: string) => {
-    setAiScans(prev => prev.map(s => s.id === id ? { ...s, name } : s));
+  // The server keeps the stored files when the request carries none, so a rename
+  // needs nothing but the id and the new name. Reading the current row out of
+  // state first meant a rename on a folder that had not finished loading was a
+  // silent no-op reported to the user as success.
+  const handleRenameAIScan = useCallback(async (id: string, name: string) => {
+    const saved = await updateAIScan({ id, name, createdAt: '', files: [] });
+    setAiScans(prev => prev.map(s => (s.id === id ? saved : s)));
   }, []);
 
-  const handleDeleteAIScan = useCallback((id: string) => {
+  const handleDeleteAIScan = useCallback(async (id: string) => {
+    await deleteAIScan(id);
     setAiScans(prev => prev.filter(s => s.id !== id));
   }, []);
 
-  const handleUpdateAIScan = useCallback((updatedScan: AIScanGroup) => {
-    setAiScans(prev => prev.map(s => s.id === updatedScan.id ? updatedScan : s));
+  const handleUpdateAIScan = useCallback(async (updatedScan: AIScanGroup) => {
+    const saved = await updateAIScan(updatedScan);
+    setAiScans(prev => prev.map(s => (s.id === updatedScan.id ? saved : s)));
   }, []);
 
 
@@ -382,12 +487,25 @@ export default function App() {
     setScreen(hasSeen ? 'dashboard' : 'instruction');
   }, []);
 
-  const handleLogout = useCallback(() => {
+  const handleLogout = useCallback(async () => {
+  try {
+    await logoutBackend();
+  } catch (error) {
+    console.error(
+      'Backend logout failed:',
+      error
+    );
+  } finally {
     setUser(null);
     setCurrentProject(null);
+    setScreenHistory([]);
     setScreen('login');
-    localStorage.removeItem(STORAGE_KEYS.user);
-  }, []);
+
+    localStorage.removeItem(
+      STORAGE_KEYS.user
+    );
+  }
+}, []);
 
   const handleCreateProject = useCallback((project: Project) => {
     setProjects(prev => {
@@ -470,6 +588,10 @@ export default function App() {
 
   const handleDeleteProject = useCallback((projectId: string) => {
     setProjects(prev => prev.filter(p => p.id !== projectId));
+    // Remove the database row too (no-op for projects that were never submitted).
+    deleteEstimationProject(projectId).then(r => {
+      if (!r.success) console.error('Database delete failed; project may reappear on next load:', r.message);
+    });
     setCurrentProject(null);
     try {
       const surveys = JSON.parse(localStorage.getItem('aa2000_surveys') || '[]');

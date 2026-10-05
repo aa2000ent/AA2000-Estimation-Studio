@@ -40,7 +40,7 @@ export default function AccountDropdown({ user, onLogout, onSettings }: Props) {
     <div ref={ref} className="relative">
       <button
         onClick={() => setOpen(!open)}
-        className="w-8 h-8 rounded-full text-white flex items-center justify-center font-bold text-xs transition-all focus:outline-none cursor-pointer btn-press"
+        className="w-9 h-9 rounded-full text-white flex items-center justify-center font-bold text-xs transition-all focus:outline-none cursor-pointer btn-press"
         style={{
           background: theme.buttonGradient,
           boxShadow: open ? `0 0 0 3px ${theme.primary}30` : undefined,
@@ -49,6 +49,7 @@ export default function AccountDropdown({ user, onLogout, onSettings }: Props) {
       >
         {initials}
       </button>
+      <span className="absolute -right-0.5 -bottom-0.5 z-10 w-3 h-3 rounded-full bg-emerald-500 border-2 border-white dark:border-[#0D1527] pointer-events-none" />
 
       {open && (
         <div

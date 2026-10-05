@@ -7,20 +7,6 @@ export const ROLES = {
 
 export type Role = typeof ROLES[keyof typeof ROLES];
 
-// ── Hardcoded user credentials for testing ──
-export interface UserCredential {
-  employeeId: string;
-  pin: string;
-  fullName: string;
-  role: Role;
-}
-
-export const USER_CREDENTIALS: UserCredential[] = [
-  { employeeId: 'ACCOUNTING',  pin: '111111', fullName: 'Accounting',  role: 'ACCOUNTING' },
-  { employeeId: 'ADMIN',       pin: '111111', fullName: 'Admin',       role: 'ADMIN' },
-  { employeeId: 'TECHNICIAN',  pin: '111111', fullName: 'Technician',  role: 'TECHNICIAN' },
-];
-
 // User roles and their permissions
 export const ROLE_PERMISSIONS: Record<Role, string[]> = {
   [ROLES.ACCOUNTING]: [
@@ -31,13 +17,13 @@ export const ROLE_PERMISSIONS: Record<Role, string[]> = {
     'approve_financials',
     'export_reports',
     'view_quotations',
-    // Merged from former PROCUREMENT role
     'view_materials',
     'manage_pricelists',
     'export_boq',
     'view_boq_breakdown',
     'audit_hardware',
   ],
+
   [ROLES.ADMIN]: [
     'view_all_projects',
     'create_projects',
@@ -47,6 +33,7 @@ export const ROLE_PERMISSIONS: Record<Role, string[]> = {
     'manage_surveys',
     'manage_settings',
   ],
+
   [ROLES.TECHNICIAN]: [
     'view_all_projects',
     'view_estimates',
@@ -55,10 +42,21 @@ export const ROLE_PERMISSIONS: Record<Role, string[]> = {
   ],
 };
 
-export function canViewPrices(userRole?: string | null, user?: { id?: string; role?: string; email?: string } | null): boolean {
+export function canViewPrices(
+  userRole?: string | null,
+  user?: { id?: string; role?: string; email?: string } | null
+): boolean {
   const role = (userRole || user?.role || '').toUpperCase();
+
   if (role === 'TECHNICIAN') return false;
-  if (user?.id?.toLowerCase().includes('tech') || user?.email?.toLowerCase().includes('tech')) return false;
+
+  if (
+    user?.id?.toLowerCase().includes('tech') ||
+    user?.email?.toLowerCase().includes('tech')
+  ) {
+    return false;
+  }
+
   return true;
 }
 
@@ -71,9 +69,15 @@ export const SURVEY_STATUS = {
   REJECTED: 'Rejected',
 } as const;
 
-export type SurveyStatus = typeof SURVEY_STATUS[keyof typeof SURVEY_STATUS];
+export type SurveyStatus =
+  typeof SURVEY_STATUS[keyof typeof SURVEY_STATUS];
 
 // Project status states
+//
+// The vocabulary only. How these roll up into the Pending / On Going /
+// Completed KPIs, and every predicate over them, lives in ./status — use that
+// module rather than re-deriving the buckets, which is how the KPI counts came
+// to disagree between pages.
 export const PROJECT_STATUS = {
   PENDING: 'Pending',
   IN_PROGRESS: 'In Progress',
@@ -83,7 +87,8 @@ export const PROJECT_STATUS = {
   COMPLETED: 'Completed',
 } as const;
 
-export type ProjectStatus = typeof PROJECT_STATUS[keyof typeof PROJECT_STATUS];
+export type ProjectStatus =
+  typeof PROJECT_STATUS[keyof typeof PROJECT_STATUS];
 
 // User session status
 export const SESSION_STATUS = {
@@ -93,7 +98,8 @@ export const SESSION_STATUS = {
   LOGGED_OUT: 'Logged Out',
 } as const;
 
-export type SessionStatus = typeof SESSION_STATUS[keyof typeof SESSION_STATUS];
+export type SessionStatus =
+  typeof SESSION_STATUS[keyof typeof SESSION_STATUS];
 
 // Material categories for estimation
 export const MATERIAL_CATEGORIES = {
@@ -107,7 +113,8 @@ export const MATERIAL_CATEGORIES = {
   OTHER: 'Other',
 } as const;
 
-export type MaterialCategory = typeof MATERIAL_CATEGORIES[keyof typeof MATERIAL_CATEGORIES];
+export type MaterialCategory =
+  typeof MATERIAL_CATEGORIES[keyof typeof MATERIAL_CATEGORIES];
 
 export const DEFAULT_TECHNICIANS = [
   { id: 'aa0085', fullName: 'Jherwin', email: '' },
