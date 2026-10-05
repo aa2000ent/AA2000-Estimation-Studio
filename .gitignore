@@ -10,7 +10,7 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-# Environment with secrets — never commit; copy .env.example to .env locally
+# Environment with secrets — never commit; copy .env.local to .env locally
 .env
 .env.local
 .env.*.local
