@@ -1,5 +1,8 @@
-// Base API client configuration
-import { ApiClient, type ApiResponse } from './client';
+import { ApiClient } from './client';
+import type { ApiResponse } from './client';
+import { config } from '../../config';
 
-// Export for backward compatibility
-export { ApiClient, ApiResponse };
+export const apiClient = new ApiClient(config.apiBase);
+
+export { ApiClient };
+export type { ApiResponse };

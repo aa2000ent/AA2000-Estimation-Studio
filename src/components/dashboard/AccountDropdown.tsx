@@ -92,12 +92,7 @@ export default function AccountDropdown({ user, onLogout, onSettings }: Props) {
           {/* Actions */}
           <div className="p-2 space-y-0.5">
             <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setOpen(false);
-                if (onSettings) onSettings();
-              }}
+              onClick={() => { setOpen(false); onSettings(); }}
               className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-50 hover:text-slate-800 transition-colors text-left cursor-pointer group"
             >
               <span className="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center group-hover:bg-slate-200 transition-colors shrink-0">
@@ -112,12 +107,7 @@ export default function AccountDropdown({ user, onLogout, onSettings }: Props) {
             <div style={{ height: '1px', background: '#F1F5F9', margin: '4px 0' }} />
 
             <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setOpen(false);
-                if (onLogout) onLogout();
-              }}
+              onClick={() => { setOpen(false); onLogout(); }}
               className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-semibold text-slate-600 hover:bg-red-50 hover:text-red-600 transition-colors text-left cursor-pointer group"
             >
               <span className="w-7 h-7 rounded-lg bg-slate-100 flex items-center justify-center group-hover:bg-red-100 transition-colors shrink-0">

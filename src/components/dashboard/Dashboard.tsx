@@ -10,6 +10,7 @@ import Home from './Home';
 import CompanyDetail from '../projects/CompanyDetail';
 import AccountDropdown from './AccountDropdown';
 import { getRoleTheme } from '../../utils/RoleTheme';
+import { computeStatusKpis, deriveFolderStatus } from '../../constants/status';
 import CalendarView from './CalendarView';
 import ApprovalPipeline from './ApprovalPipeline';
 import { StatBuilding, StatClipboard, StatBolt, StatCalendar, StatCheckCircle, ChartBar, Bell, RoleWrench, RoleChart, RoleComputer } from '../../utils/Icons';
@@ -21,7 +22,6 @@ import SavedEstimationsView from '../estimation/SavedEstimationsView';
 import SavedFoldersView from '../ai-sidebar/SavedFoldersView';
 import { AIChatbotFloating } from '../chatbot/AIChatbotFloating';
 import SparklineCard from './cards/SparklineCard';
-import Settings from '../settings/Settings';
 
 interface Props {
   user: User;
@@ -38,10 +38,10 @@ interface Props {
   onDeleteProject?: (projectId: string) => void;
   onUpdateProject?: (project: Project) => void;
   aiScans?: AIScanGroup[];
-  onSaveAIScan?: (scan: AIScanGroup) => void;
-  onRenameAIScan?: (id: string, name: string) => void;
-  onDeleteAIScan?: (id: string) => void;
-  onUpdateAIScan?: (scan: AIScanGroup) => void;
+  onSaveAIScan?: (scan: AIScanGroup) => Promise<void>;
+  onRenameAIScan?: (id: string, name: string) => Promise<void>;
+  onDeleteAIScan?: (id: string) => Promise<void>;
+  onUpdateAIScan?: (scan: AIScanGroup) => Promise<void>;
   contentOverride?: React.ReactNode;
   activeViewOverride?: View;
   onExitOverride?: () => void;
@@ -75,7 +75,6 @@ const viewTitles: Record<string, string> = {
   'saved-folders': 'AI Scan Folders',
   'saved-boqs': 'Saved Floor Plan BOQs',
   'saved-estimations': 'Saved Project Estimations',
-  settings: 'Account Settings',
 };
 
 function filterProjects(projects: Project[], view: string): Project[] {
@@ -83,7 +82,20 @@ function filterProjects(projects: Project[], view: string): Project[] {
   const now = new Date();
   const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
   switch (view) {
-    case 'workspace': case 'todo': case 'manual-survey':
+    case 'workspace':
+      // "View All Workspace" is the entry point to everything this account can
+      // reach, so a project backed by a database row is always listed even when
+      // its DB status is terminal (APPROVED / COMPLETED) and would otherwise be
+      // treated as finished work. Locally-created projects keep the active-only
+      // behaviour, so the active-work queues below are unchanged.
+      return actualProjects.filter(p =>
+        Boolean(p.dbProjId)
+        || p.status === 'Pending'
+        || p.status === 'In Progress'
+        || p.status === 'Finalized'
+        || p.status === 'Finalized - Rejected'
+      );
+    case 'todo': case 'manual-survey':
       return actualProjects.filter(p => p.status === 'Pending' || p.status === 'In Progress' || p.status === 'Finalized' || p.status === 'Finalized - Rejected');
     case 'assignment': case 'floor-plan': return actualProjects;
     case 'missing': return actualProjects.filter(p => {
@@ -167,15 +179,20 @@ const typeConfig = {
 };
 
 // Status Overview Banner matching exact decluttered layout
+//
+// Arcs and rows are generated from one list, so the four status buckets cannot
+// drift apart the way the hand-copied segments did.
 function StatusOverviewBanner({
   totalProjects,
-  inProgressCount,
+  rejectedCount,
   pendingCount,
+  activeCount,
   completedCount,
 }: {
   totalProjects: number;
-  inProgressCount: number;
+  rejectedCount: number;
   pendingCount: number;
+  activeCount: number;
   completedCount: number;
 }) {
   const [hoveredStatus, setHoveredStatus] = React.useState<string | null>(null);
@@ -183,13 +200,56 @@ function StatusOverviewBanner({
   const r = 38;
   const C = 2 * Math.PI * r;
 
-  const inProgLen = totalProjects > 0 ? (inProgressCount / totalProjects) * C : 0;
-  const pendingLen = totalProjects > 0 ? (pendingCount / totalProjects) * C : 0;
-  const compLen = totalProjects > 0 ? (completedCount / totalProjects) * C : 0;
+  const segments = [
+    {
+      key: 'rejected',
+      label: 'Rejected',
+      count: rejectedCount,
+      stroke: '#DC2626',
+      dot: 'bg-red-500',
+      ping: 'bg-red-400',
+      value: 'text-red-600 dark:text-red-400',
+      row: 'hover:bg-red-50/70 dark:hover:bg-red-950/40',
+    },
+    {
+      key: 'pending',
+      label: 'Pending',
+      count: pendingCount,
+      stroke: '#F59E0B',
+      dot: 'bg-amber-500',
+      ping: 'bg-amber-400',
+      value: 'text-amber-600 dark:text-amber-400',
+      row: 'hover:bg-amber-50/70 dark:hover:bg-amber-950/40',
+    },
+    {
+      key: 'active',
+      label: 'Active',
+      count: activeCount,
+      stroke: '#2563EB',
+      dot: 'bg-blue-600',
+      ping: 'bg-blue-400',
+      value: 'text-blue-600 dark:text-blue-400',
+      row: 'hover:bg-blue-50/70 dark:hover:bg-blue-950/40',
+    },
+    {
+      key: 'completed',
+      label: 'Completed',
+      count: completedCount,
+      stroke: '#10B981',
+      dot: 'bg-emerald-500',
+      ping: null,
+      value: 'text-emerald-600 dark:text-emerald-400',
+      row: 'hover:bg-emerald-50/70 dark:hover:bg-emerald-950/40',
+    },
+  ];
 
-  const inProgOffset = 0;
-  const pendingOffset = -inProgLen;
-  const compOffset = -(inProgLen + pendingLen);
+  let consumed = 0;
+  const arcs = segments.map((segment) => {
+    const length = totalProjects > 0 ? (segment.count / totalProjects) * C : 0;
+    const offset = -consumed;
+    consumed += length;
+    return { ...segment, length, offset };
+  });
 
   return (
     <div className="bg-white dark:bg-[#131B2E] rounded-3xl p-6 sm:p-7 border border-blue-100/80 dark:border-slate-800 shadow-sm hover:shadow-md transition-all duration-300 flex flex-col sm:flex-row items-center justify-between gap-8 animate-fade-in-up">
@@ -220,59 +280,24 @@ function StatusOverviewBanner({
                 className="animate-donut-draw"
               />
             ) : (
-              <>
-                {inProgressCount > 0 && (
-                  <circle
-                    cx="48"
-                    cy="48"
-                    r={r}
-                    stroke="#2563EB"
-                    strokeWidth={hoveredStatus === 'in-progress' ? 10 : 8}
-                    fill="none"
-                    strokeDasharray={`${inProgLen} ${C}`}
-                    strokeDashoffset={inProgOffset}
-                    strokeLinecap="round"
-                    className="transition-all duration-500 animate-donut-draw cursor-pointer"
-                    style={{
-                      opacity: hoveredStatus && hoveredStatus !== 'in-progress' ? 0.35 : 1,
-                    }}
-                  />
-                )}
-                {pendingCount > 0 && (
-                  <circle
-                    cx="48"
-                    cy="48"
-                    r={r}
-                    stroke="#F59E0B"
-                    strokeWidth={hoveredStatus === 'pending' ? 10 : 8}
-                    fill="none"
-                    strokeDasharray={`${pendingLen} ${C}`}
-                    strokeDashoffset={pendingOffset}
-                    strokeLinecap="round"
-                    className="transition-all duration-500 animate-donut-draw cursor-pointer"
-                    style={{
-                      opacity: hoveredStatus && hoveredStatus !== 'pending' ? 0.35 : 1,
-                    }}
-                  />
-                )}
-                {completedCount > 0 && (
-                  <circle
-                    cx="48"
-                    cy="48"
-                    r={r}
-                    stroke="#10B981"
-                    strokeWidth={hoveredStatus === 'completed' ? 10 : 8}
-                    fill="none"
-                    strokeDasharray={`${compLen} ${C}`}
-                    strokeDashoffset={compOffset}
-                    strokeLinecap="round"
-                    className="transition-all duration-500 animate-donut-draw cursor-pointer"
-                    style={{
-                      opacity: hoveredStatus && hoveredStatus !== 'completed' ? 0.35 : 1,
-                    }}
-                  />
-                )}
-              </>
+              arcs.map((arc) => arc.count > 0 && (
+                <circle
+                  key={arc.key}
+                  cx="48"
+                  cy="48"
+                  r={r}
+                  stroke={arc.stroke}
+                  strokeWidth={hoveredStatus === arc.key ? 10 : 8}
+                  fill="none"
+                  strokeDasharray={`${arc.length} ${C}`}
+                  strokeDashoffset={arc.offset}
+                  strokeLinecap="round"
+                  className="transition-all duration-500 animate-donut-draw cursor-pointer"
+                  style={{
+                    opacity: hoveredStatus && hoveredStatus !== arc.key ? 0.35 : 1,
+                  }}
+                />
+              ))
             )}
           </svg>
 
@@ -293,53 +318,25 @@ function StatusOverviewBanner({
           STATUS OVERVIEW
         </span>
 
-        <div
-          onMouseEnter={() => setHoveredStatus('in-progress')}
-          onMouseLeave={() => setHoveredStatus(null)}
-          className="flex items-center justify-between gap-8 text-xs sm:text-sm px-2.5 py-1.5 rounded-xl transition-all duration-200 cursor-pointer hover:bg-blue-50/70 dark:hover:bg-blue-950/40"
-        >
-          <span className="flex items-center gap-2.5 font-bold text-slate-700 dark:text-slate-300">
-            <span className="relative flex h-3 w-3 items-center justify-center">
-              {inProgressCount > 0 && (
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
-              )}
-              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-blue-600" />
+        {arcs.map((arc) => (
+          <div
+            key={arc.key}
+            onMouseEnter={() => setHoveredStatus(arc.key)}
+            onMouseLeave={() => setHoveredStatus(null)}
+            className={`flex items-center justify-between gap-8 text-xs sm:text-sm px-2.5 py-1.5 rounded-xl transition-all duration-200 cursor-pointer ${arc.row}`}
+          >
+            <span className="flex items-center gap-2.5 font-bold text-slate-700 dark:text-slate-300">
+              <span className="relative flex h-3 w-3 items-center justify-center">
+                {arc.ping && arc.count > 0 && (
+                  <span className={`animate-ping absolute inline-flex h-full w-full rounded-full ${arc.ping} opacity-75`} />
+                )}
+                <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${arc.dot}`} />
+              </span>
+              {arc.label}
             </span>
-            In Progress
-          </span>
-          <span className="font-black text-slate-900 dark:text-white text-sm sm:text-base">{inProgressCount}</span>
-        </div>
-
-        <div
-          onMouseEnter={() => setHoveredStatus('pending')}
-          onMouseLeave={() => setHoveredStatus(null)}
-          className="flex items-center justify-between gap-8 text-xs sm:text-sm px-2.5 py-1.5 rounded-xl transition-all duration-200 cursor-pointer hover:bg-amber-50/70 dark:hover:bg-amber-950/40"
-        >
-          <span className="flex items-center gap-2.5 font-bold text-slate-700 dark:text-slate-300">
-            <span className="relative flex h-3 w-3 items-center justify-center">
-              {pendingCount > 0 && (
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
-              )}
-              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500" />
-            </span>
-            Pending
-          </span>
-          <span className="font-black text-amber-600 dark:text-amber-400 text-sm sm:text-base">{pendingCount}</span>
-        </div>
-
-        <div
-          onMouseEnter={() => setHoveredStatus('completed')}
-          onMouseLeave={() => setHoveredStatus(null)}
-          className="flex items-center justify-between gap-8 text-xs sm:text-sm px-2.5 py-1.5 rounded-xl transition-all duration-200 cursor-pointer hover:bg-emerald-50/70 dark:hover:bg-emerald-950/40"
-        >
-          <span className="flex items-center gap-2.5 font-bold text-slate-700 dark:text-slate-300">
-            <span className="relative flex h-3 w-3 items-center justify-center">
-              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500" />
-            </span>
-            Completed
-          </span>
-          <span className="font-black text-emerald-600 dark:text-emerald-400 text-sm sm:text-base">{completedCount}</span>
-        </div>
+            <span className={`font-black ${arc.value} text-sm sm:text-base`}>{arc.count}</span>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -512,7 +509,7 @@ export default function Dashboard({
     (user.role === 'ADMIN' ? 'Admin' :
      user.role === 'TECHNICIAN' ? 'Technician' : 'Accounting');
 
-  // Derive display status for each company folder (matching Home.tsx logic)
+  // Derive display status for each company folder
   const folderStatusMap: Record<string, string> = {};
   const clean = (s?: string) => (s || '').trim().toLowerCase();
   for (const folder of companyFolders) {
@@ -521,21 +518,16 @@ export default function Dashboard({
     const children = actualProjects.filter(
       p => clean(p.clientName) === folderName || clean(p.clientName) === folderClientName
     );
-    if (children.length === 0) {
-      folderStatusMap[folder.id] = folder.status;
-    } else {
-      const priority = ['Completed', 'Finalized - Approved', 'Finalized', 'Finalized - Rejected', 'In Progress', 'Pending'];
-      let found = folder.status;
-      for (const s of priority) {
-        if (children.some(c => c.status === s)) { found = s; break; }
-      }
-      folderStatusMap[folder.id] = found;
-    }
+    folderStatusMap[folder.id] = deriveFolderStatus(children, folder.status);
   }
 
-  const pendingCount = actualProjects.filter(p => p.status === 'Pending').length;
-  const inProgressCount = actualProjects.filter(p => p.status === 'In Progress' || p.status === 'Finalized' || p.status === 'Finalized - Rejected').length;
-  const completedCount = actualProjects.filter(p => p.status === 'Completed' || p.status === 'Finalized - Approved').length;
+  // Status KPIs come from the shared definition so this page cannot disagree
+  // with Home, CalendarView or ApprovalPipeline about the same number.
+  const statusKpis = computeStatusKpis(actualProjects);
+  const pendingCount = statusKpis.pending;
+  const activeCount = statusKpis.active;
+  const completedCount = statusKpis.completed;
+  const rejectedCount = statusKpis.rejected;
 
   const countOngoing = notifications.filter(n => n.type === 'ongoing').length;
   const countUpcoming = notifications.filter(n => n.type === 'upcoming').length;
@@ -606,8 +598,9 @@ export default function Dashboard({
   };
 
   const pipelineStages = [
+    { label: 'Rejected', count: rejectedCount, color: '#DC2626', bg: 'rgba(220,38,38,0.08)' },
     { label: 'Pending', count: pendingCount, color: '#D97706', bg: 'rgba(217,119,6,0.08)' },
-    { label: 'In Progress', count: inProgressCount, color: theme.primary, bg: theme.primaryAlpha08 },
+    { label: 'Active', count: activeCount, color: theme.primary, bg: theme.primaryAlpha08 },
     { label: 'Completed', count: completedCount, color: '#059669', bg: 'rgba(5,150,105,0.08)' },
   ];
 
@@ -687,11 +680,12 @@ export default function Dashboard({
       <main className="flex-1 flex flex-col min-w-0 relative overflow-hidden">
 
         {/*TOP NAVIGATION BAR (Glassmorphism)*/}
-        <div
-          className={`sticky top-0 z-40 px-4 sm:px-6 h-16 flex items-center gap-4 shrink-0 border-b backdrop-blur-md transition-colors ${
-            isDark ? 'bg-[#0D1527]/95 border-slate-800' : 'bg-white/95 border-slate-200'
-          }`}
-        >
+        {!contentOverride && (
+          <div
+            className={`sticky top-0 z-40 px-4 sm:px-6 h-16 flex items-center gap-4 shrink-0 border-b backdrop-blur-md transition-colors ${
+              isDark ? 'bg-[#0D1527]/95 border-slate-800' : 'bg-white/95 border-slate-200'
+            }`}
+          >
           {/* Left: Mobile navigation and global search */}
           <div className="flex flex-1 min-w-0 items-center gap-2 sm:gap-3">
             <button
@@ -703,7 +697,7 @@ export default function Dashboard({
                 <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
               </svg>
             </button>
-            <div className="relative block flex-1 min-w-0 max-w-lg">
+            {/* <div className="relative block flex-1 min-w-0 max-w-lg">
               <svg
                 className="absolute left-3.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400"
                 fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}
@@ -717,7 +711,7 @@ export default function Dashboard({
                 onChange={e => setSearch(e.target.value)}
                 className="search-input w-full h-9 pl-10 pr-4 rounded-xl text-[11px] font-medium bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 outline-none text-slate-700 dark:text-slate-200 focus:bg-white dark:focus:bg-slate-800 focus:border-blue-400 transition-all"
               />
-            </div>
+            </div> */}
           </div>
 
           {/* Right: Time, appearance, notifications, and account */}
@@ -776,9 +770,10 @@ export default function Dashboard({
             <NotificationBell notifications={notifications} onViewAll={navigateNotif} />
 
             {/* Account dropdown */}
-            <AccountDropdown user={user} onLogout={onLogout} onSettings={() => { if (onSettings) onSettings(); setView('settings'); }} />
+            <AccountDropdown user={user} onLogout={onLogout} onSettings={onSettings} />
           </div>
         </div>
+      )}
 
         {/* ══════════════════════════════════════════
             PAGE CONTENT
@@ -891,14 +886,6 @@ export default function Dashboard({
               projects={projectList}
               onDeleteProject={handleDelete}
             />
-          ) : view === 'settings' ? (
-            <Settings
-              user={user}
-              onBack={() => setView('dashboard')}
-              onLogout={onLogout}
-              notifications={notifications}
-              isDark={isDark}
-            />
           ) : (
             <div className="pb-10">
               {/* Dashboard view: title + stats */}
@@ -930,8 +917,9 @@ export default function Dashboard({
                         {/* Status Overview Banner */}
                         <StatusOverviewBanner
                           totalProjects={totalProjects}
-                          inProgressCount={inProgressCount}
+                          rejectedCount={rejectedCount}
                           pendingCount={pendingCount}
+                          activeCount={activeCount}
                           completedCount={completedCount}
                         />
 
@@ -948,10 +936,10 @@ export default function Dashboard({
                             delay={0}
                           />
                           <SparklineCard
-                            label="IN PROGRESS"
-                            value={inProgressCount}
+                            label="ACTIVE"
+                            value={activeCount}
                             totalProjects={totalProjects}
-                            sub="Active surveys"
+                            sub="Approved, scheduled or under way"
                             icon={<StatBolt className="w-5 h-5" />}
                             valueColor="#2563EB"
                             onClick={() => navigate('workspace')}

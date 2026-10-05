@@ -1,4 +1,5 @@
 import pricelistRaw from '../data/pricelistData.json';
+import { getAllProducts, type BackendProduct } from './api/products';
 
 export interface PricelistItem {
   id: string;
@@ -44,8 +45,49 @@ export interface EstimatedItemPricing {
   confidence: number; // 0 - 100
 }
 
-const catalog: PricelistItem[] = pricelistRaw as PricelistItem[];
+const fallbackCatalog: PricelistItem[] = pricelistRaw as PricelistItem[];
 
+let catalog: PricelistItem[] = fallbackCatalog;
+
+function mapBackendProduct(product: BackendProduct): PricelistItem {
+  const price = Number(product.prod_price) || 0;
+
+  return {
+    id: String(product.prod_ID),
+    brand: product.brand || '',
+    type: product.category || '',
+    model: product.model || product.prod_Name || '',
+    price,
+    contractorPrice: price,
+    dealerPrice: price,
+    endUserPrice: price,
+    description:
+      product.item_description ||
+      product.prod_Name ||
+      product.model ||
+      '',
+    sourceFile: 'AA2000 Backend',
+  };
+}
+
+export async function loadProductCatalog(): Promise<void> {
+  try {
+    const backendProducts = await getAllProducts();
+
+    catalog = backendProducts.map(mapBackendProduct);
+
+    console.log(
+      `[Pricelist] Loaded ${catalog.length} products from AA2000 backend`
+    );
+  } catch (error) {
+    console.warn(
+      '[Pricelist] Backend product loading failed. Using local pricelist fallback.',
+      error
+    );
+
+    catalog = fallbackCatalog;
+  }
+}
 const KNOWN_BRANDS = [
   'HIKVISION', 'BOSCH', 'AIPHONE', 'ZKTECO', 'DAHUA', 'HONEYWELL',
   'ASENWARE', 'APOLLO', 'EDWARDS', 'NOTIFIER', 'HOCHIKI', 'FARFISA',

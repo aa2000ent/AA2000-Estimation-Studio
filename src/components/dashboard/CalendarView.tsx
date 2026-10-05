@@ -1,6 +1,10 @@
 import React, { useState, useMemo } from 'react';
 import type { Project } from '../../App';
 import { getRoleTheme } from '../../utils/RoleTheme';
+import { computeStatusKpis, statusBucket, type StatusBucket } from '../../constants/status';
+
+/** The calendar's status filter: a shared bucket, or everything. */
+type StatusFilter = 'ALL' | StatusBucket;
 
 interface CalendarViewProps {
   projects: Project[];
@@ -21,7 +25,10 @@ const statusConfig: Record<string, { label: string; color: string; bg: string; d
 export default function CalendarView({ projects, onSelectProject, userRole, isDark = false }: CalendarViewProps) {
   const theme = getRoleTheme(userRole);
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [selectedStatus, setSelectedStatus] = useState<string>('ALL');
+  // A bucket key ('rejected' | 'pending' | 'active' | 'completed'), or 'ALL'.
+// Held as a bucket rather than a raw status so the pills, the tiles and the grid
+// filter can never disagree about what "Pending" contains.
+const [selectedStatus, setSelectedStatus] = useState<StatusFilter>('ALL');
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [selectedDayProjects, setSelectedDayProjects] = useState<{ date: string; projects: Project[] } | null>(null);
   const [agendaSearch, setAgendaSearch] = useState('');
@@ -118,7 +125,7 @@ export default function CalendarView({ projects, onSelectProject, userRole, isDa
       const pDate = new Date(p.startDate);
       const inMonth = pDate.getFullYear() === year && pDate.getMonth() === month;
       if (!inMonth) return false;
-      if (selectedStatus !== 'ALL' && p.status !== selectedStatus) return false;
+      if (selectedStatus !== 'ALL' && statusBucket(p.status) !== selectedStatus) return false;
       if (selectedDate && p.startDate !== selectedDate) return false;
       return true;
     });
@@ -134,23 +141,24 @@ export default function CalendarView({ projects, onSelectProject, userRole, isDa
     );
   }, [monthProjects, agendaSearch]);
 
-  // Month stats for quick user overview
+  // Month stats for quick user overview.
+  // Narrowed to the month first, then counted with the shared definition. This
+  // used to call anything containing "Finalized" completed — so a project
+  // awaiting approval read as done here, and as pending on the Dashboard.
   const monthStats = useMemo(() => {
-    let pending = 0;
-    let inProgress = 0;
-    let completed = 0;
-
-    actualProjects.forEach(p => {
-      if (!p.startDate) return;
+    const inMonth = actualProjects.filter(p => {
+      if (!p.startDate) return false;
       const pDate = new Date(p.startDate);
-      if (pDate.getFullYear() === year && pDate.getMonth() === month) {
-        if (p.status === 'Pending') pending++;
-        else if (p.status === 'In Progress') inProgress++;
-        else if (p.status === 'Completed' || p.status?.includes('Finalized')) completed++;
-      }
+      return pDate.getFullYear() === year && pDate.getMonth() === month;
     });
-
-    return { pending, inProgress, completed, total: pending + inProgress + completed };
+    const kpis = computeStatusKpis(inMonth);
+    return {
+      rejected: kpis.rejected,
+      pending: kpis.pending,
+      active: kpis.active,
+      completed: kpis.completed,
+      total: kpis.total,
+    };
   }, [actualProjects, year, month]);
 
   return (
@@ -184,10 +192,11 @@ export default function CalendarView({ projects, onSelectProject, userRole, isDa
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mr-1">Filter:</span>
           {[
-            { key: 'ALL', label: `All (${monthStats.total})` },
-            { key: 'Pending', label: `Pending (${monthStats.pending})` },
-            { key: 'In Progress', label: `In Progress (${monthStats.inProgress})` },
-            { key: 'Completed', label: `Completed (${monthStats.completed})` },
+            { key: 'ALL' as StatusFilter, label: `All (${monthStats.total})` },
+            { key: 'rejected' as StatusFilter, label: `Rejected (${monthStats.rejected})` },
+            { key: 'pending' as StatusFilter, label: `Pending (${monthStats.pending})` },
+            { key: 'active' as StatusFilter, label: `Active (${monthStats.active})` },
+            { key: 'completed' as StatusFilter, label: `Completed (${monthStats.completed})` },
           ].map(({ key, label }) => (
             <button
               key={key}
@@ -211,8 +220,9 @@ export default function CalendarView({ projects, onSelectProject, userRole, isDa
         </div>
       </div>
 
-      {/* Overview Stat Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      {/* Overview Stat Cards. Each tile is both a KPI and a filter for the month,
+          so clicking one narrows the grid below it to that bucket. */}
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3">
         <div
           onClick={() => { setSelectedStatus('ALL'); setSelectedDate(null); }}
           className={`h-24 lg:h-28 xl:h-32 px-5 py-4 rounded-xl border transition-all cursor-pointer flex items-center gap-4 ${
@@ -234,69 +244,78 @@ export default function CalendarView({ projects, onSelectProject, userRole, isDa
           </div>
         </div>
 
-        <div
-          onClick={() => { setSelectedStatus('Pending'); setSelectedDate(null); }}
-          className={`h-24 lg:h-28 xl:h-32 px-5 py-4 rounded-xl border transition-all cursor-pointer flex items-center gap-4 ${
-            selectedStatus === 'Pending'
-              ? 'ring-2 ring-amber-500/50 shadow-sm'
-              : ''
-          } ${
-            isDark ? 'bg-amber-950/20 border-amber-900/40 text-amber-300' : 'bg-amber-50/60 border-amber-200 text-amber-900'
-          }`}
-        >
-          <span className={`w-14 h-14 rounded-xl flex items-center justify-center shrink-0 ${isDark ? 'bg-amber-900/40' : 'bg-white'}`}>
-            <svg className="w-7 h-7 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-9A2.25 2.25 0 0017.25 3h-10.5A2.25 2.25 0 004.5 5.25v13.5A2.25 2.25 0 006.75 21h6.75M8.25 7.5h7.5m-7.5 3h5.25m4.5 6v2.25m0 0V21m0-2.25h2.25m-2.25 0h-2.25" />
-            </svg>
-          </span>
-          <div>
-            <div className="text-[11px] font-bold text-amber-600">Pending</div>
-            <div className="text-2xl font-black mt-1">{monthStats.pending} <span className="text-[10px] font-semibold text-amber-600/80">awaiting</span></div>
+        {[
+          {
+            key: 'rejected' as StatusBucket,
+            label: 'Rejected',
+            count: monthStats.rejected,
+            caption: 'sent back',
+            ring: 'ring-2 ring-red-500/50 shadow-sm',
+            icon: 'M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z',
+            iconClass: 'text-red-600',
+            labelClass: 'text-red-600',
+            captionClass: 'text-red-600/80',
+            tile: isDark ? 'bg-red-950/20 border-red-900/40 text-red-300' : 'bg-red-50/60 border-red-200 text-red-900',
+            iconBg: isDark ? 'bg-red-900/40' : 'bg-white',
+          },
+          {
+            key: 'pending' as StatusBucket,
+            label: 'Pending',
+            count: monthStats.pending,
+            caption: 'awaiting',
+            ring: 'ring-2 ring-amber-500/50 shadow-sm',
+            icon: 'M19.5 14.25v-9A2.25 2.25 0 0017.25 3h-10.5A2.25 2.25 0 004.5 5.25v13.5A2.25 2.25 0 006.75 21h6.75M8.25 7.5h7.5m-7.5 3h5.25m4.5 6v2.25m0 0V21m0-2.25h2.25m-2.25 0h-2.25',
+            iconClass: 'text-amber-500',
+            labelClass: 'text-amber-600',
+            captionClass: 'text-amber-600/80',
+            tile: isDark ? 'bg-amber-950/20 border-amber-900/40 text-amber-300' : 'bg-amber-50/60 border-amber-200 text-amber-900',
+            iconBg: isDark ? 'bg-amber-900/40' : 'bg-white',
+          },
+          {
+            key: 'active' as StatusBucket,
+            label: 'Active',
+            count: monthStats.active,
+            caption: 'approved',
+            ring: 'ring-2 ring-blue-500/50 shadow-sm',
+            icon: 'M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5M16.5 3L21 7.5m0 0L16.5 12M21 7.5H7.5',
+            iconClass: 'text-blue-600',
+            labelClass: 'text-blue-600',
+            captionClass: 'text-blue-600/80',
+            tile: isDark ? 'bg-blue-950/20 border-blue-900/40 text-blue-300' : 'bg-blue-50/60 border-blue-200 text-blue-900',
+            iconBg: isDark ? 'bg-blue-900/50' : 'bg-white',
+          },
+          {
+            key: 'completed' as StatusBucket,
+            label: 'Completed',
+            count: monthStats.completed,
+            caption: 'finalized',
+            ring: 'ring-2 ring-emerald-500/50 shadow-sm',
+            icon: 'M9 12.75l2.25 2.25L15 9.75m6 2.25a9 9 0 11-18 0 9 9 0 0118 0z',
+            iconClass: 'text-emerald-600',
+            labelClass: 'text-emerald-600',
+            captionClass: 'text-emerald-600/80',
+            tile: isDark ? 'bg-emerald-950/20 border-emerald-900/40 text-emerald-300' : 'bg-emerald-50/60 border-emerald-200 text-emerald-900',
+            iconBg: isDark ? 'bg-emerald-900/40' : 'bg-white',
+          },
+        ].map((tile) => (
+          <div
+            key={tile.key}
+            onClick={() => { setSelectedStatus(tile.key); setSelectedDate(null); }}
+            className={`h-24 lg:h-28 xl:h-32 px-5 py-4 rounded-xl border transition-all cursor-pointer flex items-center gap-4 ${
+              selectedStatus === tile.key ? tile.ring : ''
+            } ${tile.tile}`}
+          >
+            <span className={`w-14 h-14 rounded-xl flex items-center justify-center shrink-0 ${tile.iconBg}`}>
+              <svg className={`w-7 h-7 ${tile.iconClass}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d={tile.icon} />
+              </svg>
+            </span>
+            <div>
+              <div className={`text-[11px] font-bold ${tile.labelClass}`}>{tile.label}</div>
+              <div className="text-2xl font-black mt-1">{tile.count} <span className={`text-[10px] font-semibold ${tile.captionClass}`}>{tile.caption}</span></div>
+            </div>
           </div>
-          <div className="text-xl font-black mt-0.5">{monthStats.pending} <span className="text-xs font-semibold text-amber-600/80">awaiting</span></div>
-        </div>
-
-        <div
-          onClick={() => { setSelectedStatus('In Progress'); setSelectedDate(null); }}
-          className={`h-24 lg:h-28 xl:h-32 px-5 py-4 rounded-xl border transition-all cursor-pointer flex items-center gap-4 ${
-            selectedStatus === 'In Progress'
-              ? 'ring-2 ring-blue-500/50 shadow-sm'
-              : ''
-          } ${
-            isDark ? 'bg-blue-950/20 border-blue-900/40 text-blue-300' : 'bg-blue-50/60 border-blue-200 text-blue-900'
-          }`}
-        >
-          <span className={`w-14 h-14 rounded-xl flex items-center justify-center shrink-0 ${isDark ? 'bg-blue-900/50' : 'bg-white'}`}>
-            <svg className="w-7 h-7 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5M16.5 3L21 7.5m0 0L16.5 12M21 7.5H7.5" />
-            </svg>
-          </span>
-          <div>
-            <div className="text-[11px] font-bold text-blue-600">In Progress</div>
-            <div className="text-2xl font-black mt-1">{monthStats.inProgress} <span className="text-[10px] font-semibold text-blue-600/80">on-site</span></div>
-          </div>
-        </div>
-
-        <div
-          onClick={() => { setSelectedStatus('Completed'); setSelectedDate(null); }}
-          className={`h-24 lg:h-28 xl:h-32 px-5 py-4 rounded-xl border transition-all cursor-pointer flex items-center gap-4 ${
-            selectedStatus === 'Completed'
-              ? 'ring-2 ring-emerald-500/50 shadow-sm'
-              : ''
-          } ${
-            isDark ? 'bg-emerald-950/20 border-emerald-900/40 text-emerald-300' : 'bg-emerald-50/60 border-emerald-200 text-emerald-900'
-          }`}
-        >
-          <span className={`w-14 h-14 rounded-xl flex items-center justify-center shrink-0 ${isDark ? 'bg-emerald-900/40' : 'bg-white'}`}>
-            <svg className="w-7 h-7 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75l2.25 2.25L15 9.75m6 2.25a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-          </span>
-          <div>
-            <div className="text-[11px] font-bold text-emerald-600">Completed</div>
-            <div className="text-2xl font-black mt-1">{monthStats.completed} <span className="text-[10px] font-semibold text-emerald-600/80">finalized</span></div>
-          </div>
-        </div>
+        ))}
       </div>
 
       {/* Calendar and agenda workspace */}
@@ -429,7 +448,7 @@ export default function CalendarView({ projects, onSelectProject, userRole, isDa
             const dayProjects = projectsByDate[cell.dateString] || [];
             const filteredProjects = dayProjects.filter(p => {
               if (selectedStatus === 'ALL') return true;
-              return p.status === selectedStatus;
+              return statusBucket(p.status) === selectedStatus;
             });
 
             const todayObj = new Date();
