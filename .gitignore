@@ -30,6 +30,9 @@ lerna-debug.log*
 # Build output
 dist/
 
+# Artifacts & Local workspace plans
+.artifacts/
+
 # Upload storage
 FileStorage/
 
