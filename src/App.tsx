@@ -16,19 +16,19 @@ import {
 import { useState, useCallback, useEffect, Component } from 'react';
 import { fetchAIScans, saveAIScan, updateAIScan, deleteAIScan } from './services/api/aiScans';
 import type { ReactNode } from 'react';
-import LoginPage from './pages/auth/LoginPage';
-import Dashboard from './pages/dashboard/DashboardPage';
-import ProjectDetail from './pages/projects/ProjectDetailPage';
-import InstructionPage from './pages/auth/InstructionPage';
-import Settings from './components/settings/Settings';
+import Login from './components/auth/Login';
+import Dashboard from './components/dashboard/Dashboard';
+import ProjectDetail from './components/projects/ProjectDetail';
 import SurveyWizard from './components/surveys/SurveyWizard';
 import EstimationSummary from './components/estimation/EstimationSummary';
+import Settings from './components/settings/Settings';
 import CreateSurveyForm from './components/estimation/CreateSurveyForm';
 import SurveySummary from './components/reports/SurveySummary';
 import type { SurveyFormData } from './components/estimation/CreateSurveyForm';
 import type { Notification } from './components/notifications/NotificationBell';
 import { DEFAULT_TECHNICIANS } from './constants/roles';
 import { ExclamationTriangle } from './utils/Icons';
+import InstructionScreen from './components/auth/InstructionScreen';
 
 
 export type Screen = 'login' | 'dashboard' | 'create-survey' | 'project-detail' | 'survey' | 'estimation' | 'settings' | 'notifications' | 'survey-summary' | 'instruction';
@@ -705,7 +705,7 @@ export default function App() {
 
   // Always fall back to login if user is not authenticated
   if (!user || screen === 'login') {
-    return <LoginPage onLogin={handleLogin} />;
+    return <Login onLogin={handleLogin} />;
   }
 
   if (screen === 'create-survey') {
@@ -773,8 +773,6 @@ export default function App() {
             onDeleteProject={handleDeleteProject}
             onUpdateProject={handleUpdateProject}
             onExitOverride={handleBackFromSettings}
-            isDark={isDark}
-            onToggleDark={toggleDark}
             contentOverride={
               <Settings user={user} onBack={handleBackFromSettings} onLogout={handleLogout} notifications={notifications} isDark={isDark} />
             }
@@ -962,7 +960,7 @@ export default function App() {
   if (screen === 'instruction') {
     return (
       <ErrorBoundary>
-        <InstructionPage
+        <InstructionScreen
           user={user}
           onComplete={() => {
             localStorage.setItem(STORAGE_KEYS.instruction, 'true');

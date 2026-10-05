@@ -22,7 +22,6 @@ import SavedEstimationsView from '../estimation/SavedEstimationsView';
 import SavedFoldersView from '../ai-sidebar/SavedFoldersView';
 import { AIChatbotFloating } from '../chatbot/AIChatbotFloating';
 import SparklineCard from './cards/SparklineCard';
-import Settings from '../settings/Settings';
 
 interface Props {
   user: User;
@@ -76,7 +75,6 @@ const viewTitles: Record<string, string> = {
   'saved-folders': 'AI Scan Folders',
   'saved-boqs': 'Saved Floor Plan BOQs',
   'saved-estimations': 'Saved Project Estimations',
-  settings: 'Account Settings',
 };
 
 function filterProjects(projects: Project[], view: string): Project[] {
@@ -682,11 +680,12 @@ export default function Dashboard({
       <main className="flex-1 flex flex-col min-w-0 relative overflow-hidden">
 
         {/*TOP NAVIGATION BAR (Glassmorphism)*/}
-        <div
-          className={`sticky top-0 z-40 px-4 sm:px-6 h-16 flex items-center gap-4 shrink-0 border-b backdrop-blur-md transition-colors ${
-            isDark ? 'bg-[#0D1527]/95 border-slate-800' : 'bg-white/95 border-slate-200'
-          }`}
-        >
+        {!contentOverride && (
+          <div
+            className={`sticky top-0 z-40 px-4 sm:px-6 h-16 flex items-center gap-4 shrink-0 border-b backdrop-blur-md transition-colors ${
+              isDark ? 'bg-[#0D1527]/95 border-slate-800' : 'bg-white/95 border-slate-200'
+            }`}
+          >
           {/* Left: Mobile navigation and global search */}
           <div className="flex flex-1 min-w-0 items-center gap-2 sm:gap-3">
             <button
@@ -771,9 +770,10 @@ export default function Dashboard({
             <NotificationBell notifications={notifications} onViewAll={navigateNotif} />
 
             {/* Account dropdown */}
-            <AccountDropdown user={user} onLogout={onLogout} onSettings={() => { if (onSettings) onSettings(); setView('settings'); }} />
+            <AccountDropdown user={user} onLogout={onLogout} onSettings={onSettings} />
           </div>
         </div>
+      )}
 
         {/* ══════════════════════════════════════════
             PAGE CONTENT
@@ -885,14 +885,6 @@ export default function Dashboard({
             <SavedEstimationsView
               projects={projectList}
               onDeleteProject={handleDelete}
-            />
-          ) : view === 'settings' ? (
-            <Settings
-              user={user}
-              onBack={() => setView('dashboard')}
-              onLogout={onLogout}
-              notifications={notifications}
-              isDark={isDark}
             />
           ) : (
             <div className="pb-10">
