@@ -3,7 +3,6 @@ import type { User, Project, SurveyType } from '../../App';
 import { StatCalendar, StatBolt, StatClipboard, Check } from '../../utils/Icons';
 import { useToast } from '../utils/Toast';
 import EditProjectModal from './EditProjectModal';
-import { updateEstimationStatus, submitProjectToDB } from '../../services/estimationProjects';
 
 const SURVEY_TYPES: {
   key: SurveyType;
@@ -125,8 +124,7 @@ interface Props {
 }
 
 export default function ProjectDetail({ user, project, onBack, onStartSurvey, onViewEstimation, onViewSurveySummary, onUpdateStatus, onUpdateProject, isDark }: Props) {
-  const { confirm, toast } = useToast();
-  const [busy, setBusy] = React.useState(false);
+  const { confirm } = useToast();
   const [isEditing, setIsEditing] = React.useState(false);
   const activeSurveyTypes = React.useMemo(() => {
     if (!project.systemTypes || project.systemTypes.length === 0) {
@@ -177,32 +175,12 @@ export default function ProjectDetail({ user, project, onBack, onStartSurvey, on
 
   const showTechSubmitBanner = !project.status.includes('Finalized') && completedSurveys.length > 0;
 
-  // Approve / Reject / Reopen: persist to the database first, then update local state.
-  const changeStatus = async (status: string) => {
-    if (busy) return;
-    setBusy(true);
-    const res = await updateEstimationStatus(project.id, status);
-    setBusy(false);
-    if (!res.success) {
-      toast.error(`Could not update the status in the database: ${res.message}`);
-      return;
-    }
-    onUpdateStatus(project.id, status);
-  };
-
   const handleFinalizeSubmit = async () => {
-    if (busy) return;
     const ok = await confirm("Are you sure you want to finalize this project survey and submit it to the Admin? You will not be able to edit the survey details after submitting.");
-    if (!ok) return;
-    setBusy(true);
-    const result = await submitProjectToDB(project, user);
-    setBusy(false);
-    if (!result.success) {
-      toast.error(`Could not submit to the database: ${result.message}`);
-      return; // keep status unchanged
+    if (ok) {
+      onUpdateStatus(project.id, 'Finalized');
+      onBack();
     }
-    onUpdateStatus(project.id, 'Finalized');
-    onBack();
   };
 
   return (
@@ -284,14 +262,14 @@ export default function ProjectDetail({ user, project, onBack, onStartSurvey, on
             </div>
             <div className="flex gap-2 w-full sm:w-auto shrink-0">
               <button
-                onClick={() => changeStatus('Finalized - Rejected')}
+                onClick={() => onUpdateStatus(project.id, 'Finalized - Rejected')}
                 className="flex-1 sm:flex-none px-5 py-2.5 rounded-xl font-bold text-xs transition-all cursor-pointer"
                 style={{ color: '#dc2626', background: isDark ? 'rgba(220,38,38,0.12)' : '#fef2f2' }}
               >
                 Reject / Request Edit
               </button>
               <button
-                onClick={() => changeStatus('Finalized - Approved')}
+                onClick={() => onUpdateStatus(project.id, 'Finalized - Approved')}
                 className="flex-1 sm:flex-none px-5 py-2.5 rounded-xl font-bold text-xs text-white bg-emerald-600 hover:bg-emerald-700 transition-all shadow-sm shadow-emerald-100 cursor-pointer"
               >
                 Approve Project
@@ -315,7 +293,7 @@ export default function ProjectDetail({ user, project, onBack, onStartSurvey, on
               </p>
             </div>
             <button
-              onClick={() => changeStatus('Finalized')}
+              onClick={() => onUpdateStatus(project.id, 'Finalized')}
               className="flex-1 sm:flex-none px-5 py-2.5 rounded-xl font-bold text-xs text-white bg-blue-600 hover:bg-blue-700 transition-all shadow-sm cursor-pointer"
             >
               Reopen Survey

@@ -1,14 +1,5 @@
 import { useState, useMemo } from 'react';
 import type { User, Project } from '../../App';
-import {
-  PROJECT_STATUS,
-  isOpenWork,
-  isApproved,
-  isAwaitingApproval,
-  isCompleted,
-  isRejected,
-  normalizeStatus,
-} from '../../constants/status';
 
 interface Props {
   user: User;
@@ -77,55 +68,58 @@ export default function CompanyDetail({
     return matched;
   }, [projects, companyProject]);
 
-  // Tab membership uses the shared predicates. `isNotComplete` used to be
-  // `status !== 'Completed' && !status.includes('Finalized')`, which excluded
-  // 'Finalized' itself — so a project waiting for approval was "not complete"
-  // here while the Dashboard counted it as pending.
+  // Filter projects by tabs
   const filteredProjects = useMemo(() => {
     const today = new Date().toISOString().split('T')[0];
     switch (activeTab) {
       case 'missing':
-        return companyProjects.filter(p =>
-          isOpenWork(p.status) && (!p.startDate || p.startDate < today)
-        );
+        return companyProjects.filter(p => {
+          const isNotComplete = p.status !== 'Completed' && !p.status?.includes('Finalized');
+          const isMissed = !p.startDate || p.startDate < today;
+          return isNotComplete && isMissed;
+        });
       case 'approval':
-        return companyProjects.filter(p => isAwaitingApproval(p.status));
+        return companyProjects.filter(p => p.status === 'Finalized');
       case 'finalize':
-        return companyProjects.filter(p => isApproved(p.status) || isRejected(p.status));
+        return companyProjects.filter(p => p.status === 'Finalized - Approved' || p.status === 'Finalized - Rejected');
       case 'complete':
-        return companyProjects.filter(p => normalizeStatus(p.status) === PROJECT_STATUS.COMPLETED);
+        return companyProjects.filter(p => p.status === 'Completed');
       case 'assignments':
       default:
-        return companyProjects.filter(p => isOpenWork(p.status));
+        return companyProjects.filter(p => {
+          const isNotComplete = p.status !== 'Completed' && !p.status?.includes('Finalized');
+          return isNotComplete;
+        });
     }
   }, [companyProjects, activeTab]);
 
-  const countAssignments = useMemo(
-    () => companyProjects.filter(p => isOpenWork(p.status)).length,
-    [companyProjects]
-  );
+  const countAssignments = useMemo(() => {
+    return companyProjects.filter(p => {
+      const isNotComplete = p.status !== 'Completed' && !p.status?.includes('Finalized');
+      return isNotComplete;
+    }).length;
+  }, [companyProjects]);
 
   const countMissing = useMemo(() => {
     const today = new Date().toISOString().split('T')[0];
-    return companyProjects.filter(p =>
-      isOpenWork(p.status) && (!p.startDate || p.startDate < today)
-    ).length;
+    return companyProjects.filter(p => {
+      const isNotComplete = p.status !== 'Completed' && !p.status?.includes('Finalized');
+      const isMissed = !p.startDate || p.startDate < today;
+      return isNotComplete && isMissed;
+    }).length;
   }, [companyProjects]);
 
-  const countApproval = useMemo(
-    () => companyProjects.filter(p => isAwaitingApproval(p.status)).length,
-    [companyProjects]
-  );
+  const countApproval = useMemo(() => {
+    return companyProjects.filter(p => p.status === 'Finalized').length;
+  }, [companyProjects]);
 
-  const countFinalize = useMemo(
-    () => companyProjects.filter(p => isApproved(p.status) || isRejected(p.status)).length,
-    [companyProjects]
-  );
+  const countFinalize = useMemo(() => {
+    return companyProjects.filter(p => p.status === 'Finalized - Approved' || p.status === 'Finalized - Rejected').length;
+  }, [companyProjects]);
 
-  const countComplete = useMemo(
-    () => companyProjects.filter(p => isCompleted(p.status)).length,
-    [companyProjects]
-  );
+  const countComplete = useMemo(() => {
+    return companyProjects.filter(p => p.status === 'Completed').length;
+  }, [companyProjects]);
 
   return (
     <div className="px-8 pt-8 space-y-8 max-w-7xl mx-auto w-full">

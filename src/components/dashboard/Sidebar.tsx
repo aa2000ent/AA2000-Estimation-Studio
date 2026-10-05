@@ -11,7 +11,8 @@ export type View =
   | 'ongoing' | 'upcoming' | 'missing-notif' | 'approval-notif' | 'finalize-notif'
   | 'notifications' | 'calendar' | 'floor-plan'
   | 'cctv' | 'fire_alarm' | 'fire_protection' | 'access_control' | 'burglar_alarm' | 'other'
-  | 'ai-reader' | 'estimation-hub' | 'saved-folders' | 'saved-boqs' | 'saved-estimations';
+  | 'ai-reader' | 'estimation-hub' | 'saved-folders' | 'saved-boqs' | 'saved-estimations'
+  | 'settings';
 
 export interface Props {
   user: User;

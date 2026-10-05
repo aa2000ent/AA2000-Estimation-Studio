@@ -6,7 +6,7 @@ export const config = {
   environment: import.meta.env.MODE || 'development',
 
   // API configuration
-  apiBase: import.meta.env.VITE_API_BASE_URL || 'http://localhost:8081',
+  apiBase: import.meta.env.VITE_API_BASE_URL || '',
   apiKey: import.meta.env.VITE_API_KEY || '',
 
   // Supabase configuration

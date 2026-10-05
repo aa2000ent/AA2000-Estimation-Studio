@@ -357,19 +357,24 @@ AA2000 Estimation Hub/
 ├── pricelist/                 # Raw price list sources
 ├── public/                    # Static assets & favicon
 ├── src/
-│   ├── components/
+│   ├── assets/                # Static assets, logos, icons
+│   ├── components/            # Reusable components
+│   │   ├── ui/                # Generic UI primitives (Badge.tsx, Modal.tsx)
 │   │   ├── ai-sidebar/        # AI Document Reader, TOR Comparison, Scan Folders
-│   │   ├── auth/              # Login.tsx, InstructionScreen.tsx
 │   │   ├── chatbot/           # AIChatbotFloating.tsx
-│   │   ├── dashboard/         # Dashboard.tsx, Home.tsx, Sidebar.tsx, CalendarView.tsx
-│   │   ├── estimation/        # EstimationHub.tsx, EstimationSummary.tsx, CreateSurveyForm.tsx
-│   │   ├── floor-plan/        # FloorPlanView.tsx, SavedBOQsView.tsx
+│   │   ├── dashboard/         # Sidebar.tsx, ApprovalPipeline.tsx, AccountDropdown.tsx, cards/
 │   │   ├── notifications/     # NotificationBell.tsx
-│   │   ├── projects/          # ProjectDetail.tsx, CompanyDetail.tsx, CreateProjectModal.tsx
 │   │   ├── reports/           # SurveySummary.tsx
 │   │   ├── settings/          # Settings.tsx
-│   │   ├── surveys/           # SurveyWizard.tsx (CCTV, FDAS, Access, etc.)
-│   │   └── utils/             # ErrorBoundary, Toast, LoadingSpinner
+│   │   └── surveys/           # SurveyWizard.tsx (CCTV, FDAS, Access, etc.)
+│   ├── layouts/               # Interface Layouts (DashboardLayout.tsx)
+│   ├── pages/                 # React Page Views
+│   │   ├── auth/              # LoginPage.tsx, InstructionPage.tsx
+│   │   ├── dashboard/         # DashboardPage.tsx, HomePage.tsx, CalendarPage.tsx
+│   │   ├── workflow/          # ApprovalPipelinePage.tsx, SavedEstimationsPage.tsx
+│   │   ├── estimation/        # EstimationHubPage.tsx, FloorPlanPage.tsx, SavedBOQsPage.tsx, SavedFoldersPage.tsx
+│   │   └── projects/          # CompanyDetailPage.tsx, ProjectDetailPage.tsx
+│   ├── context/               # Global React State Contexts
 │   ├── config/                # App configuration constants
 │   ├── constants/             # Roles.ts (Credentials, Permissions, Statuses)
 │   ├── data/                  # products.json (94,550+ product catalog)

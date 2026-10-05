@@ -4,7 +4,6 @@ import { useToast } from '../utils/Toast';
 import { exportBOQPdf } from '../../utils/pdfExporter';
 import type { Project } from '../../App';
 import { generateSystemScopeOfWorks } from '../estimation/QuotationModal';
-import { MarkdownMessage } from '../chatbot/MarkdownMessage';
 
 interface FilePreview {
   name: string;
@@ -14,9 +13,6 @@ interface FilePreview {
 }
 
 import { canViewPrices } from '../../constants/roles';
-
-const peso = (value: number | undefined) =>
-  `₱${(Number(value) || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 interface Props {
   projects?: Project[];
@@ -162,7 +158,6 @@ export default function FloorPlanView({ projects, userRole, onAddToProjectEstima
   const [buildingType, setBuildingType] = useState('');
   const [floors, setFloors] = useState('');
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
-  const [showRawBoq, setShowRawBoq] = useState(false);
   const floorPlanInputRef = useRef<HTMLInputElement>(null);
   const torInputRef = useRef<HTMLInputElement>(null);
 
@@ -255,7 +250,7 @@ export default function FloorPlanView({ projects, userRole, onAddToProjectEstima
 
   const handleAnalyze = async () => {
     if (!files.length || (!selectedSystems.length && !autoDetectMode)) return;
-    setAnalyzing(true); setError(null); setResult(null); setAnalysisStep(0); setShowRawBoq(false);
+    setAnalyzing(true); setError(null); setResult(null); setAnalysisStep(0);
     onScanningChange?.(true, ANALYSIS_STEPS[0]);
     const stepTimer = setInterval(() => {
       setAnalysisStep(prev => {
@@ -274,7 +269,7 @@ export default function FloorPlanView({ projects, userRole, onAddToProjectEstima
         buildingType: buildingType || undefined,
         floors: floors ? parseInt(floors) : undefined,
         selectedBrand: selectedBrand !== 'Generalized / Any Brand' ? selectedBrand : undefined,
-      }, previews.filter(p => p.isTor).map(p => p.name));
+      });
       setResult(res);
     } catch (err: unknown) {
       setError((err as Error).message || 'Analysis failed');
@@ -1017,212 +1012,6 @@ export default function FloorPlanView({ projects, userRole, onAddToProjectEstima
                   ))}
                 </div>
               </div>
-
-              {/* ── Quotation Details (header + device summary) ── */}
-              {(() => {
-                const header = result.quotationHeader;
-                const device = result.deviceSummary;
-                if (!header && !device) return null;
-
-                const fields = [
-                  { label: 'Reference Code', value: result.quotationReferenceCode },
-                  { label: 'Project Title', value: header?.projectTitle },
-                  { label: 'Company', value: header?.company },
-                  { label: 'Attention To', value: header?.attentionTo },
-                  { label: 'Thru', value: header?.thru },
-                  { label: 'Email', value: header?.emailAdd },
-                  { label: 'Contact No.', value: header?.contactNo },
-                  { label: 'Address', value: header?.address },
-                  { label: 'Project Site', value: header?.projectSite },
-                  { label: 'Quote Date', value: header?.quoteDate },
-                  { label: 'Validity Period', value: header?.validityPeriod },
-                  { label: 'System Type', value: device?.systemType },
-                  { label: 'Equipment Brand', value: device?.facpBrand },
-                  { label: 'Building Profile', value: device?.buildingProfile },
-                  { label: 'Working Schedule', value: device?.workingSchedule },
-                  { label: 'Total Units', value: device?.totalUnitsText },
-                  { label: 'Remarks', value: device?.remarks },
-                ].filter((field) => Boolean(field.value) && field.value !== 'N/A');
-
-                if (fields.length === 0) return null;
-
-                return (
-                  <div className="rounded-xl border border-slate-200 overflow-hidden">
-                    <div className="px-4 py-3 bg-slate-50 border-b border-slate-200">
-                      <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">Quotation Details</span>
-                    </div>
-                    <div className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
-                      {fields.map((field) => (
-                        <div key={field.label}>
-                          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-0.5">{field.label}</p>
-                          <p className="text-xs text-slate-800 font-semibold break-words">{field.value}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })()}
-
-              {/* ── General Requirements ── */}
-              {(result.generalRequirements || []).length > 0 && (
-                <div className="rounded-xl border border-slate-200 overflow-hidden">
-                  <div className="px-4 py-3 bg-slate-50 border-b border-slate-200">
-                    <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">General Requirements</span>
-                  </div>
-                  <table className="w-full text-xs">
-                    <thead className="bg-slate-50">
-                      <tr className="border-b border-slate-100">
-                        <th className="px-4 py-2 text-left font-bold text-slate-500">#</th>
-                        <th className="px-4 py-2 text-left font-bold text-slate-500">Description</th>
-                        <th className="px-4 py-2 text-right font-bold text-slate-500">Qty</th>
-                        <th className="px-4 py-2 text-left font-bold text-slate-500">Unit</th>
-                        {showPrices && (
-                          <>
-                            <th className="px-4 py-2 text-right font-bold text-slate-500">Unit Price</th>
-                            <th className="px-4 py-2 text-right font-bold text-slate-500">Total Price</th>
-                          </>
-                        )}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(result.generalRequirements || []).map((g, i) => (
-                        <tr key={i} className={`border-b border-slate-50 ${i % 2 === 0 ? '' : 'bg-slate-50/50'}`}>
-                          <td className="px-4 py-2.5 text-slate-500 font-medium">{g.itemNumber}</td>
-                          <td className="px-4 py-2.5 font-semibold text-slate-800">{g.description}</td>
-                          <td className="px-4 py-2.5 text-right font-black text-slate-800">{g.qty}</td>
-                          <td className="px-4 py-2.5 text-slate-500 font-medium">{g.unit}</td>
-                          {showPrices && (
-                            <>
-                              <td className="px-4 py-2.5 text-right text-slate-700">{peso(g.unitPrice)}</td>
-                              <td className="px-4 py-2.5 text-right font-bold text-slate-800">{peso(g.totalPrice)}</td>
-                            </>
-                          )}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-
-              {/* ── Cost Breakdown as generated by the AI ── */}
-              {result.costBreakdown && (
-                <div className="rounded-xl border border-slate-200 overflow-hidden">
-                  <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
-                    <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">Cost Breakdown</span>
-                    <span className="text-[10px] font-semibold text-slate-500 italic">as generated — edits above are not reflected here</span>
-                  </div>
-                  {showPrices ? (
-                    <div className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
-                      {[
-                        { label: 'Item A Total', value: result.costBreakdown.itemATotal },
-                        { label: 'Item B Total', value: result.costBreakdown.itemBTotal },
-                        { label: 'Subtotal', value: result.costBreakdown.subTotal },
-                        { label: 'Discount', value: result.costBreakdown.discount },
-                        { label: 'Subtotal w/ Discount', value: result.costBreakdown.subTotalWithDiscount },
-                        { label: 'VAT (12%)', value: result.costBreakdown.vat12Percent },
-                      ].map((row) => (
-                        <div key={row.label} className="flex items-center justify-between border-b border-slate-100 py-1">
-                          <span className="text-xs text-slate-600 font-medium">{row.label}</span>
-                          <span className="text-xs font-bold text-slate-800">{peso(row.value)}</span>
-                        </div>
-                      ))}
-                      <div className="flex items-center justify-between py-1 sm:col-span-2">
-                        <span className="text-xs text-slate-700 font-extrabold uppercase tracking-wider">Grand Total</span>
-                        <span className="text-sm font-black text-blue-700">{peso(result.costBreakdown.grandTotalAmount)}</span>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="p-4 text-xs text-slate-500 italic">Pricing is hidden for your role.</div>
-                  )}
-                </div>
-              )}
-
-              {/* ── Schedule of Payment ── */}
-              {(result.scheduleOfPayment || []).length > 0 && (
-                <div className="rounded-xl border border-slate-200 overflow-hidden">
-                  <div className="px-4 py-3 bg-slate-50 border-b border-slate-200">
-                    <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">Schedule of Payment</span>
-                  </div>
-                  <table className="w-full text-xs">
-                    <thead className="bg-slate-50">
-                      <tr className="border-b border-slate-100">
-                        <th className="px-4 py-2 text-left font-bold text-slate-500">Code</th>
-                        <th className="px-4 py-2 text-left font-bold text-slate-500">Milestone</th>
-                        {showPrices && <th className="px-4 py-2 text-right font-bold text-slate-500">Amount</th>}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(result.scheduleOfPayment || []).map((p, i) => (
-                        <tr key={i} className={`border-b border-slate-50 ${i % 2 === 0 ? '' : 'bg-slate-50/50'}`}>
-                          <td className="px-4 py-2.5 font-black text-slate-800">{p.itemCode}</td>
-                          <td className="px-4 py-2.5 font-semibold text-slate-800">{p.milestone}</td>
-                          {showPrices && (
-                            <td className="px-4 py-2.5 text-right font-bold text-slate-800">{peso(p.totalPrice)}</td>
-                          )}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-
-              {/* ── Terms and Conditions ── */}
-              {(result.termsAndConditions || []).length > 0 && (
-                <div className="rounded-xl border border-slate-200 overflow-hidden">
-                  <div className="px-4 py-3 bg-slate-50 border-b border-slate-200">
-                    <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">Terms and Conditions</span>
-                  </div>
-                  <ul className="p-4 space-y-2">
-                    {(result.termsAndConditions || []).map((term, i) => (
-                      <li key={i} className="flex gap-2 text-xs text-slate-700 leading-relaxed">
-                        <span className="text-slate-400 font-black">&bull;</span>
-                        <span>{term}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {/* ── Skipped uploads ── */}
-              {(result.rejectedFiles || []).length > 0 && (
-                <div className="rounded-xl border border-amber-200 bg-amber-50 overflow-hidden">
-                  <div className="px-4 py-3 bg-amber-100 border-b border-amber-200">
-                    <span className="text-xs font-bold text-amber-800 uppercase tracking-wider">Skipped Files</span>
-                  </div>
-                  <ul className="p-4 space-y-1.5">
-                    {(result.rejectedFiles || []).map((file, i) => (
-                      <li key={i} className="text-xs text-amber-900">
-                        <span className="font-bold">{file.filename}</span>
-                        <span className="text-amber-700"> — {file.reason}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {/* ── Raw BOQ (audit / debugging) ── */}
-              {result.rawMarkdown && (
-                <div className="rounded-xl border border-slate-200 overflow-hidden">
-                  <button
-                    onClick={() => setShowRawBoq(prev => !prev)}
-                    className="w-full px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between text-left hover:bg-slate-100 transition-colors"
-                    aria-expanded={showRawBoq}
-                  >
-                    <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">Raw BOQ (as returned by the server)</span>
-                    <svg
-                      className={`w-4 h-4 text-slate-500 transition-transform ${showRawBoq ? 'rotate-180' : ''}`}
-                      fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
-                    >
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-                    </svg>
-                  </button>
-                  {showRawBoq && (
-                    <div className="p-4 max-h-96 overflow-y-auto text-xs">
-                      <MarkdownMessage>{result.rawMarkdown}</MarkdownMessage>
-                    </div>
-                  )}
-                </div>
-              )}
 
               {/* ── Save / Copy / Export actions ── */}
               <div className="flex items-center gap-3 pt-1 pb-4">

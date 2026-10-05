@@ -1,13 +1,12 @@
 import { useState } from 'react';
 import type { AIScanGroup } from '../../App';
 import AIScanGroupDetail from './AIScanGroupDetail';
-import { useToast } from '../utils/Toast';
 
 interface Props {
   aiScans?: AIScanGroup[];
-  onRenameAIScan?: (id: string, name: string) => Promise<void>;
-  onDeleteAIScan?: (id: string) => Promise<void>;
-  onUpdateAIScan?: (scan: AIScanGroup) => Promise<void>;
+  onRenameAIScan?: (id: string, name: string) => void;
+  onDeleteAIScan?: (id: string) => void;
+  onUpdateAIScan?: (scan: AIScanGroup) => void;
 }
 
 export default function SavedFoldersView({
@@ -17,7 +16,6 @@ export default function SavedFoldersView({
   onUpdateAIScan,
 }: Props) {
   const [selectedScanGroup, setSelectedScanGroup] = useState<AIScanGroup | null>(null);
-  const { toast } = useToast();
 
   if (selectedScanGroup) {
     const currentScan = aiScans.find(s => s.id === selectedScanGroup.id) || selectedScanGroup;
@@ -26,35 +24,17 @@ export default function SavedFoldersView({
         <AIScanGroupDetail
           scan={currentScan}
           onBack={() => setSelectedScanGroup(null)}
-          // Each of these writes to the backend, so the local selection is only
-          // moved after the server accepts. Previously they updated optimistically
-          // against localStorage, which reported success for writes that no longer
-          // existed anywhere.
-          onRename={async (id, newName) => {
-            const previous = selectedScanGroup.name;
-            try {
-              await onRenameAIScan?.(id, newName);
-              setSelectedScanGroup(prev => (prev ? { ...prev, name: newName } : null));
-            } catch (err) {
-              toast.error(err instanceof Error ? err.message : 'The folder could not be renamed.');
-              setSelectedScanGroup(prev => (prev ? { ...prev, name: previous } : null));
-            }
+          onRename={(id, newName) => {
+            onRenameAIScan?.(id, newName);
+            setSelectedScanGroup(prev => prev ? { ...prev, name: newName } : null);
           }}
-          onDelete={async (id) => {
-            try {
-              await onDeleteAIScan?.(id);
-              setSelectedScanGroup(null);
-            } catch (err) {
-              toast.error(err instanceof Error ? err.message : 'The folder could not be deleted.');
-            }
+          onDelete={(id) => {
+            onDeleteAIScan?.(id);
+            setSelectedScanGroup(null);
           }}
-          onUpdateScan={async (updated) => {
-            try {
-              await onUpdateAIScan?.(updated);
-              setSelectedScanGroup(updated);
-            } catch (err) {
-              toast.error(err instanceof Error ? err.message : 'The changes could not be saved.');
-            }
+          onUpdateScan={(updated) => {
+            onUpdateAIScan?.(updated);
+            setSelectedScanGroup(updated);
           }}
         />
       </div>

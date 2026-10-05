@@ -8,7 +8,7 @@ import { useToast } from '../utils/Toast';
 interface Props {
   onCreateProject?: (project: Project, keepOnHome?: boolean) => void;
   onSelectProject?: (project: Project) => void;
-  onSaveAIScan?: (scan: AIScanGroup) => Promise<void>;
+  onSaveAIScan?: (scan: AIScanGroup) => void;
 }
 
 interface EquipmentComparisonEntry {
@@ -259,7 +259,6 @@ export default function AISidebar({ onCreateProject, onSaveAIScan }: Props) {
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [scanGroupName, setScanGroupName] = useState('');
   const [isSaved, setIsSaved] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Auto-detect file role based on filename
@@ -314,7 +313,7 @@ export default function AISidebar({ onCreateProject, onSaveAIScan }: Props) {
     setIsSaved(false);
   }, []);
 
-  const handleSave = useCallback(async () => {
+  const handleSave = useCallback(() => {
     if (!onSaveAIScan || !scanGroupName.trim()) return;
 
     const scanFiles = files
@@ -337,19 +336,10 @@ export default function AISidebar({ onCreateProject, onSaveAIScan }: Props) {
       files: scanFiles,
     };
 
-    // Written to the backend; the success state is only shown once the server
-    // has accepted it.
-    setIsSaving(true);
-    try {
-      await onSaveAIScan(group);
-      setIsSaved(true);
-      setShowSaveModal(false);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'The analysis could not be saved.');
-    } finally {
-      setIsSaving(false);
-    }
-  }, [files, scanGroupName, onSaveAIScan, toast]);
+    onSaveAIScan(group);
+    setIsSaved(true);
+    setShowSaveModal(false);
+  }, [files, scanGroupName, onSaveAIScan]);
 
   const analyzeWithAI = useCallback(async () => {
     const validIndices = files
@@ -1701,21 +1691,19 @@ ${torSection}`;
               <div className="flex gap-2 pt-1">
                 <button
                   onClick={() => setShowSaveModal(false)}
-                  disabled={isSaving}
-                  className="flex-1 py-2.5 rounded-xl text-xs font-bold bg-slate-100 text-slate-600 border border-slate-200 btn-press transition-colors hover:bg-slate-200 disabled:opacity-50"
+                  className="flex-1 py-2.5 rounded-xl text-xs font-bold bg-slate-100 text-slate-600 border border-slate-200 btn-press transition-colors hover:bg-slate-200"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleSave}
-                  disabled={isSaving || !scanGroupName.trim()}
-                  className="flex-1 py-2.5 rounded-xl text-xs font-bold text-white btn-press hover:brightness-110 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex-1 py-2.5 rounded-xl text-xs font-bold text-white btn-press hover:brightness-110 transition-all"
                   style={{
                     background: 'linear-gradient(135deg, #2563EB, #1D4ED8)',
                     boxShadow: '0 4px 12px rgba(37,99,235,0.25)',
                   }}
                 >
-                  {isSaving ? 'Saving...' : 'Save Folder'}
+                  Save Folder
                 </button>
               </div>
             </div>

@@ -120,12 +120,12 @@ export default function SparklineCard({
           {value > 0 && (
             <div className="w-24 sm:w-28 h-8 transition-all duration-300 group-hover:scale-105">
               <svg viewBox="0 0 100 35" fill="none" className="w-full h-full overflow-visible">
-                <defs>
+                <devs>
                   <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
                     <stop offset="0%" stopColor={color} stopOpacity="0.25" />
                     <stop offset="100%" stopColor={color} stopOpacity="0" />
                   </linearGradient>
-                </defs>
+                </devs>
 
                 {/* Area fill under curve */}
                 <path
