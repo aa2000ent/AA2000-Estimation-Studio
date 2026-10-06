@@ -769,7 +769,7 @@ export default function Dashboard({
                     <NotificationBell notifications={notifications} onViewAll={navigateNotif} />
 
                     {/* Account dropdown */}
-                    <AccountDropdown user={user} onLogout={onLogout} onSettings={() => { if (onSettings) onSettings(); setView('settings'); }} />
+                    <AccountDropdown user={user} onLogout={onLogout} onSettings={() => { if (onSettings) onSettings(); }} />
                   </div>
                 </div>
 
