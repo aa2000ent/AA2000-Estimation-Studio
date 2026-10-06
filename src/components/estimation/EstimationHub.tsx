@@ -146,10 +146,10 @@ export default function EstimationHub({ user, onNavigateToCreate, onSaveAIScan, 
         /* MODE SELECTED VIEW */
         <div className="space-y-6 flex-1 flex flex-col">
           {/* Back Navigation Bar */}
-          <div className="flex items-center justify-between bg-white dark:bg-[#131B2E] border border-slate-200 dark:border-slate-800 rounded-2xl p-3 px-5 shadow-xs">
+          <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
             <button
               onClick={() => setSelectedMode(null)}
-              className="flex items-center gap-2 text-xs font-extrabold text-slate-600 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors cursor-pointer"
+              className="flex items-center gap-2 text-xs font-extrabold text-slate-600 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors cursor-pointer py-4"
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
@@ -157,17 +157,17 @@ export default function EstimationHub({ user, onNavigateToCreate, onSaveAIScan, 
               <span>Choose Estimation Method</span>
             </button>
 
-            <span className="text-xs font-bold px-3 py-1 rounded-full bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-900 uppercase tracking-wider">
+            <span className="text-xs font-bold px-3 py-3 rounded-full bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-900 uppercase tracking-wider">
               {selectedMode === 'manual' ? 'Manual Estimation Mode' : 'AI Document Reader Mode'}
             </span>
           </div>
 
           {/* Main Container */}
-          <div className="flex-1 bg-white dark:bg-[#131B2E] border border-slate-200 dark:border-slate-800 rounded-3xl p-6 sm:p-8 shadow-sm flex flex-col justify-between">
+         
             {selectedMode === 'manual' ? (
               <div className="space-y-8">
                 {/* Controls Bar (With + Start Manual Estimation Wizard button on top right) */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-slate-100 dark:border-slate-800">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-slate-100 dark:border-slate-800 py-2">
                   <div>
                     <h1 className="text-base sm:text-lg font-black tracking-tight text-slate-900 dark:text-white uppercase">
                       MANUAL ESTIMATION
@@ -184,7 +184,7 @@ export default function EstimationHub({ user, onNavigateToCreate, onSaveAIScan, 
                       className="flex items-center gap-2 px-5 py-2.5 rounded-full text-xs font-bold border border-blue-500 text-blue-600 dark:text-blue-400 dark:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/50 transition-all cursor-pointer shadow-2xs shrink-0"
                     >
                       <span className="text-sm font-black">+</span>
-                      <span>Start Manual Estimation Wizard</span>
+                      <span>Start Manual Estimation</span>
                     </button>
                   )}
                 </div>
@@ -192,7 +192,7 @@ export default function EstimationHub({ user, onNavigateToCreate, onSaveAIScan, 
                 {/* 3-Step Overview Cards with generous spacing */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6 lg:gap-8">
                   {/* Step 1 */}
-                  <div className="border border-blue-200/80 dark:border-blue-900/50 bg-blue-50/20 dark:bg-blue-950/20 rounded-2xl p-5 flex items-start gap-4 hover:border-blue-400 transition-all">
+                  <div className="border border-blue-200/80 dark:border-blue-900/50 bg-blue-50/20 dark:bg-blue-950/20 rounded-lg p-5 flex items-start gap-4 hover:border-blue-400 transition-all">
                     <div className="w-10 h-10 rounded-full bg-blue-600 text-white font-black text-base flex items-center justify-center shrink-0 shadow-xs">
                       1
                     </div>
@@ -205,7 +205,7 @@ export default function EstimationHub({ user, onNavigateToCreate, onSaveAIScan, 
                   </div>
 
                   {/* Step 2 */}
-                  <div className="border border-blue-200/80 dark:border-blue-900/50 bg-blue-50/20 dark:bg-blue-950/20 rounded-2xl p-5 flex items-start gap-4 hover:border-blue-400 transition-all">
+                  <div className="border border-blue-200/80 dark:border-blue-900/50 bg-blue-50/20 dark:bg-blue-950/20 rounded-lg p-5 flex items-start gap-4 hover:border-blue-400 transition-all">
                     <div className="w-10 h-10 rounded-full bg-blue-600 text-white font-black text-base flex items-center justify-center shrink-0 shadow-xs">
                       2
                     </div>
@@ -218,7 +218,7 @@ export default function EstimationHub({ user, onNavigateToCreate, onSaveAIScan, 
                   </div>
 
                   {/* Step 3 */}
-                  <div className="border border-blue-200/80 dark:border-blue-900/50 bg-blue-50/20 dark:bg-blue-950/20 rounded-2xl p-5 flex items-start gap-4 hover:border-blue-400 transition-all">
+                  <div className="border border-blue-200/80 dark:border-blue-900/50 bg-blue-50/20 dark:bg-blue-950/20 rounded-lg p-5 flex items-start gap-4 hover:border-blue-400 transition-all">
                     <div className="w-10 h-10 rounded-full bg-blue-600 text-white font-black text-base flex items-center justify-center shrink-0 shadow-xs">
                       3
                     </div>
@@ -232,7 +232,7 @@ export default function EstimationHub({ user, onNavigateToCreate, onSaveAIScan, 
                 </div>
 
                 {/* When to use manual estimation info box */}
-                <div className="border border-blue-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/40 rounded-3xl p-6 sm:p-7 space-y-4">
+                <div className="border border-blue-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/40 rounded-lg p-6 sm:p-7 space-y-4">
                   <div className="flex items-center gap-2.5">
                     <svg className="w-6 h-6 text-blue-600 dark:text-blue-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M12 18v-5.25m0 0a6.01 6.01 0 001.5-.189m-1.5.189a6.01 6.01 0 01-1.5-.189m3.75 7.478a12.06 12.06 0 01-4.5 0m3.75 2.383a14.406 14.406 0 01-3 0M14.25 18v.192c0 .484-.332.893-.81 1.012a12.036 12.036 0 01-2.88 0c-.478-.119-.81-.528-.81-1.012V18m5.25-10.875a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0z" />
@@ -271,7 +271,7 @@ export default function EstimationHub({ user, onNavigateToCreate, onSaveAIScan, 
                 />
               </div>
             )}
-          </div>
+          
         </div>
       )}
     </div>

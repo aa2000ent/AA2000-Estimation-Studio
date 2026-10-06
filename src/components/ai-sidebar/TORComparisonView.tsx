@@ -180,11 +180,18 @@ export default function TORComparisonView({ userRole, onSaveAIScan, onScanningCh
   const confLabel = conf >= 75 ? 'High Confidence' : conf >= 50 ? 'Medium Confidence' : conf >= 25 ? 'Low Confidence' : 'Poor Quality';
 
   return (
-    <div className="flex flex-col h-full bg-white dark:bg-[#0B132B] transition-colors p-6 overflow-y-auto space-y-6">
+    <div className="flex flex-col h-full  transition-colors p-6 overflow-y-auto space-y-6">
       {/* Section Title */}
       <div className="flex items-center gap-2 pt-1">
         <span className="text-blue-600 dark:text-blue-400 text-lg">✨</span>
         <h2 className="text-xl font-black text-slate-900 dark:text-white">AI Document Reader</h2>
+      </div>
+
+      {/* Info Banner */}
+      <div className="rounded-lg bg-blue-50/70 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/50 px-5 py-8">
+        <p className="text-xs text-blue-700 dark:text-blue-300 font-medium leading-relaxed">
+          Upload a <span className="font-bold">Floor Plan, Terms of Reference (TOR), or Proposal.</span> AI reads your document first. For floor plans, choose the sections where AA2000 items will be installed.
+        </p>
       </div>
 
       {/* "What document do you have?" Cards Grid */}
@@ -196,22 +203,23 @@ export default function TORComparisonView({ userRole, onSaveAIScan, onScanningCh
           {/* Card 1: Floor Plan */}
           <div
             onClick={() => setSelectedDocType('floor_plan')}
-            className={`p-5 rounded-2xl cursor-pointer transition-all duration-200 flex flex-col justify-between ${
+            className={`p-5 rounded-lg cursor-pointer transition-all duration-200 flex flex-col justify-between ${
               selectedDocType === 'floor_plan'
                 ? 'border-2 border-blue-600 dark:border-blue-500 bg-blue-50/40 dark:bg-blue-950/30 shadow-xs'
                 : 'border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#131B2E] hover:border-blue-300'
             }`}
           >
             <div>
-              <div className="w-8 h-8 rounded-xl bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 flex items-center justify-center mb-3 text-sm">
-                🗺️
-              </div>
+              <svg className="w-6 h-6 text-blue-600 dark:text-blue-400 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 4.5 4 6v13.5l5-1.5 6 1.5 5-1.5V4.5l-5 1.5-6-1.5Z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 4.5v13.5M15 6v13.5" />
+              </svg>
               <h4 className="text-sm font-bold text-slate-900 dark:text-white">Floor Plan</h4>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed font-medium">
                 Identify rooms and select installation areas.
               </p>
             </div>
-            <div className="mt-4">
+            <div className="mt-2">
               {selectedDocType === 'floor_plan' ? (
                 <span className="text-xs font-bold text-blue-600 dark:text-blue-400 flex items-center gap-1">✓ Selected</span>
               ) : (
@@ -223,22 +231,23 @@ export default function TORComparisonView({ userRole, onSaveAIScan, onScanningCh
           {/* Card 2: Terms of Reference */}
           <div
             onClick={() => setSelectedDocType('tor')}
-            className={`p-5 rounded-2xl cursor-pointer transition-all duration-200 flex flex-col justify-between ${
+            className={`p-5 rounded-lg cursor-pointer transition-all duration-200 flex flex-col justify-between ${
               selectedDocType === 'tor'
                 ? 'border-2 border-blue-600 dark:border-blue-500 bg-blue-50/40 dark:bg-blue-950/30 shadow-xs'
                 : 'border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#131B2E] hover:border-blue-300'
             }`}
           >
             <div>
-              <div className="w-8 h-8 rounded-xl bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 flex items-center justify-center mb-3 text-sm">
-                📄
-              </div>
+              <svg className="w-6 h-6 text-blue-600 dark:text-blue-400 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M7 3.5h7l4 4v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1v-16a1 1 0 0 1 1-1Z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M14 3.5V8h4.5M9 12h6M9 15h6" />
+              </svg>
               <h4 className="text-sm font-bold text-slate-900 dark:text-white">Terms of Reference</h4>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed font-medium">
                 Extract the required systems and specifications.
               </p>
             </div>
-            <div className="mt-4">
+            <div className="mt-2">
               {selectedDocType === 'tor' ? (
                 <span className="text-xs font-bold text-blue-600 dark:text-blue-400 flex items-center gap-1">✓ Selected</span>
               ) : (
@@ -250,22 +259,23 @@ export default function TORComparisonView({ userRole, onSaveAIScan, onScanningCh
           {/* Card 3: Proposal */}
           <div
             onClick={() => setSelectedDocType('proposal')}
-            className={`p-5 rounded-2xl cursor-pointer transition-all duration-200 flex flex-col justify-between ${
+            className={`p-5 rounded-lg cursor-pointer transition-all duration-200 flex flex-col justify-between ${
               selectedDocType === 'proposal'
                 ? 'border-2 border-blue-600 dark:border-blue-500 bg-blue-50/40 dark:bg-blue-950/30 shadow-xs'
                 : 'border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#131B2E] hover:border-blue-300'
             }`}
           >
             <div>
-              <div className="w-8 h-8 rounded-xl bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 flex items-center justify-center mb-3 text-sm">
-                📋
-              </div>
+              <svg className="w-6 h-6 text-blue-600 dark:text-blue-400 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M7 3.5h7l4 4v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1v-16a1 1 0 0 1 1-1Z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M14 3.5V8h4.5M9.5 13.5h5M12 11v5" />
+              </svg>
               <h4 className="text-sm font-bold text-slate-900 dark:text-white">Proposal</h4>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed font-medium">
                 Review proposed equipment and quantities.
               </p>
             </div>
-            <div className="mt-4">
+            <div className="mt-2">
               {selectedDocType === 'proposal' ? (
                 <span className="text-xs font-bold text-blue-600 dark:text-blue-400 flex items-center gap-1">✓ Selected</span>
               ) : (
@@ -277,12 +287,8 @@ export default function TORComparisonView({ userRole, onSaveAIScan, onScanningCh
       </div>
 
       {/* Dashed Upload Dropzone Box */}
-      <div className="border-2 border-dashed border-blue-200 dark:border-blue-900/60 bg-blue-50/10 dark:bg-blue-950/10 rounded-3xl p-8 sm:p-12 flex flex-col items-center justify-center text-center my-6 gap-3">
-        <div className="w-12 h-12 rounded-2xl bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 flex items-center justify-center mb-1">
-          <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
-          </svg>
-        </div>
+      <div className="relative border-2 border-dashed border-blue-200 dark:border-blue-900/60 bg-blue-50/10 dark:bg-blue-950/10 rounded-lg p-8 sm:p-12 flex flex-col items-center justify-center text-center my-6 gap-3">
+        
         <h3 className="text-lg font-black text-blue-600 dark:text-blue-400">
           {selectedDocType === 'floor_plan'
             ? 'Upload Floor Plan'
@@ -338,7 +344,7 @@ export default function TORComparisonView({ userRole, onSaveAIScan, onScanningCh
             <button
               type="button"
               onClick={() => toast.info('Sample floor plan loaded!')}
-              className="px-5 py-2 rounded-full text-xs font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 cursor-pointer"
+              className="px-5 py-2 rounded-full text-xs font-bold bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/50 cursor-pointer"
             >
               Try Sample Floor Plan
             </button>
@@ -361,7 +367,7 @@ export default function TORComparisonView({ userRole, onSaveAIScan, onScanningCh
           className={`flex items-center gap-2 px-6 py-3 rounded-full text-xs font-bold transition-all cursor-pointer ${
             currentFile
               ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-md shadow-blue-500/20'
-              : 'bg-slate-200 dark:bg-slate-800 text-slate-400 dark:text-slate-600 cursor-not-allowed'
+              : 'bg-blue-50 dark:bg-blue-950/40 text-blue-300 dark:text-blue-700 cursor-not-allowed'
           }`}
         >
           <span>✨</span>
