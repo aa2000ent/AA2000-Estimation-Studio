@@ -1,12 +1,12 @@
 import React from 'react';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import type { Project, User } from '../../App';
 import type { EstimationManpowerEntry, EstimationConsumableEntry, EstimationAdditionalFeeEntry } from '../../types';
-import { analyzeFloorPlan, type FloorPlanEstimation } from '../../services/geminiFloorPlanService';
-import { parseFile } from '../../services/fileParser';
-import { systemBadgeIcons, Users, StatCalendar, Package as PackageIcon, Plug, Map as MapIcon, ExclamationTriangle, Plus, Document, User as UserIcon, MagnifyingGlass, ArrowRight, Check } from '../../utils/Icons';
+import type { FloorPlanEstimation } from '../../services/geminiFloorPlanService';
+import { systemBadgeIcons, Users, StatCalendar, Package as PackageIcon, Plug, Document, User as UserIcon, ArrowRight } from '../../utils/Icons';
 import { useToast } from '../utils/Toast';
 import { getEstimatedItemPricing, searchPricelist } from '../../services/pricelistService';
+import { computeEstimationStats } from '../../services/estimationStats';
 import QuotationModal, { type QuotationHeaderState, type ScopeOfWorkEntry, generateSystemScopeOfWorks } from './QuotationModal';
 
 function mapCategoryToOption(cat: string): string {
@@ -213,14 +213,6 @@ const getTableHeadStyle = (dark: boolean): React.CSSProperties => ({
   textAlign: 'left',
 });
 
-const AI_STEPS = [
-  'Reading floor plan layout & room structure...',
-  'Identifying camera coverage zones & blind spots...',
-  'Calculating cable routing distances & conduit paths...',
-  'Estimating technician headcount & man-day requirements...',
-  'Compiling materials bill-of-quantities & unit counts...',
-];
-
 import { canViewPrices } from '../../constants/roles';
 import { submitEstimationToDB } from '../../services/estimationSubmission';
 
@@ -312,35 +304,23 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
     }));
   }, [priceTier]);
 
-  // Floor plan upload — multiple files (images + PDFs)
-  const [floorPlanFiles, setFloorPlanFiles] = useState<File[]>([]);
-  const [floorPlanPreviews, setFloorPlanPreviews] = useState<{ name: string; url: string | null; type: string }[]>([]);
-  const [isDragOver, setIsDragOver] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // TOR upload
-  const [torFiles, setTorFiles] = useState<File[]>([]);
-  const [torPreviews, setTorPreviews] = useState<{ name: string; content: string }[]>([]);
-  const [isTorDragOver, setIsTorDragOver] = useState(false);
-  const torInputRef = useRef<HTMLInputElement>(null);
-
-  // AI state
-  const [isAiEstimating, setIsAiEstimating] = useState(false);
-  const [aiStep, setAiStep] = useState(0);
-  const [aiMode, setAiMode] = useState<'real' | 'simulation'>('simulation');
-  const [aiError, setAiError] = useState<string | null>(null);
-  const [aiObservations, setAiObservations] = useState<string | null>(null);
-  const [aiConfidence, setAiConfidence] = useState<number | null>(null);
-
-  // Auto-dismiss safety timer for completed estimation scan modal
-  useEffect(() => {
-    if (isAiEstimating && aiStep >= AI_STEPS.length) {
-      const timer = setTimeout(() => {
-        setIsAiEstimating(false);
-      }, 1000);
-      return () => clearTimeout(timer);
+  // Wizard-applied AI results (Create Estimation flow): notice until the user accepts them.
+  const wizardAiAcceptedKey = `aa2000_wizard_ai_accepted_${project.id}`;
+  const [wizardAiAccepted, setWizardAiAccepted] = useState(() => {
+    try {
+      return localStorage.getItem(wizardAiAcceptedKey) === '1';
+    } catch {
+      return false;
     }
-  }, [isAiEstimating, aiStep]);
+  });
+  useEffect(() => {
+    try {
+      setWizardAiAccepted(localStorage.getItem(wizardAiAcceptedKey) === '1');
+    } catch {
+      setWizardAiAccepted(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project.id]);
 
   // Product catalog search state
   const [activeSearchId, setActiveSearchId] = useState<string | null>(null);
@@ -424,15 +404,10 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
     }
   };
 
-  // Summary counts for the stat cards
-  const totalHeadcount = manpower.reduce((sum, m) => sum + m.headcount, 0);
-  const totalManDays = manpower.reduce((sum, m) => sum + m.manDays, 0);
-  const totalMaterialLines = consumables.length;
-
-  // Cable/meter total for quick reference
-  const cableTotal = consumables
-    .filter(c => c.unit?.toLowerCase().includes('meter') || c.unit?.toLowerCase() === 'm' || c.category === 'Wires & Cables')
-    .reduce((sum, c) => sum + c.quantity, 0);
+  // Stat cards + BOQ totals — same helper the AI result panels use, so both
+  // screens always show identical numbers for these rows.
+  const estimationStats = computeEstimationStats(manpower, consumables, fees);
+  const { totalHeadcount, totalManDays, totalMaterialLines, cableTotal } = estimationStats;
 
   const updateManpower = (id: string, field: keyof EstimationManpowerEntry, value: number | string) => {
     setManpower(prev => prev.map(m => {
@@ -472,80 +447,6 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
 
   const updateFee = (id: string, field: keyof EstimationAdditionalFeeEntry, value: string | number) => {
     setFees(prev => prev.map(f => f.id === id ? { ...f, [field]: value } : f));
-  };
-
-  // Handle file selection — appends to existing list
-  const handleFilesSelect = (newFiles: FileList | File[]) => {
-    const valid: File[] = [];
-    const previews: { name: string; url: string | null; type: string }[] = [];
-    Array.from(newFiles).forEach(file => {
-      const isImage = file.type.startsWith('image/');
-      const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
-      if (!isImage && !isPdf) return;
-      valid.push(file);
-      previews.push({
-        name: file.name,
-        url: isImage ? URL.createObjectURL(file) : null,
-        type: isPdf ? 'pdf' : 'image',
-      });
-    });
-    if (!valid.length) { toast.warning('Please upload image files (JPG, PNG) or PDF documents.'); return; }
-    setFloorPlanFiles(prev => [...prev, ...valid]);
-    setFloorPlanPreviews(prev => [...prev, ...previews]);
-    setAiError(null);
-    setAiObservations(null);
-    setAiConfidence(null);
-  };
-
-  const removeFile = (idx: number) => {
-    setFloorPlanFiles(prev => prev.filter((_, i) => i !== idx));
-    setFloorPlanPreviews(prev => {
-      const removed = prev[idx];
-      if (removed?.url) URL.revokeObjectURL(removed.url);
-      return prev.filter((_, i) => i !== idx);
-    });
-  };
-
-  const handleTorSelect = async (newFiles: FileList | File[]) => {
-    const valid: File[] = [];
-    const previews: { name: string; content: string }[] = [];
-    
-    for (const file of Array.from(newFiles)) {
-      const ext = file.name.split('.').pop()?.toLowerCase();
-      const validExtensions = ['xls', 'xlsx', 'csv', 'docx', 'doc', 'txt', 'pdf'];
-      if (!validExtensions.includes(ext || '')) continue;
-      
-      valid.push(file);
-      try {
-        const parsed = await parseFile(file);
-        previews.push({
-          name: file.name,
-          content: parsed.content || ''
-        });
-      } catch (err) {
-        console.error('Error parsing TOR file:', err);
-        previews.push({
-          name: file.name,
-          content: ''
-        });
-      }
-    }
-
-    if (!valid.length) {
-      toast.warning('Please upload spreadsheet, text or PDF specification documents.');
-      return;
-    }
-
-    setTorFiles(prev => [...prev, ...valid]);
-    setTorPreviews(prev => [...prev, ...previews]);
-    setAiError(null);
-    setAiObservations(null);
-    setAiConfidence(null);
-  };
-
-  const removeTorFile = (idx: number) => {
-    setTorFiles(prev => prev.filter((_, i) => i !== idx));
-    setTorPreviews(prev => prev.filter((_, i) => i !== idx));
   };
 
   const runEstimateFromSurveys = (surveysList: any[]) => {
@@ -804,6 +705,7 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
         if (parsed.constraints) setConstraints(parsed.constraints);
         if (parsed.priceTier) setPriceTier(parsed.priceTier);
         if (parsed.aiBaseline) setAiBaseline(parsed.aiBaseline);
+        if (parsed.aiQuotation) setAiQuotation(parsed.aiQuotation);
         if (parsed.technicianNotes) setTechnicianNotes(parsed.technicianNotes);
         if (parsed.discrepancyJustifications) setDiscrepancyJustifications(parsed.discrepancyJustifications);
         return;
@@ -828,40 +730,6 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
       if (projectSurveys.length > 0) {
         runEstimateFromSurveys(projectSurveys);
       }
-    }
-  }, [project.id]);
-
-  // Sync TOR documents uploaded in the survey wizard
-  useEffect(() => {
-    const projectSurveys = JSON.parse(localStorage.getItem('aa2000_surveys') || '[]')
-      .filter((s: any) => s.projectId === project.id);
-    
-    const surveyTorContents: { name: string; content: string }[] = [];
-    projectSurveys.forEach((s: any) => {
-      if (s.data?.torContent) {
-        const names = s.data.torFileName ? s.data.torFileName.split(', ') : ['Survey Specification Document'];
-        names.forEach((name: string) => {
-          surveyTorContents.push({
-            name,
-            content: s.data.torContent,
-          });
-        });
-      }
-    });
-
-    if (surveyTorContents.length > 0) {
-      setTorPreviews(prev => {
-        const existingNames = new Set(prev.map(p => p.name));
-        const filtered = surveyTorContents.filter(c => !existingNames.has(c.name));
-        return [...prev, ...filtered];
-      });
-      setTorFiles(prev => {
-        const existingNames = new Set(prev.map(f => f.name));
-        const newStubs = surveyTorContents
-          .filter(c => !existingNames.has(c.name))
-          .map(c => new File([c.content], c.name, { type: 'text/plain' }));
-        return [...prev, ...newStubs];
-      });
     }
   }, [project.id]);
 
@@ -891,148 +759,6 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
     setShowEditQuotation(false);
   }, [showQuotationModal]);
 
-  // Real AI estimation runner
-  const runAiEstimation = async () => {
-    setAiError(null);
-    setAiObservations(null);
-    setAiConfidence(null);
-    setAiStep(0);
-
-    // Build the surveyType string from project.systemTypes (comma-separated for the AI)
-    const surveyTypeStr = (project.systemTypes && project.systemTypes.length > 0)
-      ? project.systemTypes.join(',')
-      : (project.buildingType || 'CCTV');
-
-    setAiMode('real');
-    setIsAiEstimating(true);
-
-    let stepInterval: ReturnType<typeof setInterval>;
-    let currentStep = 0;
-    stepInterval = setInterval(() => {
-      currentStep = Math.min(currentStep + 1, AI_STEPS.length - 1);
-      setAiStep(currentStep);
-    }, 800);
-
-    try {
-      const torContent = torPreviews.map(t => `--- ${t.name} ---\n${t.content}`).join('\n\n');
-
-      const result = await analyzeFloorPlan(
-        floorPlanFiles,
-        surveyTypeStr,
-        {
-          buildingType: project.buildingType,
-          floors: project.floors,
-          location: project.location,
-          projectName: project.name,
-          surveyScope: project.surveyScope,
-          torContent,
-        }
-      );
-
-      clearInterval(stepInterval);
-      setAiStep(AI_STEPS.length);
-
-      setManpower(
-        result.manpower.map(m => {
-          const dayRate = getRoleDefaultDayRate(m.role);
-          return {
-            id: crypto.randomUUID(),
-            role: m.role,
-            headcount: m.headcount,
-            hours: m.hours,
-            manDays: m.manDays,
-            dayRate,
-            totalCost: m.totalCost || (dayRate * m.manDays),
-          };
-        })
-      );
-
-      setConsumables(
-        result.consumables.map(c => {
-          const srp = Number(c.srp) || c.unitPrice || 0;
-          const contractorPrice = Number(c.contractorPrice) || Math.round(srp * 0.85);
-          const dealerPrice = Number(c.dealerPrice) || Math.round(srp * 0.75);
-          const unitPrice = priceTier === 'srp' ? srp : priceTier === 'contractorPrice' ? contractorPrice : dealerPrice;
-          return {
-            id: crypto.randomUUID(),
-            name: c.name,
-            brand: (c as any).brand || detectBrandFromName(c.name) || '',
-            category: mapCategoryToOption(c.category),
-            quantity: c.quantity,
-            unit: c.unit || 'pcs',
-            srp,
-            contractorPrice,
-            dealerPrice,
-            unitPrice,
-            totalPrice: unitPrice * c.quantity,
-          };
-        })
-      );
-
-      setFees(
-        result.fees.map(f => ({
-          id: crypto.randomUUID(),
-          type: f.type as EstimationAdditionalFeeEntry['type'],
-          amount: f.amount || 0,
-          description: f.description,
-        }))
-      );
-
-      if (result.scopeOfWorks && result.scopeOfWorks.length > 0) {
-        setScopeOfWorks(
-          result.scopeOfWorks.map((s, idx) => ({
-            id: crypto.randomUUID(),
-            itemNumber: s.itemNumber || idx + 1,
-            description: s.description || '',
-            unit: s.unit || '1 LOT',
-            totalPrice: s.totalPrice || 0,
-          }))
-        );
-      }
-
-      if (result.constraints) {
-        setConstraints({
-          physical: result.constraints.physical || '',
-          electrical: result.constraints.electrical || '',
-          installation: result.constraints.installation || '',
-        });
-      }
-
-      if (result.observations) {
-        setAiObservations(result.observations);
-      }
-
-      if (result.confidenceScore >= 0) {
-        setAiConfidence(result.confidenceScore);
-      }
-
-      // Store full AI-generated quotation structure for the modal
-      setAiQuotation(result);
-
-      // Save baseline object for AI-vs-Tech ground validation tracking
-      const baselineObj = {
-        manpower: result.manpower.map(m => ({ ...m })),
-        consumables: result.consumables.map(c => ({ ...c })),
-        fees: result.fees.map(f => ({ ...f })),
-        constraints: result.constraints,
-        observations: result.observations,
-        confidenceScore: result.confidenceScore,
-        generatedAt: new Date().toISOString(),
-      };
-      setAiBaseline(baselineObj);
-      localStorage.setItem(`aa2000_ai_baseline_${project.id}`, JSON.stringify(baselineObj));
-
-      // Fast, smooth auto-close so the user doesn't wait
-      setTimeout(() => {
-        setIsAiEstimating(false);
-        toast.success('Bill of Quantities generated successfully!');
-      }, 500);
-    } catch (err: unknown) {
-      clearInterval(stepInterval);
-      setAiError(err instanceof Error ? err.message : 'AI estimation failed. Please try again.');
-    }
-  };
-
   // asBlob=false: download the PDF (Export button). asBlob=true: return it so it can be uploaded.
   const generateReportPdf = async (asBlob = false): Promise<Blob | null> => {
     const exportBtn = asBlob ? null : (document.activeElement as HTMLButtonElement);
@@ -1054,9 +780,7 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
         });
       }
 
-      const totalLabor = manpower.reduce((sum, m) => sum + (m.totalCost || ((m.dayRate || 1000) * m.manDays)), 0);
-      const totalMaterials = consumables.reduce((sum, c) => sum + (c.totalPrice || 0), 0);
-      const totalFees = fees.reduce((sum, f) => sum + (f.amount || 0), 0);
+      const { totalLabor, totalMaterials, totalFees } = estimationStats;
       const subtotal = totalLabor + totalMaterials + totalFees;
       const vat = subtotal * 0.12;
       const grandTotalWithVAT = subtotal * 1.12;
@@ -1399,7 +1123,6 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
     await generateReportPdf(false);
   };
 
-  const hasFiles = floorPlanFiles.length > 0;
   const sectionCard: React.CSSProperties = {
     background: dark ? '#131B2E' : '#FFFFFF',
     border: dark ? '1px solid #1E293B' : '1px solid #E2E8F0',
@@ -1455,17 +1178,6 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
           </button>
 
           <div className="flex items-center gap-3">
-            <button
-              onClick={runAiEstimation}
-              className="px-4 py-2.5 rounded-full text-xs font-bold text-white flex items-center gap-2 shadow-sm transition-all hover:opacity-95 cursor-pointer"
-              style={{ background: 'linear-gradient(135deg, #1E3A8A 0%, #2563EB 100%)' }}
-            >
-              <svg className="w-3.5 h-3.5 animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0 3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 0 0-2.455 2.456Z" />
-              </svg>
-              {hasFiles ? `ANALYZE ${floorPlanFiles.length} FLOOR PLAN${floorPlanFiles.length > 1 ? 'S' : ''}` : 'AI ESTIMATE SCAN'}
-            </button>
-
             <button
               onClick={handleExportPdf}
               className={`px-4 py-2 rounded-xl text-xs font-bold border transition-colors flex items-center gap-1.5 cursor-pointer ${
@@ -1552,6 +1264,55 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
             )}
           </div>
         </div>
+
+        {/* ── Wizard-applied AI results: edit or accept ── */}
+        {aiBaseline?.wizard && (manpower.length > 0 || consumables.length > 0) && !wizardAiAccepted && (
+          <div
+            className="rounded-2xl px-4 py-3 mb-5 flex flex-wrap items-center justify-between gap-3 border shadow-xs"
+            style={{
+              background: dark ? 'rgba(16,185,129,0.10)' : '#ECFDF5',
+              borderColor: dark ? 'rgba(16,185,129,0.35)' : '#A7F3D0',
+            }}
+          >
+            <div className="min-w-0">
+              <p className="text-xs font-black" style={{ color: dark ? '#6EE7B7' : '#047857' }}>
+                AI results applied from the {aiBaseline.wizard.mode === 'ai' ? 'floor plan' : 'estimation'} analysis
+              </p>
+              <p className="text-[11px] font-semibold mt-0.5" style={{ color: dark ? '#A7F3D0' : '#065F46' }}>
+                {manpower.length} manpower roles · {consumables.length} material lines · {scopeOfWorks.length}{' '}
+                scope items are already in place — edit anything below, or accept them as-is.
+              </p>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  setWizardAiAccepted(true);
+                  try {
+                    localStorage.setItem(wizardAiAcceptedKey, '1');
+                  } catch {
+                    /* storage unavailable: acceptance stays session-only */
+                  }
+                  toast.success('AI results accepted. Press "Save Estimation" when you are ready.');
+                }}
+                className="px-4 py-2 rounded-xl text-[11px] font-black text-white bg-emerald-600 hover:bg-emerald-700 transition-colors cursor-pointer"
+              >
+                Accept as-is
+              </button>
+              <button
+                type="button"
+                onClick={() => setWizardAiAccepted(true)}
+                className="px-3 py-2 rounded-xl text-[11px] font-bold transition-colors cursor-pointer"
+                style={{
+                  color: dark ? '#A7F3D0' : '#065F46',
+                  border: `1px solid ${dark ? 'rgba(16,185,129,0.35)' : '#A7F3D0'}`,
+                }}
+              >
+                I'll edit
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* ── Estimation Summary Cards ── */}
         {(manpower.length > 0 || consumables.length > 0) && (
@@ -1651,245 +1412,6 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
           </div>
         )}
 
-        {/* ── Floor Plan Upload Section ── */}
-        <div style={{
-          ...sectionCard,
-          border: hasFiles ? (dark ? '1px solid #3B82F6' : '1px solid #2563EB') : sectionCard.border,
-          background: hasFiles ? (dark ? '#0D1527' : '#F8FAFC') : sectionCard.background,
-        }}>
-          <div className="flex items-center gap-2 mb-4">
-            <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-sm ${dark ? 'bg-blue-950/60 text-blue-400' : 'bg-blue-50 text-[#2563EB]'}`}>
-              <MapIcon className="w-5 h-5" />
-            </div>
-            <h2 className={`text-sm font-black uppercase tracking-tight ${dark ? 'text-slate-100' : 'text-slate-800'}`}>Floor Plan Upload</h2>
-            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${dark ? 'bg-blue-950/60 text-blue-300 border-blue-900/50' : 'bg-blue-50 text-blue-600 border-blue-100'}`}>
-              Powers AI Analysis
-            </span>
-          </div>
-
-          {/* AI Observations & Confidence */}
-          {aiObservations && (
-            <div className={`mb-4 px-4 py-3 rounded-xl border ${dark ? 'bg-[#0D1527] border-slate-800' : 'bg-blue-50 border-blue-100'}`}>
-              <div className="flex items-center justify-between mb-1">
-                <p className="text-[9px] font-bold uppercase tracking-wider text-blue-400">AI Floor Plan Observations</p>
-                {aiConfidence !== null && (
-                  <div className="flex items-center gap-2">
-                    <div className={`w-20 h-2 rounded-full overflow-hidden ${dark ? 'bg-slate-800' : 'bg-blue-200'}`}>
-                      <div
-                        className="h-full rounded-full transition-all duration-700"
-                        style={{
-                          width: `${aiConfidence}%`,
-                          background: aiConfidence >= 80 ? '#16A34A' : aiConfidence >= 60 ? '#D97706' : '#DC2626',
-                        }}
-                      />
-                    </div>
-                    <span
-                      className="text-[10px] font-black"
-                      style={{
-                        color: aiConfidence >= 80 ? '#16A34A' : aiConfidence >= 60 ? '#D97706' : '#DC2626',
-                      }}
-                    >
-                      {aiConfidence}% confident
-                    </span>
-                  </div>
-                )}
-              </div>
-              <p className={`text-xs font-semibold ${dark ? 'text-blue-200' : 'text-blue-800'}`}>{aiObservations}</p>
-            </div>
-          )}
-
-          {/* Error display */}
-          {aiError && (
-            <div className={`mb-4 px-4 py-3 rounded-xl border flex items-start gap-2 ${
-              dark ? 'bg-red-950/40 border-red-900/50' : 'bg-red-50 border-red-100'
-            }`}>
-              <ExclamationTriangle className="w-4 h-4 text-red-500 mt-0.5" />
-              <div>
-                <p className={`text-xs font-bold ${dark ? 'text-red-300' : 'text-red-700'}`}>{aiError}</p>
-                {aiError.includes('Settings') && (
-                  <p className="text-[11px] text-red-400 mt-1">Contact your administrator to add an API key.</p>
-                )}
-              </div>
-            </div>
-          )}
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
-            {/* Floor Plan Drawings Dropzone & List */}
-            <div>
-              <span className={`text-[10px] font-black uppercase tracking-wider mb-2 block ${dark ? 'text-blue-400' : 'text-blue-600'}`}>Floor Plan Drawings</span>
-              <div
-                onClick={() => fileInputRef.current?.click()}
-                onDragOver={e => { e.preventDefault(); setIsDragOver(true); }}
-                onDragLeave={() => setIsDragOver(false)}
-                onPaste={e => { e.preventDefault(); }}
-                onDrop={e => {
-                  e.preventDefault();
-                  setIsDragOver(false);
-                  if (e.dataTransfer.files.length) handleFilesSelect(e.dataTransfer.files);
-                }}
-                className="border-2 border-dashed rounded-2xl flex flex-col items-center justify-center py-8 cursor-pointer transition-all duration-200"
-                style={{
-                  borderColor: isDragOver ? '#2563EB' : hasFiles ? (dark ? '#3B82F6' : '#93C5FD') : (dark ? '#1E293B' : '#E2E8F0'),
-                  background: isDragOver ? (dark ? 'rgba(37,99,235,0.15)' : '#EFF6FF') : (dark ? '#0D1527' : '#F8FAFC'),
-                }}
-              >
-                {hasFiles ? <Plus className="w-8 h-8 text-slate-400 mb-3" /> : <MapIcon className="w-8 h-8 text-slate-400 mb-3" />}
-                <p className={`text-xs font-black ${dark ? 'text-slate-200' : 'text-slate-700'}`}>
-                  {hasFiles ? 'Add more floor plans' : 'Drop floor plans here'}
-                </p>
-                <p className="text-[10px] text-slate-400 mt-1">JPG, PNG or PDF · Multiple files</p>
-              </div>
-
-              {floorPlanPreviews.length > 0 && (
-                <div className="mt-4 space-y-2 max-h-[220px] overflow-y-auto pr-1">
-                  {floorPlanPreviews.map((fp, idx) => (
-                    <div
-                      key={idx}
-                      className={`flex items-center gap-3 px-4 py-2.5 rounded-xl border ${
-                        dark ? 'bg-[#0D1527] border-slate-800' : 'bg-white border-blue-100'
-                      }`}
-                    >
-                      {fp.url ? (
-                        <img src={fp.url} alt={fp.name} className={`w-10 h-8 object-contain rounded border shrink-0 ${
-                          dark ? 'border-slate-700 bg-slate-800' : 'border-slate-200 bg-slate-50'
-                        }`} />
-                      ) : (
-                        <div className={`w-10 h-8 rounded border flex items-center justify-center shrink-0 ${
-                          dark ? 'border-red-900/50 bg-red-950/40' : 'border-red-100 bg-red-50'
-                        }`}>
-                          <Document className="w-3.5 h-3.5 text-red-500" />
-                        </div>
-                      )}
-
-                      <div className="flex-1 min-w-0">
-                        <p className={`text-xs font-bold truncate ${dark ? 'text-slate-200' : 'text-slate-700'}`}>{fp.name}</p>
-                        <span
-                          className="text-[9px] font-extrabold px-1.5 py-0.5 rounded uppercase tracking-wide"
-                          style={fp.type === 'pdf'
-                            ? { background: dark ? '#7F1D1D40' : '#FEF2F2', color: dark ? '#F87171' : '#DC2626' }
-                            : { background: dark ? '#1E3A8A40' : '#EFF6FF', color: dark ? '#60A5FA' : '#2563EB' }
-                          }
-                        >
-                          {fp.type === 'pdf' ? 'PDF' : 'Image'}
-                        </span>
-                      </div>
-
-                      <button
-                        onClick={() => removeFile(idx)}
-                        className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-black transition-colors shrink-0 cursor-pointer ${
-                          dark ? 'bg-red-950/60 hover:bg-red-900 text-red-400' : 'bg-red-50 hover:bg-red-100 text-red-500'
-                        }`}
-                      >
-                        ×
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* TOR / Spec Documents Dropzone & List */}
-            <div>
-              <span className={`text-[10px] font-black uppercase tracking-wider mb-2 block ${dark ? 'text-blue-400' : 'text-blue-600'}`}>Terms of Reference (TOR) Specs (Optional)</span>
-              <div
-                onClick={() => torInputRef.current?.click()}
-                onDragOver={e => { e.preventDefault(); setIsTorDragOver(true); }}
-                onDragLeave={() => setIsTorDragOver(false)}
-                onPaste={e => { e.preventDefault(); }}
-                onDrop={e => {
-                  e.preventDefault();
-                  setIsTorDragOver(false);
-                  if (e.dataTransfer.files.length) handleTorSelect(e.dataTransfer.files);
-                }}
-                className="border-2 border-dashed rounded-2xl flex flex-col items-center justify-center py-8 cursor-pointer transition-all duration-200"
-                style={{
-                  borderColor: isTorDragOver ? '#2563EB' : torFiles.length > 0 ? (dark ? '#3B82F6' : '#93C5FD') : (dark ? '#1E293B' : '#E2E8F0'),
-                  background: isTorDragOver ? (dark ? 'rgba(37,99,235,0.15)' : '#EFF6FF') : (dark ? '#0D1527' : '#F8FAFC'),
-                }}
-              >
-                {torFiles.length > 0 ? <Plus className="w-8 h-8 text-slate-400 mb-3" /> : <Document className="w-8 h-8 text-slate-400 mb-3" />}
-                <p className={`text-xs font-black ${dark ? 'text-slate-200' : 'text-slate-700'}`}>
-                  {torFiles.length > 0 ? 'Add more TOR files' : 'Drop TOR / Spec files here'}
-                </p>
-                <p className="text-[10px] text-slate-400 mt-1">Excel, Word, Text or PDF · Multiple files</p>
-              </div>
-
-              {torFiles.length > 0 && (
-                <div className="mt-4 space-y-2 max-h-[220px] overflow-y-auto pr-1">
-                  {torFiles.map((tf, idx) => (
-                    <div
-                      key={idx}
-                      className={`flex items-center gap-3 px-4 py-2.5 rounded-xl border ${
-                        dark ? 'bg-[#0D1527] border-slate-800' : 'bg-white border-blue-100'
-                      }`}
-                    >
-                      <div className={`w-10 h-8 rounded border flex items-center justify-center shrink-0 ${
-                        dark ? 'border-blue-900/50 bg-blue-950/40 text-blue-400' : 'border-blue-100 bg-blue-50 text-blue-600'
-                      }`}>
-                        <Document className="w-3.5 h-3.5" />
-                      </div>
-
-                      <div className="flex-1 min-w-0">
-                        <p className={`text-xs font-bold truncate ${dark ? 'text-slate-200' : 'text-slate-700'}`}>{tf.name}</p>
-                        <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded uppercase tracking-wide ${
-                          dark ? 'bg-blue-950/60 text-blue-300' : 'bg-blue-100 text-blue-800'
-                        }`}>
-                          TOR Specs
-                        </span>
-                      </div>
-
-                      <button
-                        onClick={() => removeTorFile(idx)}
-                        className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-black transition-colors shrink-0 cursor-pointer ${
-                          dark ? 'bg-red-950/60 hover:bg-red-900 text-red-400' : 'bg-red-50 hover:bg-red-100 text-red-500'
-                        }`}
-                      >
-                        ×
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*,application/pdf,.pdf"
-            multiple
-            className="hidden"
-            onChange={e => {
-              if (e.target.files?.length) {
-                const files = Array.from(e.target.files);
-                e.target.value = '';
-                handleFilesSelect(files);
-              }
-            }}
-          />
-
-          <input
-            ref={torInputRef}
-            type="file"
-            accept=".xls,.xlsx,.csv,.docx,.doc,.txt,.pdf"
-            multiple
-            className="hidden"
-            onChange={e => {
-              if (e.target.files?.length) {
-                const files = Array.from(e.target.files);
-                e.target.value = '';
-                handleTorSelect(files);
-              }
-            }}
-          />
-
-          <p className="text-[10px] font-semibold text-slate-400 mt-3">
-            {hasFiles
-              ? <><Check className="w-3 h-3 inline text-emerald-500 mr-0.5" /> {floorPlanFiles.length} file{floorPlanFiles.length > 1 ? 's' : ''} ready {torFiles.length > 0 ? `(${torFiles.length} TOR spec file${torFiles.length > 1 ? 's' : ''} loaded)` : ''} — click "ANALYZE {floorPlanFiles.length} FLOOR PLAN{floorPlanFiles.length > 1 ? 'S' : ''}" to run AI scan</>
-              : 'Without a floor plan, "AI ESTIMATE SCAN" uses building type + floor count as a simulation instead'}
-          </p>
-        </div>
-
         {/* ── Manpower Section (Matches Reference Screenshot) ── */}
         <div style={sectionCard}>
           <div className="flex items-center justify-between mb-4">
@@ -1963,7 +1485,7 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
                 )}
                 {manpower.length === 0 && (
                   <tr><td colSpan={showPrices ? 7 : 5} className="py-8 text-center text-xs text-slate-400 font-semibold">
-                    Upload a floor plan and click "ANALYZE FLOOR PLAN", or click "AI ESTIMATE SCAN" to simulate, or add rows manually.
+                    No manpower rows yet — add rows manually, or run the AI Analysis in the estimation wizard.
                   </td></tr>
                 )}
               </tbody>
@@ -2119,9 +1641,7 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
 
         {/* ── Overall BOQ Estimation Summary ── */}
         {showPrices && (() => {
-          const totalLabor = manpower.reduce((sum, m) => sum + (m.totalCost || ((m.dayRate || 1000) * m.manDays)), 0);
-          const totalMaterials = consumables.reduce((sum, c) => sum + (c.totalPrice || 0), 0);
-          const totalFees = fees.reduce((sum, f) => sum + (f.amount || 0), 0);
+          const { totalLabor, totalMaterials, totalFees } = estimationStats;
           const grandTotal = totalLabor + totalMaterials + totalFees;
 
           return (
@@ -2235,7 +1755,7 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
                 {scopeOfWorks.length === 0 && (
                   <tr>
                     <td colSpan={showPrices ? 5 : 4} className="py-8 text-center text-xs text-slate-400 font-semibold">
-                      No scope of work items added yet. Click &quot;Add Scope Item&quot; or run &quot;AI ESTIMATE SCAN&quot; to auto-generate standard multi-line procedural steps.
+                      No scope of work items added yet. Click &quot;Add Scope Item&quot; to add one, or run the AI Analysis in the estimation wizard.
                     </td>
                   </tr>
                 )}
@@ -2450,134 +1970,6 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
         )}
 
       </main>
-
-      {/* AI Scan Modal */}
-      {isAiEstimating && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className={`w-full max-w-md rounded-3xl border shadow-2xl p-6 text-center overflow-hidden relative ${
-            dark ? 'bg-[#131B2E] border-[#1E293B]' : 'bg-white border-slate-200'
-          }`}>
-            {/* Close Button */}
-            <button
-              onClick={() => setIsAiEstimating(false)}
-              className={`absolute top-4 right-4 z-20 w-8 h-8 rounded-full flex items-center justify-center transition-colors cursor-pointer ${
-                dark
-                  ? 'bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white'
-                  : 'bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800'
-              }`}
-              title="Close modal"
-            >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-
-            <div className="absolute -top-12 -left-12 w-32 h-32 rounded-full blur-2xl opacity-40 animate-pulse" style={{ background: '#2563EB' }}></div>
-            <div className="absolute -bottom-12 -right-12 w-32 h-32 rounded-full blur-2xl opacity-30 animate-pulse" style={{ background: '#3B82F6' }}></div>
-
-            <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 border relative z-10 ${
-              dark ? 'bg-[#0D1527] border-[#1E293B]' : 'bg-slate-50 border-slate-200'
-            }`}>
-              <svg className="w-8 h-8 animate-pulse text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0 3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0-2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 0 0-2.455 2.456ZM16.894 17.788 16.5 19.5l-.394-1.712a3 3 0 0 0-2.394-2.394L12 15l1.712-.394a3 3 0 0 0 2.394-2.394L16.5 10.5l.394 1.712a3 3 0 0 0 2.394 2.394l1.712.394-1.712.394a3 3 0 0 0-2.394 2.394Z" />
-              </svg>
-            </div>
-
-            <h3 className={`text-sm font-black uppercase tracking-wider relative z-10 ${dark ? 'text-slate-100' : 'text-slate-800'}`}>AA2000 CONNECT</h3>
-            <p className="text-[10px] font-bold uppercase tracking-widest mt-0.5 relative z-10 text-blue-600">
-              {hasFiles ? 'Mistral Vision Floor Plan Analysis' : 'AI Neural Estimation Scan'}
-            </p>
-
-            {aiError ? (
-              <div className={`my-6 text-left border rounded-2xl p-4 relative z-10 ${
-                dark ? 'bg-red-950/40 border-red-900/50' : 'bg-red-50 border-red-200'
-              }`}>
-                <span className="text-[10px] font-black text-red-500 uppercase tracking-wider mb-1 block">Scan Failed</span>
-                <p className={`text-xs font-bold leading-relaxed mb-4 ${dark ? 'text-red-300' : 'text-red-700'}`}>{aiError}</p>
-                <button
-                  onClick={() => { setAiError(null); setIsAiEstimating(false); }}
-                  className="w-full py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-xl transition-all shadow-sm cursor-pointer"
-                >
-                  Dismiss & Close
-                </button>
-              </div>
-            ) : (
-              <>
-                {hasFiles && (
-                  <div className="mt-3 relative z-10 flex flex-wrap gap-1.5 justify-center">
-                    {floorPlanPreviews.map((fp, idx) => (
-                      <span key={idx} className={`text-[9px] font-bold px-2.5 py-1 rounded-full border ${
-                        dark
-                          ? 'bg-blue-950/60 text-blue-300 border-blue-900/50'
-                          : 'bg-blue-50 text-blue-600 border-blue-100'
-                      }`}>
-                        {fp.type === 'pdf' ? <Document className="w-4 h-4" /> : <MagnifyingGlass className="w-4 h-4" />} {fp.name.length > 20 ? fp.name.slice(0, 18) + '…' : fp.name}
-                      </span>
-                    ))}
-                  </div>
-                )}
-
-                <div className={`my-6 text-left space-y-2.5 border rounded-2xl p-4 relative z-10 ${
-                  dark ? 'bg-[#0D1527] border-[#1E293B]' : 'bg-slate-50 border-slate-200'
-                }`}>
-                  {AI_STEPS.map((stepText, idx) => {
-                    const isDone = aiStep > idx;
-                    const isCurrent = aiStep === idx;
-                    return (
-                      <div key={idx} className="flex items-center gap-2.5 text-[11px]">
-                        <span className="shrink-0 flex items-center justify-center">
-                          {isDone ? (
-                            <Check className="w-3 h-3 text-emerald-500" />
-                          ) : isCurrent ? (
-                            <span className="h-2 w-2 rounded-full animate-ping bg-blue-600" />
-                          ) : (
-                            <span className={`h-2 w-2 rounded-full ${dark ? 'bg-slate-700' : 'bg-slate-200'}`} />
-                          )}
-                        </span>
-                        <span className={`font-bold transition-colors ${
-                          isDone
-                            ? (dark ? 'text-slate-500' : 'text-slate-400')
-                            : isCurrent
-                            ? (dark ? 'text-slate-100' : 'text-slate-800')
-                            : (dark ? 'text-slate-600' : 'text-slate-300')
-                        }`}>
-                          {stepText}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                <div className={`w-full h-1.5 rounded-full overflow-hidden relative z-10 ${dark ? 'bg-slate-800' : 'bg-slate-100'}`}>
-                  <div
-                    className="h-full rounded-full transition-all duration-300 bg-blue-600"
-                    style={{
-                      width: `${(aiStep / AI_STEPS.length) * 100}%`,
-                    }}
-                  />
-                </div>
-
-                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-4 relative z-10">
-                  {aiStep < AI_STEPS.length
-                    ? (hasFiles ? 'Mistral Vision processing your floor plan...' : 'Processing Neural Model Data...')
-                    : 'Bill of quantities computed successfully'}
-                </p>
-
-                {aiStep >= AI_STEPS.length && (
-                  <div className="mt-4 relative z-10">
-                    <button
-                      onClick={() => setIsAiEstimating(false)}
-                      className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-black transition-all shadow-md shadow-blue-500/20 cursor-pointer animate-fade-in"
-                    >
-                      View Estimation Results
-                    </button>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-        </div>
-      )}
     </div>
   );
 }

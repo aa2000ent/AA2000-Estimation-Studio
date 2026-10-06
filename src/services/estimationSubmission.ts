@@ -37,6 +37,8 @@ export interface EstimationSubmissionInput {
   discrepancyJustifications?: unknown;
   /** Rendered report PDF; uploaded first and linked to the project as FilePath */
   reportPdf?: Blob | null;
+  /** DB status to write instead of the hub-status mapping (a wizard-created project starts at PENDING). */
+  statusOverride?: string;
 }
 
 export interface SubmissionResult {
@@ -178,7 +180,7 @@ export function buildEstimationPayload(input: EstimationSubmissionInput, estimat
     activity: project.name,
     objective: `Estimation for ${project.clientName} - ${project.locationName}`,
     amount: grandTotal,
-    status: toDbStatus(project.status),
+    status: input.statusOverride || toDbStatus(project.status),
     ...(estimationFileName ? { estimationFilePath: estimationFileName } : {}),
     estimationSnapshot: snapshot,
   };

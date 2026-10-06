@@ -11,7 +11,13 @@ import {
   PROJECT_SUBMITTED_EVENT,
   isSubmittedToDb,
   sweepSubmittedProjects,
+  submitEstimationToDB,
 } from './services/estimationSubmission';
+import {
+  buildWizardEstimationCache,
+  cacheWizardEstimation,
+} from './services/estimationWizardSnapshot';
+import type { EstimationFlowAiContext } from './services/estimationWizardSnapshot';
 
 import { useState, useCallback, useEffect, Component } from 'react';
 import { fetchAIScans, saveAIScan, updateAIScan, deleteAIScan } from './services/api/aiScans';
@@ -22,11 +28,12 @@ import ProjectDetail from './components/projects/ProjectDetail';
 import SurveyWizard from './components/surveys/SurveyWizard';
 import EstimationSummary from './components/estimation/EstimationSummary';
 import Settings from './components/settings/Settings';
-import CreateSurveyForm from './components/estimation/CreateSurveyForm';
+import CreateEstimationFlow from './components/estimation/CreateEstimationFlow';
 import SurveySummary from './components/reports/SurveySummary';
 import type { SurveyFormData } from './components/estimation/CreateSurveyForm';
 import type { Notification } from './components/notifications/NotificationBell';
 import { DEFAULT_TECHNICIANS } from './constants/roles';
+import { useToast } from './components/utils/Toast';
 import { ExclamationTriangle } from './utils/Icons';
 import InstructionScreen from './components/auth/InstructionScreen';
 
@@ -628,75 +635,109 @@ export default function App() {
     navigateToScreen('create-survey');
   }, [navigateToScreen]);
 
-  const handleSaveSurvey = useCallback((data: SurveyFormData) => {
-    const now = new Date().toISOString();
-    const newProject: Project = {
-      id: `project-${Date.now()}`,
-      name: data.projectName,
-      clientName: data.companyName,
-      clientContactName: data.clientName,
-      clientEmail: data.clientEmail,
-      clientPhone: data.clientContactNumber,
-      location: data.locationName,
-      locationName: data.locationName,
-      latitude: data.latitude,
-      longitude: data.longitude,
-      buildingType: data.buildingType,
-      floors: data.floors || undefined,
-      buildingLength: data.buildingLength || undefined,
-      buildingWidth: data.buildingWidth || undefined,
-      floorHeight: data.floorHeight || undefined,
-      systemTypes: data.systemTypes,
-      surveyScope: data.surveyScope,
-      status: 'Pending',
-      startDate: data.startDate,
-      assignedTechnicians: DEFAULT_TECHNICIANS,
-      createdAt: now,
-    };
+  const { toast } = useToast();
 
-    setPrefilledCompanyName('');
+  const handleSaveSurvey = useCallback(
+    async (
+      data: SurveyFormData,
+      ai?: EstimationFlowAiContext
+    ): Promise<{ success: boolean; message?: string }> => {
+      const now = new Date().toISOString();
+      const newProject: Project = {
+        id: `project-${Date.now()}`,
+        name: data.projectName,
+        clientName: data.companyName,
+        clientContactName: data.clientName,
+        clientEmail: data.clientEmail,
+        clientPhone: data.clientContactNumber,
+        location: data.locationName,
+        locationName: data.locationName,
+        latitude: data.latitude,
+        longitude: data.longitude,
+        buildingType: data.buildingType,
+        floors: data.floors || undefined,
+        buildingLength: data.buildingLength || undefined,
+        buildingWidth: data.buildingWidth || undefined,
+        floorHeight: data.floorHeight || undefined,
+        systemTypes: data.systemTypes,
+        surveyScope: data.surveyScope,
+        status: 'Pending',
+        startDate: data.startDate,
+        assignedTechnicians: DEFAULT_TECHNICIANS,
+        createdAt: now,
+      };
 
-    setProjects(prev => {
-      const clean = (s?: string) => (s || '').trim().toLowerCase();
-      const hasCompanyFolder = prev.some(
-        p => p.buildingType === 'Other' && (clean(p.name) === clean(data.companyName) || clean(p.clientName) === clean(data.companyName))
-      );
+      const cache = buildWizardEstimationCache(data, ai);
 
-      const additionalProjects: Project[] = [];
-      if (!hasCompanyFolder && data.companyName) {
-        const newCompanyFolder: Project = {
-          id: `company-${Date.now()}`,
-          name: data.companyName,
-          clientName: data.clientName || data.companyName,
-          clientEmail: data.clientEmail,
-          clientPhone: data.clientContactNumber,
-          location: data.locationName,
-          buildingType: 'Other',
-          status: 'Pending',
-          systemTypes: data.systemTypes || [],
-          assignedTechnicians: DEFAULT_TECHNICIANS,
-          createdAt: now,
-        };
-        additionalProjects.push(newCompanyFolder);
+      // Save straight to the database. The legacy site-survey wizard (Building Info +
+      // per-system steps) is intentionally skipped — this flow creates the estimation itself.
+      const result = await submitEstimationToDB({
+        project: newProject as any,
+        user: user as any,
+        manpower: cache.manpower,
+        consumables: cache.consumables,
+        fees: cache.fees,
+        scopeOfWorks: cache.scopeOfWorks,
+        constraints: cache.constraints,
+        priceTier: cache.priceTier,
+        aiBaseline: cache.aiBaseline,
+        technicianNotes: cache.technicianNotes,
+        discrepancyJustifications: cache.discrepancyJustifications,
+        statusOverride: 'PENDING',
+        reportPdf: null,
+      });
+
+      if (!result.success) {
+        // Nothing was written: the wizard keeps its state so the user can retry.
+        return { success: false, message: result.message || 'The database rejected this save.' };
       }
 
-      return [...prev, ...additionalProjects, newProject];
-    });
+      // Local copy for immediate visibility (the submit event also refreshes from the DB).
+      cacheWizardEstimation(newProject.id, cache);
+      setPrefilledCompanyName('');
 
-    setCurrentProject(newProject);
+      setProjects(prev => {
+        const clean = (s?: string) => (s || '').trim().toLowerCase();
+        const hasCompanyFolder = prev.some(
+          p => p.buildingType === 'Other' && (clean(p.name) === clean(data.companyName) || clean(p.clientName) === clean(data.companyName))
+        );
 
-    const targetSurveyType = data.systemTypes && data.systemTypes.length > 0
-      ? mapSystemToSurveyType(data.systemTypes[0])
-      : null;
+        const additionalProjects: Project[] = [];
+        if (!hasCompanyFolder && data.companyName) {
+          const newCompanyFolder: Project = {
+            id: `company-${Date.now()}`,
+            name: data.companyName,
+            clientName: data.clientName || data.companyName,
+            clientEmail: data.clientEmail,
+            clientPhone: data.clientContactNumber,
+            location: data.locationName,
+            buildingType: 'Other',
+            status: 'Pending',
+            systemTypes: data.systemTypes || [],
+            assignedTechnicians: DEFAULT_TECHNICIANS,
+            createdAt: now,
+          };
+          additionalProjects.push(newCompanyFolder);
+        }
 
-    if (targetSurveyType) {
-      setCurrentSurveyType(targetSurveyType);
-      navigateToScreen('survey');
-    } else {
-      setCurrentSurveyType(null);
-      navigateToScreen('project-detail');
-    }
-  }, [navigateToScreen]);
+        return [...prev, ...additionalProjects, newProject];
+      });
+
+      setCurrentProject(newProject);
+      // Cost Estimation opens straight away with the AI results (if any) already
+      // applied as editable rows from the local cache written above. History is
+      // cleared so Back never reopens the completed wizard.
+      setScreenHistory([]);
+      setScreen('estimation');
+      toast.success(
+        cache.aiBaseline
+          ? 'Estimation saved — AI results applied in Cost Estimation. Review, edit, then Save.'
+          : 'Estimation saved. Opening Cost Estimation…'
+      );
+      return { success: true };
+    },
+    [toast, user]
+  );
 
   const handleExitCreateSurvey = useCallback(() => {
     setPrefilledCompanyName('');
@@ -733,7 +774,7 @@ export default function App() {
             activeViewOverride="create-survey"
             onExitOverride={handleExitCreateSurvey}
             contentOverride={
-              <CreateSurveyForm
+              <CreateEstimationFlow
                 userRole={user.role}
                 onSave={handleSaveSurvey}
                 onExit={handleExitCreateSurvey}

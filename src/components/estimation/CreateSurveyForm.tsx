@@ -51,7 +51,7 @@ export interface SurveyFormData {
   startDate: string;
 }
 
-const SYSTEM_OPTIONS: { type: SystemType; label: string; icon: string; color: string; bg: string }[] = [
+export const SYSTEM_OPTIONS: { type: SystemType; label: string; icon: string; color: string; bg: string }[] = [
   { type: 'CCTV',                label: 'CCTV System',                        icon: '', color: '#1D4ED8', bg: '#EFF6FF' },
   { type: 'FDAS',                label: 'FDAS / Fire Alarm System',           icon: '', color: '#1D4ED8', bg: '#EFF6FF' },
   { type: 'ACCESS_CONTROL',      label: 'Access Control System',              icon: '', color: '#1D4ED8', bg: '#EFF6FF' },
