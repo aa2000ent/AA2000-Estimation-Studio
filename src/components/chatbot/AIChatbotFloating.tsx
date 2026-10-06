@@ -36,11 +36,13 @@ export interface ChatMessage {
 export interface AIChatbotFloatingProps {
   userRole?: string;
   activeProjectName?: string;
+  hideFloatingButton?: boolean;
 }
 
 export const AIChatbotFloating: React.FC<AIChatbotFloatingProps> = ({
   userRole = 'ESTIMATOR',
   activeProjectName,
+  hideFloatingButton = false,
 }) => {
   const [isOpen, setIsOpen] = useState<boolean>(false);
   const [messages, setMessages] = useState<ChatMessage[]>([
@@ -76,6 +78,15 @@ export const AIChatbotFloating: React.FC<AIChatbotFloatingProps> = ({
       setHasUnread(false);
     }
   }, [messages, isOpen]);
+
+  useEffect(() => {
+    const handleOpenAiChat = () => {
+      setIsOpen(true);
+      setHasUnread(false);
+    };
+    window.addEventListener('open-ai-chat', handleOpenAiChat);
+    return () => window.removeEventListener('open-ai-chat', handleOpenAiChat);
+  }, []);
 
   const handlePaste = async (e: React.ClipboardEvent) => {
     const items = e.clipboardData?.items;
