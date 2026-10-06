@@ -20,7 +20,6 @@ import EstimationHub from '../estimation/EstimationHub';
 import SavedBOQsView from '../floor-plan/SavedBOQsView';
 import SavedEstimationsView from '../estimation/SavedEstimationsView';
 import SavedFoldersView from '../ai-sidebar/SavedFoldersView';
-import { AIChatbotFloating } from '../chatbot/AIChatbotFloating';
 import SparklineCard from './cards/SparklineCard';
 
 interface Props {
@@ -71,6 +70,8 @@ const viewTitles: Record<string, string> = {
   notifications: 'All Notifications',
   'ai-reader': 'AI Document Reader',
   'estimation-hub': 'Estimation Hub',
+  'manual-estimation': 'Manual Estimation',
+  'ai-estimation': 'AI Estimation',
   'floor-plan': 'Floor Plan AI',
   'saved-folders': 'AI Scan Folders',
   'saved-boqs': 'Saved Floor Plan BOQs',
@@ -628,6 +629,7 @@ export default function Dashboard({
             projects={projects}
             aiScans={aiScans}
             isDark={isDark}
+            activeProjectName={selectedCompanyProject?.name}
             onNewSurvey={() => {
               setIsCompanyMode(false);
               setShowCreate(true);
@@ -666,6 +668,7 @@ export default function Dashboard({
                 projects={projects}
                 aiScans={aiScans}
                 isDark={isDark}
+                activeProjectName={selectedCompanyProject?.name}
                 onNewSurvey={() => {
                   setMobileMenuOpen(false);
                   setIsCompanyMode(false);
@@ -792,8 +795,14 @@ export default function Dashboard({
               <div style={{ display: view === 'floor-plan' ? undefined : 'none' }}>
                 <FloorPlanView userRole={user.role} />
               </div>
-              <div style={{ display: view === 'estimation-hub' ? undefined : 'none', height: view === 'estimation-hub' ? '100%' : undefined }}>
+              <div
+                style={{
+                  display: ['estimation-hub', 'manual-estimation', 'ai-estimation'].includes(view) ? undefined : 'none',
+                  height: ['estimation-hub', 'manual-estimation', 'ai-estimation'].includes(view) ? '100%' : undefined,
+                }}
+              >
                 <EstimationHub
+                  key={view}
                   user={user}
                   projects={projects}
                   onCreateProject={onCreateProject}
@@ -801,6 +810,7 @@ export default function Dashboard({
                   onSaveAIScan={onSaveAIScan}
                   onNavigateToCreate={onNavigateToCreate}
                   isDark={isDark}
+                  initialMode={view === 'manual-estimation' ? 'manual' : view === 'ai-estimation' ? 'ai' : undefined}
                 />
               </div>
               {selectedCompanyProject ? (
@@ -849,7 +859,7 @@ export default function Dashboard({
               onUpdateAIScan={onUpdateAIScan}
               isDark={isDark}
             />
-          ) : view === 'estimation-hub' ? null
+          ) : ['estimation-hub', 'manual-estimation', 'ai-estimation'].includes(view) ? null
           : view === 'approval' ? (
             <ApprovalPipeline
               user={user}
@@ -1420,7 +1430,6 @@ export default function Dashboard({
             </div>
           </div>
         )}
-        <AIChatbotFloating userRole={user?.role} activeProjectName={selectedCompanyProject?.name} />
       </main>
 
     </div>

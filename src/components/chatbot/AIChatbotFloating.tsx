@@ -36,15 +36,20 @@ export interface ChatMessage {
 export interface AIChatbotFloatingProps {
   userRole?: string;
   activeProjectName?: string;
-  hideFloatingButton?: boolean;
+  presentation?: 'floating' | 'sidebar';
+  isOpen?: boolean;
+  onClose?: () => void;
 }
 
 export const AIChatbotFloating: React.FC<AIChatbotFloatingProps> = ({
   userRole = 'ESTIMATOR',
   activeProjectName,
-  hideFloatingButton = false,
+  presentation = 'floating',
+  isOpen: sidebarOpen = false,
+  onClose,
 }) => {
-  const [isOpen, setIsOpen] = useState<boolean>(false);
+  const [floatingOpen, setFloatingOpen] = useState<boolean>(false);
+  const isOpen = presentation === 'sidebar' ? sidebarOpen : floatingOpen;
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: 'init-1',
@@ -81,12 +86,12 @@ export const AIChatbotFloating: React.FC<AIChatbotFloatingProps> = ({
 
   useEffect(() => {
     const handleOpenAiChat = () => {
-      setIsOpen(true);
+      if (presentation === 'floating') setFloatingOpen(true);
       setHasUnread(false);
     };
     window.addEventListener('open-ai-chat', handleOpenAiChat);
     return () => window.removeEventListener('open-ai-chat', handleOpenAiChat);
-  }, []);
+  }, [presentation]);
 
   const handlePaste = async (e: React.ClipboardEvent) => {
     const items = e.clipboardData?.items;
@@ -502,7 +507,7 @@ CONVERSATION & RESPONSE RULES:
 
   return (
     <>
-      {/* Floating Action Button */}
+      {presentation === 'floating' && (
       <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end">
         {!isOpen && hasUnread && (
           <div className="mb-2 px-3 py-1 bg-amber-500 text-white text-xs font-semibold rounded-full shadow-lg animate-bounce flex items-center gap-1.5">
@@ -513,7 +518,7 @@ CONVERSATION & RESPONSE RULES:
 
         <button
           onClick={() => {
-            setIsOpen(!isOpen);
+            setFloatingOpen(!isOpen);
             setHasUnread(false);
           }}
           className={`group relative flex items-center justify-center p-4 rounded-full shadow-2xl transition-all duration-300 transform hover:scale-105 ${
@@ -562,10 +567,13 @@ CONVERSATION & RESPONSE RULES:
           )}
         </button>
       </div>
+      )}
 
-      {/* Floating Chat Modal Panel */}
       {isOpen && (
-        <div className="fixed bottom-24 right-4 md:right-6 z-50 w-[calc(100vw-2rem)] md:w-[460px] h-[640px] max-h-[85vh] bg-slate-900/95 backdrop-blur-xl border border-slate-700/60 rounded-2xl shadow-2xl flex flex-col overflow-hidden text-slate-100 animate-in fade-in slide-in-from-bottom-5 duration-200">
+        <div className={presentation === 'sidebar'
+          ? 'relative w-full h-full min-h-0 bg-slate-900 flex flex-col overflow-hidden text-slate-100'
+          : 'fixed bottom-24 right-4 md:right-6 z-50 w-[calc(100vw-2rem)] md:w-[460px] h-[640px] max-h-[85vh] bg-slate-900/95 backdrop-blur-xl border border-slate-700/60 rounded-2xl shadow-2xl flex flex-col overflow-hidden text-slate-100 animate-in fade-in slide-in-from-bottom-5 duration-200'
+        }>
           {/* Header */}
           <div className="px-5 py-4 bg-gradient-to-r from-slate-900 via-blue-950 to-slate-900 border-b border-slate-800 flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -605,7 +613,11 @@ CONVERSATION & RESPONSE RULES:
             </div>
 
             <button
-              onClick={() => setIsOpen(false)}
+              onClick={() => {
+                if (presentation === 'sidebar') onClose?.();
+                else setFloatingOpen(false);
+              }}
+              aria-label="Close AI Assistant"
               className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors"
             >
               <svg

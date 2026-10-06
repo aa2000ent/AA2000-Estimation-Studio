@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import type { User, AIScanGroup, Project } from '../../App';
 import TORComparisonView from '../ai-sidebar/TORComparisonView';
 
@@ -10,11 +10,16 @@ interface Props {
   onSaveAIScan?: (scan: AIScanGroup) => Promise<void>;
   onNavigateToCreate?: () => void;
   isDark?: boolean;
+  initialMode?: 'manual' | 'ai';
 }
 
-export default function EstimationHub({ user, onNavigateToCreate, onSaveAIScan, isDark }: Props) {
-  const [selectedMode, setSelectedMode] = useState<'manual' | 'ai' | null>(null);
+export default function EstimationHub({ user, onNavigateToCreate, onSaveAIScan, isDark, initialMode }: Props) {
+  const [selectedMode, setSelectedMode] = useState<'manual' | 'ai' | null>(initialMode ?? null);
   const [, setIsDocScanning] = useState(false);
+
+  useEffect(() => {
+    setSelectedMode(initialMode ?? null);
+  }, [initialMode]);
 
   return (
     <div className="flex flex-col h-full min-h-screen p-6 max-w-7xl mx-auto space-y-6">

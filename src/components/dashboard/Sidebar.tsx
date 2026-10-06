@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import type { User, Project, AIScanGroup } from '../../App';
 import type { Notification } from '../notifications/NotificationBell';
 import { getRoleTheme } from '../../utils/RoleTheme';
 import { getSavedBOQCount } from '../floor-plan/SavedBOQsView';
+import { AIChatbotFloating } from '../chatbot/AIChatbotFloating';
 
 export type View =
   | 'home' | 'dashboard' | 'workspace' | 'create-survey'
@@ -11,7 +13,8 @@ export type View =
   | 'ongoing' | 'upcoming' | 'missing-notif' | 'approval-notif' | 'finalize-notif'
   | 'notifications' | 'calendar' | 'floor-plan'
   | 'cctv' | 'fire_alarm' | 'fire_protection' | 'access_control' | 'burglar_alarm' | 'other'
-  | 'ai-reader' | 'estimation-hub' | 'saved-folders' | 'saved-boqs' | 'saved-estimations';
+  | 'ai-reader' | 'ai-chat' | 'estimation-hub' | 'manual-estimation' | 'ai-estimation'
+  | 'saved-folders' | 'saved-boqs' | 'saved-estimations';
 
 export interface Props {
   user: User;
@@ -23,12 +26,33 @@ export interface Props {
   onNewSurvey?: () => void;
   isMobile?: boolean;
   isDark?: boolean;
+  activeProjectName?: string;
 }
 
 const navIcons: Record<string, React.FC<{ size?: number; className?: string }>> = {
   dashboard: ({ size = 19, className = '' }) => (
     <svg width={size} height={size} className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
       <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" />
+    </svg>
+  ),
+  'ai-chat': ({ size = 19, className = '' }) => (
+    <svg width={size} height={size} className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M8.625 9.75h6.75m-6.75 3h4.5m-9 7.5 1.875-3.75A8.25 8.25 0 1112 20.25H4.125z" />
+    </svg>
+  ),
+  'create-survey': ({ size = 19, className = '' }) => (
+    <svg width={size} height={size} className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+    </svg>
+  ),
+  'manual-estimation': ({ size = 19, className = '' }) => (
+    <svg width={size} height={size} className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414A1 1 0 0119 9.414V19a2 2 0 01-2 2z" />
+    </svg>
+  ),
+  'ai-estimation': ({ size = 19, className = '' }) => (
+    <svg width={size} height={size} className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
     </svg>
   ),
   calendar: ({ size = 19, className = '' }) => (
@@ -98,6 +122,7 @@ export default function Sidebar({
   onNewSurvey,
   isMobile = false,
   isDark = false,
+  activeProjectName,
 }: Props) {
   const isAdmin = user.role === 'ADMIN';
   const isAccounting = user.role === 'ACCOUNTING';
@@ -107,6 +132,9 @@ export default function Sidebar({
   const [isPinned, setIsPinned] = useState(true);
   const [isHovered, setIsHovered] = useState(false);
   const [savedBOQCount, setSavedBOQCount] = useState(0);
+  const [isAiChatOpen, setIsAiChatOpen] = useState(false);
+  const [aiChatWidth, setAiChatWidth] = useState(480);
+  const resizeStartRef = React.useRef<{ pointerId: number; x: number; width: number } | null>(null);
 
   // Sidebar is expanded if pinned OR hovered
   const isExpanded = !isMobile && (isPinned || isHovered);
@@ -121,6 +149,7 @@ export default function Sidebar({
 
   const canApprove = isAdmin || isAccounting;
   const canUseEstimationHub = isAdmin || isAccounting || user.role === 'TECHNICIAN';
+  const canCreateSurvey = isAdmin || isAccounting;
   const canViewSavedBOQs = isAdmin || isAccounting;
 
   const isNotificationView = [
@@ -178,7 +207,12 @@ export default function Sidebar({
         {
           label: 'TOOLS',
           items: [
-            { view: 'estimation-hub' as View, label: 'Estimation Hub', accent: '#2563EB' },
+            ...(canCreateSurvey
+              ? [{ view: 'create-survey' as View, label: 'New Survey', accent: '#2563EB' }]
+              : []),
+            { view: 'manual-estimation' as View, label: 'Manual Estimation', accent: '#2563EB' },
+            { view: 'ai-estimation' as View, label: 'AI Estimation', accent: '#D97706' },
+            { view: 'ai-chat' as View, label: 'AI Assistant', accent: '#2563EB' },
           ],
         },
       ]
@@ -195,6 +229,7 @@ export default function Sidebar({
   ];
 
   return (
+    <>
     <aside
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
@@ -263,27 +298,6 @@ export default function Sidebar({
           )}
         </div>
 
-        {/* ── Action Button: New Survey (Admin only) ── */}
-        {isAdmin && (
-          <div className="p-3 pb-1">
-            <button
-              onClick={() => {
-                if (onNewSurvey) onNewSurvey();
-                else onNavigate('create-survey');
-              }}
-              title="New Survey"
-              className={`w-full flex items-center justify-center gap-2 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-md shadow-blue-500/20 transition-all cursor-pointer ${
-                !isExpanded ? 'h-10 w-10 p-0 rounded-xl mx-auto' : 'py-2.5 px-4'
-              }`}
-            >
-              <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-              </svg>
-              {isExpanded && <span>New Survey</span>}
-            </button>
-          </div>
-        )}
-
         {/* ── Navigation Groups List ── */}
         <nav className="flex-1 px-3 py-3 space-y-5 overflow-y-auto no-scrollbar">
           {navGroups.map((group, groupIdx) => (
@@ -297,7 +311,7 @@ export default function Sidebar({
               <div className="space-y-1">
                 {group.items.map(item => {
                   const isSubViewActive = ['cctv', 'fire_alarm', 'fire_protection', 'access_control', 'burglar_alarm', 'other'].includes(currentView);
-                  const active = currentView === item.view || (item.view === 'dashboard' && isSubViewActive);
+                  const active = (item.view === 'ai-chat' ? isAiChatOpen : currentView === item.view) || (item.view === 'dashboard' && isSubViewActive);
                   const Icon = navIcons[item.view] || navIcons.dashboard;
                   const unreadCount = getUnreadCount(item.view);
                   const savedCount = item._count ?? 0;
@@ -309,7 +323,18 @@ export default function Sidebar({
                       <button
                         key={item.view}
                         type="button"
-                        onClick={() => onNavigate(item.view)}
+                        onClick={() => {
+                          if (item.view === 'ai-chat') setIsAiChatOpen(true);
+                          else if (item.view === 'create-survey') {
+                            setIsAiChatOpen(false);
+                            if (onNewSurvey) onNewSurvey();
+                            else onNavigate('create-survey');
+                          }
+                          else {
+                            setIsAiChatOpen(false);
+                            onNavigate(item.view);
+                          }
+                        }}
                         title={item.label}
                         className={`w-10 h-10 rounded-2xl flex items-center justify-center mx-auto transition-all cursor-pointer relative group ${
                           active
@@ -336,7 +361,18 @@ export default function Sidebar({
                     <button
                       key={item.view}
                       type="button"
-                      onClick={() => onNavigate(item.view)}
+                      onClick={() => {
+                        if (item.view === 'ai-chat') setIsAiChatOpen(true);
+                        else if (item.view === 'create-survey') {
+                          setIsAiChatOpen(false);
+                          if (onNewSurvey) onNewSurvey();
+                          else onNavigate('create-survey');
+                        }
+                        else {
+                          setIsAiChatOpen(false);
+                          onNavigate(item.view);
+                        }
+                      }}
                       className={`w-full flex items-center justify-between px-3.5 py-3 rounded-2xl text-xs font-bold transition-all cursor-pointer group ${
                         active
                           ? isDark
@@ -367,5 +403,64 @@ export default function Sidebar({
 
       </div>
     </aside>
+    {createPortal(
+      <div className={`fixed inset-y-0 right-0 z-[60] ${isAiChatOpen ? '' : 'hidden'}`}>
+        <div
+          role="separator"
+          aria-label="Resize AI Assistant panel"
+          aria-orientation="vertical"
+          aria-valuemin={320}
+          aria-valuemax={Math.max(320, window.innerWidth - 320)}
+          aria-valuenow={aiChatWidth}
+          tabIndex={0}
+          onKeyDown={event => {
+            if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+            event.preventDefault();
+            const direction = event.key === 'ArrowLeft' ? 1 : -1;
+            const maxWidth = Math.max(320, window.innerWidth - 320);
+            setAiChatWidth(width => Math.max(320, Math.min(maxWidth, width + direction * 20)));
+          }}
+          onPointerDown={event => {
+            event.preventDefault();
+            event.currentTarget.setPointerCapture(event.pointerId);
+            resizeStartRef.current = {
+              pointerId: event.pointerId,
+              x: event.clientX,
+              width: aiChatWidth,
+            };
+          }}
+          onPointerMove={event => {
+            const start = resizeStartRef.current;
+            if (!start || start.pointerId !== event.pointerId) return;
+            const maxWidth = Math.max(320, window.innerWidth - 320);
+            setAiChatWidth(Math.max(320, Math.min(maxWidth, start.width + start.x - event.clientX)));
+          }}
+          onPointerUp={event => {
+            if (resizeStartRef.current?.pointerId === event.pointerId) {
+              resizeStartRef.current = null;
+              event.currentTarget.releasePointerCapture(event.pointerId);
+            }
+          }}
+          onPointerCancel={() => { resizeStartRef.current = null; }}
+          className="absolute inset-y-0 left-0 z-10 flex w-3 -translate-x-1/2 cursor-col-resize touch-none items-center justify-center outline-none"
+        >
+          <span className="h-12 w-1 rounded-full bg-slate-500/40 transition-colors hover:bg-blue-400" />
+        </div>
+        <div
+          className="h-full max-w-[100vw] border-l border-slate-700 shadow-2xl"
+          style={{ width: `min(${aiChatWidth}px, 100vw)` }}
+        >
+          <AIChatbotFloating
+            presentation="sidebar"
+            isOpen={isAiChatOpen}
+            onClose={() => setIsAiChatOpen(false)}
+            userRole={user.role}
+            activeProjectName={activeProjectName}
+          />
+        </div>
+      </div>,
+      document.body,
+    )}
+    </>
   );
 }
