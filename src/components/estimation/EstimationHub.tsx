@@ -13,43 +13,55 @@ interface Props {
 }
 
 export default function EstimationHub({ user, onNavigateToCreate, onSaveAIScan, isDark }: Props) {
-  const isAdmin = user?.role === 'ADMIN';
-  const isTechnician = user?.role === 'TECHNICIAN';
-
-  const [activeTab, setActiveTab] = useState<'manual' | 'document'>(
-    (isAdmin || isTechnician) ? 'manual' : 'document'
-  );
+  const [activeTab, setActiveTab] = useState<'manual' | 'document'>('manual');
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState<'Newest' | 'Oldest'>('Newest');
   const [, setIsDocScanning] = useState(false);
 
-  useEffect(() => {
-    if (!isAdmin && !isTechnician && activeTab !== 'document') {
-      setActiveTab('document');
-    }
-  }, [isAdmin, isTechnician, activeTab]);
-
   return (
     <div className="flex flex-col h-full min-h-screen p-6 max-w-7xl mx-auto space-y-6">
+      {/* Top Title Bar */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-2xl bg-blue-600 flex items-center justify-center text-white shrink-0 shadow-xs">
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
+            </svg>
+          </div>
+          <div>
+            <h1 className="text-xl sm:text-2xl font-black tracking-tight text-slate-900 dark:text-white leading-tight">
+              Estimation Hub
+            </h1>
+            <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mt-0.5">
+              2 METHODS • MANUAL ESTIMATION • AI DOCUMENT READER
+            </p>
+          </div>
+        </div>
+
+        {/* AI-Powered Badge */}
+        <div className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#131B2E] text-slate-700 dark:text-slate-300 shadow-2xs">
+          <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block animate-pulse" />
+          <span>AI-Powered</span>
+        </div>
+      </div>
+
       {/* Top Header Pill Container */}
       <div className="bg-white dark:bg-[#131B2E] border border-slate-200 dark:border-slate-800 rounded-3xl p-3 sm:p-4 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4">
         {/* Tab Pills */}
         <div className="flex items-center gap-2">
-          {(isAdmin || isTechnician) && (
-            <button
-              onClick={() => setActiveTab('manual')}
-              className={`flex items-center gap-2 px-6 py-2.5 rounded-full text-xs font-extrabold transition-all cursor-pointer ${
-                activeTab === 'manual'
-                  ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
-                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
-              }`}
-            >
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
-              </svg>
-              <span>Manual</span>
-            </button>
-          )}
+          <button
+            onClick={() => setActiveTab('manual')}
+            className={`flex items-center gap-2 px-6 py-2.5 rounded-full text-xs font-extrabold transition-all cursor-pointer ${
+              activeTab === 'manual'
+                ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
+                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+            }`}
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
+            </svg>
+            <span>Manual</span>
+          </button>
 
           <button
             onClick={() => setActiveTab('document')}
@@ -67,7 +79,7 @@ export default function EstimationHub({ user, onNavigateToCreate, onSaveAIScan, 
         </div>
 
         {/* Separator + Start Manual Estimation Wizard Action Button */}
-        {(isAdmin || isTechnician) && onNavigateToCreate && (
+        {onNavigateToCreate && (
           <div className="flex items-center gap-3">
             <div className="hidden sm:block h-6 w-px bg-slate-200 dark:bg-slate-700" />
             <button
@@ -79,6 +91,7 @@ export default function EstimationHub({ user, onNavigateToCreate, onSaveAIScan, 
             </button>
           </div>
         )}
+
       </div>
 
       {/* Main Container */}
