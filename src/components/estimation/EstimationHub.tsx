@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import type { User, AIScanGroup, Project } from '../../App';
+import type { User, AIScanGroup, Project, SurveyType } from '../../App';
 import type { SurveyFormData, SystemType } from './CreateSurveyForm';
 import TORComparisonView from '../ai-sidebar/TORComparisonView';
+import SurveyWizard from '../surveys/SurveyWizard';
 
 interface Props {
   user?: User;
@@ -14,9 +15,12 @@ interface Props {
   initialMode?: 'manual' | 'ai';
 }
 
-export default function EstimationHub({ user, onNavigateToCreate, onSaveAIScan, initialMode }: Props) {
+export default function EstimationHub({ user, onNavigateToCreate, onSaveAIScan, initialMode, isDark }: Props) {
   const [selectedMode, setSelectedMode] = useState<'manual' | 'ai' | null>(initialMode ?? null);
   const [activeManualStep, setActiveManualStep] = useState<number | null>(null);
+  const [isSurveyWizardActive, setIsSurveyWizardActive] = useState(false);
+  const [isSurveyCompleted, setIsSurveyCompleted] = useState(false);
+
   const [projectDetails, setProjectDetails] = useState({
     companyName: '',
     projectName: '',
@@ -67,6 +71,29 @@ export default function EstimationHub({ user, onNavigateToCreate, onSaveAIScan, 
     { key: 'locationName', label: 'Location Name / Area', placeholder: 'e.g. Makati City, Manila' },
     { key: 'startDate', label: 'Survey Schedule Date', placeholder: '', type: 'date' },
   ];
+
+  const isStep1Complete = projectDetails.companyName.trim() !== '' && projectDetails.projectName.trim() !== '' && projectDetails.locationName.trim() !== '';
+  const isStep2Complete = systemTypes.length > 0;
+  const isStep3Complete = isSurveyCompleted;
+
+  const currentSurveyType: SurveyType =
+    systemTypes.includes('CCTV') ? 'CCTV' :
+    systemTypes.includes('FDAS') ? 'FIRE_ALARM' :
+    systemTypes.includes('ACCESS_CONTROL') ? 'ACCESS_CONTROL' :
+    systemTypes.includes('BURGLAR_ALARM') ? 'BURGLAR_ALARM' :
+    systemTypes.includes('FIRE_PROTECTION') ? 'FIRE_PROTECTION' : 'OTHER';
+
+  const handleStartWizardFlow = () => {
+    setIsSurveyWizardActive(true);
+    setActiveManualStep(3);
+  };
+
+  const handleSurveyComplete = () => {
+    setIsSurveyWizardActive(false);
+    setIsSurveyCompleted(true);
+    setActiveManualStep(3);
+  };
+
   const continueToSurvey = () => onNavigateToCreate?.({
     ...projectDetails,
     systemTypes,
@@ -84,7 +111,8 @@ export default function EstimationHub({ user, onNavigateToCreate, onSaveAIScan, 
     <div className="min-h-full w-full p-4 sm:p-6">
       {selectedMode === 'manual' ? (
         <div className="w-full space-y-6">
-          <header className="flex flex-col gap-4 border-b border-slate-200 pb-5 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between">
+          {/* Header without top right button */}
+          <header className="flex flex-col gap-2 border-b border-slate-200 pb-5 dark:border-slate-800">
             <div className="flex min-w-0 items-start gap-3">
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-xs">
                 <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -100,49 +128,91 @@ export default function EstimationHub({ user, onNavigateToCreate, onSaveAIScan, 
                 </p>
               </div>
             </div>
+          </header>
 
-            {onNavigateToCreate && (
+          {/* Unclickable Progress Guide Cards */}
+          <section aria-label="Manual estimation progress guide" className="grid w-full min-w-0 grid-cols-3 gap-3 sm:gap-4 select-none">
+            {[
+              { number: 1, title: 'Project Details', description: 'Enter building type, location, floors, and assign technicians.', isComplete: isStep1Complete, isActive: activeManualStep === 1 },
+              { number: 2, title: 'System Selection', description: 'Choose which security systems to include in the estimation.', isComplete: isStep2Complete, isActive: activeManualStep === 2 },
+              { number: 3, title: 'Generate BOQ', description: 'Review and export the complete Bill of Quantities.', isComplete: isStep3Complete, isActive: activeManualStep === 3 || isSurveyWizardActive },
+            ].map(step => (
+              <div
+                key={step.number}
+                className={`flex min-h-24 min-w-0 items-start gap-2 rounded-2xl border p-3 text-left transition-all dark:bg-blue-950/20 sm:min-h-28 sm:gap-4 sm:p-5 ${
+                  step.isComplete
+                    ? 'border-emerald-300 bg-emerald-50/50 dark:border-emerald-800/80 dark:bg-emerald-950/30'
+                    : step.isActive
+                    ? 'border-blue-500 bg-blue-50/70 dark:border-blue-500 dark:bg-blue-950/40'
+                    : 'border-blue-200/80 bg-blue-50/20 dark:border-blue-900/50'
+                }`}
+              >
+                <span
+                  className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-black text-white shadow-xs transition-colors sm:h-10 sm:w-10 sm:text-base ${
+                    step.isComplete
+                      ? 'bg-emerald-500'
+                      : 'bg-blue-600'
+                  }`}
+                >
+                  {step.isComplete ? '✓' : step.number}
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-xs font-bold text-slate-900 dark:text-white sm:text-sm">{step.title}</span>
+                  <span className={`mt-1 block text-[11px] font-medium leading-relaxed sm:text-xs ${
+                    step.isComplete ? 'text-emerald-700 dark:text-emerald-300' : 'text-blue-600 dark:text-blue-400'
+                  }`}>{step.description}</span>
+                </span>
+              </div>
+            ))}
+          </section>
+
+          {/* When to use manual estimation card */}
+          <section className="rounded-2xl border border-blue-100 bg-slate-50/50 p-5 dark:border-slate-800 dark:bg-slate-900/40 sm:p-6 space-y-4">
+            <div className="flex items-center gap-2.5">
+              <svg className="h-6 w-6 shrink-0 text-blue-600 dark:text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 18v-5.25m0 0a6.01 6.01 0 0 0 1.5-.189m-1.5.189a6.01 6.01 0 0 1-1.5-.189m3.75 7.478a12.06 12.06 0 0 1-4.5 0m3.75 2.383a14.406 14.406 0 0 1-3 0M14.25 18v.192c0 .484-.332.893-.81 1.012a12.036 12.036 0 0 1-2.88 0c-.478-.119-.81-.528-.81-1.012V18m5.25-10.875a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Z" />
+              </svg>
+              <h2 className="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-white">
+                When to use manual estimation
+              </h2>
+            </div>
+
+            <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {[
+                'You have a site survey report with room-by-room breakdowns',
+                'Client has provided verbal requirements without floor plans',
+                'You need full control over quantities and specifications',
+                'Verifying or adjusting AI-generated estimates',
+              ].map(item => (
+                <li key={item} className="flex items-start gap-3">
+                  <svg className="mt-0.5 h-4 w-4 shrink-0 text-blue-600 dark:text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                  </svg>
+                  <span className="text-xs font-medium leading-relaxed text-slate-600 dark:text-slate-300">{item}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+
+          {/* Start Manual Estimation Button (Transferred below When to Use card) */}
+          {activeManualStep === null && (
+            <div className="pt-1 flex justify-start">
               <button
                 type="button"
-                onClick={() => onNavigateToCreate()}
-                className="inline-flex shrink-0 items-center justify-center gap-2 self-start rounded-full border border-blue-500 px-5 py-2.5 text-xs font-bold text-blue-600 shadow-2xs transition-colors hover:bg-blue-50 dark:border-blue-400 dark:text-blue-400 dark:hover:bg-blue-950/50 sm:self-center"
+                onClick={() => setActiveManualStep(1)}
+                className="inline-flex items-center gap-2 rounded-full border border-blue-500 px-6 py-2.5 text-xs font-bold text-blue-600 dark:text-blue-400 dark:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/50 transition-colors shadow-2xs cursor-pointer"
               >
                 <span className="text-sm font-black">+</span>
                 <span>Start Manual Estimation</span>
               </button>
-            )}
-          </header>
+            </div>
+          )}
 
-          <section aria-label="Manual estimation steps" className="grid w-full min-w-0 grid-cols-3 gap-3 sm:gap-4">
-            {[
-              { number: 1, title: 'Project Details', description: 'Enter building type, location, floors, and assign technicians.' },
-              { number: 2, title: 'System Selection', description: 'Choose which security systems to include in the estimation.' },
-              { number: 3, title: 'Generate BOQ', description: 'Review and export the complete Bill of Quantities.' },
-            ].map(step => (
-              <button
-                key={step.number}
-                type="button"
-                aria-pressed={activeManualStep === step.number}
-                onClick={() => setActiveManualStep(step.number)}
-                className={`flex min-h-24 min-w-0 items-start gap-2 rounded-lg border p-3 text-left transition-colors dark:bg-blue-950/20 sm:min-h-28 sm:gap-4 sm:p-5 ${
-                  activeManualStep === step.number
-                    ? 'border-blue-500 bg-blue-50 dark:border-blue-500'
-                    : 'border-blue-200/80 bg-blue-50/20 hover:border-blue-400 dark:border-blue-900/50'
-                }`}
-              >
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-600 text-sm font-black text-white shadow-xs sm:h-10 sm:w-10 sm:text-base">{step.number}</span>
-                <span className="min-w-0">
-                  <span className="block text-xs font-bold text-slate-900 dark:text-white sm:text-sm">{step.title}</span>
-                  <span className="mt-1 block text-[11px] font-medium leading-relaxed text-blue-600 dark:text-blue-400 sm:text-xs">{step.description}</span>
-                </span>
-              </button>
-            ))}
-          </section>
-
+          {/* Inline Form Sections rendered below the progress cards when active */}
           {activeManualStep === 1 && (
-            <section className="rounded-xl border border-blue-100 bg-white p-4 dark:border-slate-800 dark:bg-[#131B2E] sm:p-6">
+            <section className="rounded-2xl border border-blue-100 bg-white p-4 dark:border-slate-800 dark:bg-[#131B2E] sm:p-6 shadow-xs animate-fade-in-up">
               <h2 className="mb-5 text-[10px] font-bold uppercase tracking-wider text-blue-700 dark:text-blue-400">
-                Company &amp; Project Details
+                Step 1: Company &amp; Project Details
               </h2>
               <div className="grid grid-cols-1 gap-x-4 gap-y-5 sm:grid-cols-2">
                 {detailFields.map(field => (
@@ -164,18 +234,18 @@ export default function EstimationHub({ user, onNavigateToCreate, onSaveAIScan, 
                 <button
                   type="button"
                   onClick={() => setActiveManualStep(2)}
-                  className="rounded-xl bg-blue-700 px-6 py-3 text-xs font-bold text-white transition-colors hover:bg-blue-800"
+                  className="rounded-xl bg-blue-600 px-6 py-3 text-xs font-bold text-white transition-all hover:bg-blue-700 shadow-md shadow-blue-500/20 cursor-pointer"
                 >
-                  Continue to System Selection
+                  Continue to System Selection →
                 </button>
               </div>
             </section>
           )}
 
           {activeManualStep === 2 && (
-            <section className="rounded-xl border border-blue-100 bg-white p-4 dark:border-slate-800 dark:bg-[#131B2E] sm:p-6">
+            <section className="rounded-2xl border border-blue-100 bg-white p-4 dark:border-slate-800 dark:bg-[#131B2E] sm:p-6 shadow-xs animate-fade-in-up">
               <h2 className="mb-3 text-[10px] font-bold uppercase tracking-wider text-blue-700 dark:text-blue-400">
-                System Types &amp; Notes
+                Step 2: System Types &amp; Notes
               </h2>
               <p className="mb-5 text-xs font-semibold text-slate-400">
                 Select all systems that apply — the AI will generate the correct equipment list for each.
@@ -191,7 +261,7 @@ export default function EstimationHub({ user, onNavigateToCreate, onSaveAIScan, 
                       onClick={() => setSystemTypes(previous => selected
                         ? previous.filter(type => type !== option.type)
                         : [...previous, option.type])}
-                      className={`flex min-w-0 items-center gap-3 rounded-full border-2 px-3 py-2.5 text-left text-xs font-bold transition-colors sm:px-4 ${
+                      className={`flex min-w-0 items-center gap-3 rounded-full border-2 px-3 py-2.5 text-left text-xs font-bold transition-colors sm:px-4 cursor-pointer ${
                         selected
                           ? 'border-blue-500 bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300'
                           : 'border-slate-200 bg-slate-50 text-slate-700 hover:border-blue-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200'
@@ -219,84 +289,71 @@ export default function EstimationHub({ user, onNavigateToCreate, onSaveAIScan, 
                 <button
                   type="button"
                   onClick={() => setActiveManualStep(1)}
-                  className="rounded-xl border border-slate-200 px-6 py-3 text-xs font-bold text-slate-600 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                  className="rounded-xl border border-slate-200 px-6 py-3 text-xs font-bold text-slate-600 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 cursor-pointer"
                 >
                   Back to Project Details
                 </button>
-                {onNavigateToCreate && (
-                  <button
-                    type="button"
-                    onClick={continueToSurvey}
-                    className="rounded-xl bg-blue-700 px-6 py-3 text-xs font-bold text-white transition-colors hover:bg-blue-800"
-                  >
-                    Start Manual Estimation
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={handleStartWizardFlow}
+                  className="rounded-xl bg-blue-600 px-6 py-3 text-xs font-bold text-white transition-all hover:bg-blue-700 shadow-md shadow-blue-500/20 cursor-pointer"
+                >
+                  Continue to Site Survey Wizard →
+                </button>
               </div>
             </section>
           )}
 
-          {activeManualStep === 3 && (
-            <section className="rounded-xl border border-blue-100 bg-white p-5 dark:border-slate-800 dark:bg-[#131B2E] sm:p-6">
-              <h2 className="text-sm font-bold text-slate-900 dark:text-white">Generate your Bill of Quantities</h2>
-              <p className="mt-2 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
-                Complete project details and system selection to start building your estimate.
-              </p>
-              <div className="mt-5 flex flex-wrap gap-3">
-                <button
-                  type="button"
-                  onClick={() => setActiveManualStep(1)}
-                  className="rounded-xl border border-slate-200 px-6 py-3 text-xs font-bold text-slate-600 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-                >
-                  Project Details
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveManualStep(2)}
-                  className="rounded-xl border border-slate-200 px-6 py-3 text-xs font-bold text-slate-600 transition-colors hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-                >
-                  System Selection
-                </button>
-                {onNavigateToCreate && (
-                  <button
-                    type="button"
-                    onClick={continueToSurvey}
-                    className="rounded-xl bg-blue-700 px-6 py-3 text-xs font-bold text-white transition-colors hover:bg-blue-800"
-                  >
-                    Start Manual Estimation
-                  </button>
-                )}
-              </div>
+          {activeManualStep === 3 && isSurveyWizardActive && (
+            <section className="rounded-2xl border border-blue-100 bg-white p-4 dark:border-slate-800 dark:bg-[#131B2E] sm:p-6 shadow-xs animate-fade-in-up">
+              <SurveyWizard
+                projectId="hub-manual-temp"
+                surveyType={currentSurveyType}
+                onComplete={handleSurveyComplete}
+                onBack={() => {
+                  setIsSurveyWizardActive(false);
+                  setActiveManualStep(2);
+                }}
+                isDark={isDark}
+              />
             </section>
           )}
 
-          {activeManualStep === null && (
-          <section className="rounded-xl border border-blue-100 bg-slate-50/50 p-5 dark:border-slate-800 dark:bg-slate-900/40 sm:p-6">
-            <div className="mb-4 flex items-center gap-2.5">
-              <svg className="h-6 w-6 shrink-0 text-blue-600 dark:text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 18v-5.25m0 0a6.01 6.01 0 0 0 1.5-.189m-1.5.189a6.01 6.01 0 0 1-1.5-.189m3.75 7.478a12.06 12.06 0 0 1-4.5 0m3.75 2.383a14.406 14.406 0 0 1-3 0M14.25 18v.192c0 .484-.332.893-.81 1.012a12.036 12.036 0 0 1-2.88 0c-.478-.119-.81-.528-.81-1.012V18m5.25-10.875a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Z" />
-              </svg>
-              <h2 className="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-white">
-                When to use manual estimation
-              </h2>
-            </div>
-
-            <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              {[
-                'You have a site survey report with room-by-room breakdowns',
-                'Client has provided verbal requirements without floor plans',
-                'You need full control over quantities and specifications',
-                'Verifying or adjusting AI-generated estimates',
-              ].map(item => (
-                <li key={item} className="flex items-start gap-3">
-                  <svg className="mt-0.5 h-4 w-4 shrink-0 text-blue-600 dark:text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
-                  </svg>
-                  <span className="text-xs font-medium leading-relaxed text-slate-600 dark:text-slate-300">{item}</span>
-                </li>
-              ))}
-            </ul>
-          </section>
+          {activeManualStep === 3 && isSurveyCompleted && (
+            <section className="rounded-2xl border border-emerald-100 bg-white p-6 dark:border-emerald-900/50 dark:bg-[#131B2E] shadow-xs space-y-4 animate-fade-in-up">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-emerald-500 text-white font-black text-xl flex items-center justify-center">
+                  ✓
+                </div>
+                <div>
+                  <h2 className="text-base font-black text-slate-900 dark:text-white">
+                    Manual Estimation Complete!
+                  </h2>
+                  <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                    All 3 steps have been completed and verified.
+                  </p>
+                </div>
+              </div>
+              <div className="flex justify-end gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsSurveyCompleted(false);
+                    setActiveManualStep(1);
+                  }}
+                  className="px-5 py-2.5 rounded-xl text-xs font-bold border border-slate-200 text-slate-700 dark:border-slate-700 dark:text-slate-300 hover:bg-slate-50"
+                >
+                  Create Another Manual Estimate
+                </button>
+                <button
+                  type="button"
+                  onClick={continueToSurvey}
+                  className="px-6 py-2.5 rounded-xl text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-md shadow-blue-500/20"
+                >
+                  Save &amp; View BOQ Summary
+                </button>
+              </div>
+            </section>
           )}
         </div>
       ) : (
