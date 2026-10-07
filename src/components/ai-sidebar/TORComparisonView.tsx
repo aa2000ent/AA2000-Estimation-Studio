@@ -5,6 +5,7 @@ import { exportAuditPdf } from '../../utils/pdfExporter';
 import type { AIScanGroup, AIScanFile } from '../../App';
 import { useToast } from '../utils/Toast';
 import { canViewPrices } from '../../constants/roles';
+import FloorPlanSelectionSectionView from '../estimation/FloorPlanSelectionSectionView';
 
 interface FileWithContent {
   file: File;
@@ -32,6 +33,7 @@ export default function TORComparisonView({ userRole, onSaveAIScan, onScanningCh
   const { toast } = useToast();
   const showPrices = canViewPrices(userRole);
   const [selectedDocType, setSelectedDocType] = useState<'floor_plan' | 'tor' | 'proposal'>('floor_plan');
+  const [showFloorPlanSelection, setShowFloorPlanSelection] = useState(false);
   const [torFile, setTorFile] = useState<FileWithContent | null>(null);
   const [proposalFile, setProposalFile] = useState<FileWithContent | null>(null);
   const [auditResult, setAuditResult] = useState<AuditDetails | null>(null);
@@ -77,6 +79,11 @@ export default function TORComparisonView({ userRole, onSaveAIScan, onScanningCh
   const removeProposalFile = useCallback(() => setProposalFile(null), []);
 
   const handleRunComparison = useCallback(async () => {
+    if (selectedDocType === 'floor_plan') {
+      setShowFloorPlanSelection(true);
+      return;
+    }
+
     const activeFile = selectedDocType === 'proposal' ? proposalFile : torFile;
     if (!activeFile) {
       toast.error('Please select or upload a document to analyze.');
@@ -178,6 +185,14 @@ export default function TORComparisonView({ userRole, onSaveAIScan, onScanningCh
   const currentFile = selectedDocType === 'proposal' ? proposalFile : torFile;
   const conf = auditResult?.confidenceScore ?? 0;
   const confLabel = conf >= 75 ? 'High Confidence' : conf >= 50 ? 'Medium Confidence' : conf >= 25 ? 'Low Confidence' : 'Poor Quality';
+
+  if (showFloorPlanSelection) {
+    return (
+      <FloorPlanSelectionSectionView
+        onBackToDocument={() => setShowFloorPlanSelection(false)}
+      />
+    );
+  }
 
   return (
     <div className="flex w-full flex-col space-y-6 transition-colors">
@@ -348,7 +363,13 @@ export default function TORComparisonView({ userRole, onSaveAIScan, onScanningCh
             </label>
             <button
               type="button"
-              onClick={() => toast.info('Sample floor plan loaded!')}
+              onClick={() => {
+                if (selectedDocType === 'floor_plan') {
+                  setShowFloorPlanSelection(true);
+                } else {
+                  toast.info('Sample document loaded!');
+                }
+              }}
               className="px-5 py-2 rounded-full text-xs font-bold bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/50 cursor-pointer"
             >
               Try Sample Floor Plan
@@ -364,13 +385,13 @@ export default function TORComparisonView({ userRole, onSaveAIScan, onScanningCh
       {/* Action Footer */}
       <div className="flex flex-col gap-3 border-t border-slate-100 pt-4 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between">
         <span className="text-xs font-medium text-slate-400 dark:text-slate-500">
-          {currentFile ? 'Document ready for AI analysis' : 'Choose a document to enable AI analysis'}
+          {selectedDocType === 'floor_plan' || currentFile ? 'Document ready for AI analysis' : 'Choose a document to enable AI analysis'}
         </span>
         <button
           onClick={handleRunComparison}
-          disabled={!currentFile || auditing}
+          disabled={selectedDocType !== 'floor_plan' && (!currentFile || auditing)}
           className={`flex items-center justify-center gap-2 rounded-full px-6 py-3 text-xs font-bold transition-all cursor-pointer sm:w-auto ${
-            currentFile
+            selectedDocType === 'floor_plan' || currentFile
               ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-md shadow-blue-500/20'
               : 'bg-blue-50 dark:bg-blue-950/40 text-blue-300 dark:text-blue-700 cursor-not-allowed'
           }`}
