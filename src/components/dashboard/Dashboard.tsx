@@ -17,10 +17,11 @@ import { StatBuilding, StatClipboard, StatBolt, StatCalendar, StatCheckCircle, C
 import AISidebar from '../ai-sidebar/AISidebar';
 import FloorPlanView from '../floor-plan/FloorPlanView';
 import EstimationHub from '../estimation/EstimationHub';
+import { AIChatbotFloating } from '../chatbot/AIChatbotFloating';
 import SavedBOQsView from '../floor-plan/SavedBOQsView';
 import SavedEstimationsView from '../estimation/SavedEstimationsView';
+import type { SurveyFormData } from '../estimation/CreateSurveyForm';
 import SavedFoldersView from '../ai-sidebar/SavedFoldersView';
-import { AIChatbotFloating } from '../chatbot/AIChatbotFloating';
 import SparklineCard from './cards/SparklineCard';
 
 interface Props {
@@ -31,7 +32,7 @@ interface Props {
   onSelectProject: (project: Project) => void;
   onCreateProject: (project: Project, keepOnHome?: boolean) => void;
   onSettings: () => void;
-  onNavigateToCreate: () => void;
+  onNavigateToCreate: (data?: SurveyFormData) => void;
   selectedCompanyProject: Project | null;
   setSelectedCompanyProject: (project: Project | null) => void;
   onMarkNotificationsAsRead?: (type: string) => void;
@@ -71,6 +72,8 @@ const viewTitles: Record<string, string> = {
   notifications: 'All Notifications',
   'ai-reader': 'AI Document Reader',
   'estimation-hub': 'Estimation Hub',
+  'manual-estimation': 'Manual Estimation',
+  'ai-estimation': 'AI Estimation',
   'floor-plan': 'Floor Plan AI',
   'saved-folders': 'AI Scan Folders',
   'saved-boqs': 'Saved Floor Plan BOQs',
@@ -372,6 +375,10 @@ export default function Dashboard({
   const [view, setView] = useState<View>('dashboard');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 1024);
+  const [isAiChatOpen, setIsAiChatOpen] = useState(false);
+  const [isAiChatDocked, setIsAiChatDocked] = useState(true);
+  const [aiChatWidth, setAiChatWidth] = useState(400);
+  const resizeStartRef = useRef<{ pointerId: number; x: number; width: number } | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [isCompanyMode, setIsCompanyMode] = useState(false);
   const [activeNotifTab, setActiveNotifTab] = useState<'ongoing' | 'upcoming' | 'missing' | 'approval' | 'finalize'>('ongoing');
@@ -578,6 +585,7 @@ export default function Dashboard({
   const navigate = (v: View) => {
     setMobileMenuOpen(false);
     setSelectedCompanyProject(null);
+    setIsAiChatOpen(false);
     if (v === 'create-survey') { onNavigateToCreate(); return; }
     // estimation-hub is rendered inside dashboard with sidebar — no full-screen override needed
     if (contentOverride && onExitOverride) {
@@ -628,7 +636,10 @@ export default function Dashboard({
             projects={projects}
             aiScans={aiScans}
             isDark={isDark}
+            isAiChatOpen={isAiChatOpen}
+            onOpenAiChat={() => setIsAiChatOpen(true)}
             onNewSurvey={() => {
+              setIsAiChatOpen(false);
               setIsCompanyMode(false);
               setShowCreate(true);
             }}
@@ -666,7 +677,13 @@ export default function Dashboard({
                 projects={projects}
                 aiScans={aiScans}
                 isDark={isDark}
+                isAiChatOpen={isAiChatOpen}
+                onOpenAiChat={() => {
+                  setIsAiChatOpen(true);
+                  setMobileMenuOpen(false);
+                }}
                 onNewSurvey={() => {
+                  setIsAiChatOpen(false);
                   setMobileMenuOpen(false);
                   setIsCompanyMode(false);
                   setShowCreate(true);
@@ -680,100 +697,98 @@ export default function Dashboard({
       <main className="flex-1 flex flex-col min-w-0 relative overflow-hidden">
 
         {/*TOP NAVIGATION BAR (Glassmorphism)*/}
-        {!contentOverride && (
-          <div
-            className={`sticky top-0 z-40 px-4 sm:px-6 h-16 flex items-center gap-4 shrink-0 border-b backdrop-blur-md transition-colors ${
-              isDark ? 'bg-[#0D1527]/95 border-slate-800' : 'bg-white/95 border-slate-200'
-            }`}
-          >
-          {/* Left: Mobile navigation and global search */}
-          <div className="flex flex-1 min-w-0 items-center gap-2 sm:gap-3">
-            <button
-              onClick={() => setMobileMenuOpen(true)}
-              className="p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 lg:hidden transition-colors cursor-pointer"
-              title="Open navigation menu"
-            >
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
-              </svg>
-            </button>
-            {/* <div className="relative block flex-1 min-w-0 max-w-lg">
-              <svg
-                className="absolute left-3.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400"
-                fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
-              <input
-                type="text"
-                placeholder="Search projects, surveys, clients..."
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                className="search-input w-full h-9 pl-10 pr-4 rounded-xl text-[11px] font-medium bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 outline-none text-slate-700 dark:text-slate-200 focus:bg-white dark:focus:bg-slate-800 focus:border-blue-400 transition-all"
-              />
-            </div> */}
-          </div>
+                <div
+                  className={`sticky top-0 z-40 px-4 sm:px-6 h-16 flex items-center gap-4 shrink-0 border-b backdrop-blur-md transition-colors ${
+                    isDark ? 'bg-[#0D1527]/95 border-slate-800' : 'bg-white/95 border-slate-200'
+                  }`}
+                >
+                  {/* Left: Mobile navigation and global search */}
+                  <div className="flex flex-1 min-w-0 items-center gap-2 sm:gap-3">
+                    <button
+                      onClick={() => setMobileMenuOpen(true)}
+                      className="p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 lg:hidden transition-colors cursor-pointer"
+                      title="Open navigation menu"
+                    >
+                      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+                      </svg>
+                    </button>
+                    <div className="relative block flex-1 min-w-0 max-w-lg">
+                      <svg
+                        className="absolute left-3.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400"
+                        fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                      </svg>
+                      <input
+                        type="text"
+                        placeholder="Search projects, surveys, clients..."
+                        value={search}
+                        onChange={e => setSearch(e.target.value)}
+                        className="search-input w-full h-9 pl-10 pr-4 rounded-xl text-[11px] font-medium bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 outline-none text-slate-700 dark:text-slate-200 focus:bg-white dark:focus:bg-slate-800 focus:border-blue-400 transition-all"
+                      />
+                    </div>
+                  </div>
 
-          {/* Right: Time, appearance, notifications, and account */}
-          <div className="flex items-center gap-2 sm:gap-3 overflow-visible shrink-0">
-            <div
-              className={`hidden sm:flex h-9 items-center gap-2.5 px-3 rounded-xl border text-[10px] ${
-                isDark
-                  ? 'bg-slate-800/80 border-slate-700 text-slate-200'
-                  : 'bg-white border-slate-200 text-slate-600'
-              }`}
-              title={now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-            >
-              <svg className="w-3.5 h-3.5 text-slate-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <span className="font-mono font-black tracking-wide">{digitalClock}</span>
-              <span className="h-4 w-px bg-slate-200 dark:bg-slate-600" />
-              <span className="hidden lg:inline font-bold whitespace-nowrap">{todayLabel}</span>
-            </div>
+                  {/* Right: Time, appearance, notifications, and account */}
+                  <div className="flex items-center gap-2 sm:gap-3 overflow-visible shrink-0">
+                    <div
+                      className={`hidden sm:flex h-9 items-center gap-2.5 px-3 rounded-xl border text-[10px] ${
+                        isDark
+                          ? 'bg-slate-800/80 border-slate-700 text-slate-200'
+                          : 'bg-white border-slate-200 text-slate-600'
+                      }`}
+                      title={now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                    >
+                      <svg className="w-3.5 h-3.5 text-slate-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <span className="font-mono font-black tracking-wide">{digitalClock}</span>
+                      <span className="h-4 w-px bg-slate-200 dark:bg-slate-600" />
+                      <span className="hidden lg:inline font-bold whitespace-nowrap">{todayLabel}</span>
+                    </div>
 
-            <div className="relative hidden sm:flex w-[68px] h-9 items-center rounded-full border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 p-0.5 shadow-2xs overflow-hidden">
-              <span
-                className={`absolute top-0.5 left-0.5 w-8 h-8 rounded-full bg-blue-600 shadow-sm pointer-events-none transition-transform duration-300 ease-out ${
-                  isDark ? 'translate-x-8' : 'translate-x-0'
-                }`}
-              />
-              <button
-                onClick={() => { if (isDark) handleToggleTheme(); }}
-                className={`relative z-10 w-8 h-8 rounded-full flex items-center justify-center transition-colors duration-300 cursor-pointer ${
-                  !isDark ? 'text-white' : 'text-amber-400'
-                }`}
-                title="Use light mode"
-                aria-label="Use light mode"
-                aria-pressed={!isDark}
-              >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.773-4.227l-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z" />
-                </svg>
-              </button>
-              <button
-                onClick={() => { if (!isDark) handleToggleTheme(); }}
-                className={`relative z-10 w-8 h-8 rounded-full flex items-center justify-center transition-colors duration-300 cursor-pointer ${
-                  isDark ? 'text-white' : 'text-slate-500'
-                }`}
-                title="Use dark mode"
-                aria-label="Use dark mode"
-                aria-pressed={isDark}
-              >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z" />
-                </svg>
-              </button>
-            </div>
+                    <div className="relative hidden sm:flex w-[68px] h-9 items-center rounded-full border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 p-0.5 shadow-2xs overflow-hidden">
+                      <span
+                        className={`absolute top-0.5 left-0.5 w-8 h-8 rounded-full bg-blue-600 shadow-sm pointer-events-none transition-transform duration-300 ease-out ${
+                          isDark ? 'translate-x-8' : 'translate-x-0'
+                        }`}
+                      />
+                      <button
+                        onClick={() => { if (isDark) handleToggleTheme(); }}
+                        className={`relative z-10 w-8 h-8 rounded-full flex items-center justify-center transition-colors duration-300 cursor-pointer ${
+                          !isDark ? 'text-white' : 'text-amber-400'
+                        }`}
+                        title="Use light mode"
+                        aria-label="Use light mode"
+                        aria-pressed={!isDark}
+                      >
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.773-4.227l-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z" />
+                        </svg>
+                      </button>
+                      <button
+                        onClick={() => { if (!isDark) handleToggleTheme(); }}
+                        className={`relative z-10 w-8 h-8 rounded-full flex items-center justify-center transition-colors duration-300 cursor-pointer ${
+                          isDark ? 'text-white' : 'text-slate-500'
+                        }`}
+                        title="Use dark mode"
+                        aria-label="Use dark mode"
+                        aria-pressed={isDark}
+                      >
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z" />
+                        </svg>
+                      </button>
+                    </div>
 
-            {/* Notification Bell */}
-            <NotificationBell notifications={notifications} onViewAll={navigateNotif} />
+                    {/* Notification Bell */}
+                    <NotificationBell notifications={notifications} onViewAll={navigateNotif} />
 
-            {/* Account dropdown */}
-            <AccountDropdown user={user} onLogout={onLogout} onSettings={onSettings} />
-          </div>
-        </div>
-      )}
+                    {/* Account dropdown */}
+                    <AccountDropdown user={user} onLogout={onLogout} onSettings={() => { if (onSettings) onSettings(); }} />
+                  </div>
+                </div>
 
         {/* ══════════════════════════════════════════
             PAGE CONTENT
@@ -794,8 +809,14 @@ export default function Dashboard({
               <div style={{ display: view === 'floor-plan' ? undefined : 'none' }}>
                 <FloorPlanView userRole={user.role} />
               </div>
-              <div style={{ display: view === 'estimation-hub' ? undefined : 'none', height: view === 'estimation-hub' ? '100%' : undefined }}>
+              <div
+                style={{
+                  display: ['estimation-hub', 'manual-estimation', 'ai-estimation'].includes(view) ? undefined : 'none',
+                  height: ['estimation-hub', 'manual-estimation', 'ai-estimation'].includes(view) ? '100%' : undefined,
+                }}
+              >
                 <EstimationHub
+                  key={view}
                   user={user}
                   projects={projects}
                   onCreateProject={onCreateProject}
@@ -803,6 +824,7 @@ export default function Dashboard({
                   onSaveAIScan={onSaveAIScan}
                   onNavigateToCreate={onNavigateToCreate}
                   isDark={isDark}
+                  initialMode={view === 'manual-estimation' ? 'manual' : view === 'ai-estimation' ? 'ai' : undefined}
                 />
               </div>
               {selectedCompanyProject ? (
@@ -812,7 +834,7 @@ export default function Dashboard({
               projects={projectList}
               onBack={() => setSelectedCompanyProject(null)}
               onSelectProject={onSelectProject}
-              onNewSurvey={onNavigateToCreate}
+              onNewSurvey={() => onNavigateToCreate()}
               onDeleteProject={handleDelete}
             />
           ) : view === 'home' || view === 'ai-reader' || view === 'floor-plan' || isCategoryView ? (
@@ -851,7 +873,7 @@ export default function Dashboard({
               onUpdateAIScan={onUpdateAIScan}
               isDark={isDark}
             />
-          ) : view === 'estimation-hub' ? null
+          ) : ['estimation-hub', 'manual-estimation', 'ai-estimation'].includes(view) ? null
           : view === 'approval' ? (
             <ApprovalPipeline
               user={user}
@@ -1422,8 +1444,82 @@ export default function Dashboard({
             </div>
           </div>
         )}
-        <AIChatbotFloating userRole={user?.role} activeProjectName={selectedCompanyProject?.name} />
       </main>
+
+      <div
+        aria-hidden={!isAiChatOpen}
+        className={isAiChatDocked && !isMobile
+          ? `relative h-full shrink-0 overflow-hidden transition-[width] duration-200 ${isAiChatOpen ? 'border-l border-slate-700' : 'border-l-0'}`
+          : `fixed inset-y-0 right-0 z-[60] ${isAiChatOpen ? '' : 'invisible pointer-events-none'}`}
+        style={isAiChatDocked && !isMobile
+          ? { width: isAiChatOpen ? `min(${aiChatWidth}px, calc(100vw - 38rem))` : 0 }
+          : undefined}
+      >
+        {isAiChatOpen && (
+          <div
+            role="separator"
+            aria-label="Resize AI Assistant panel"
+            aria-orientation="vertical"
+            aria-valuemin={320}
+            aria-valuemax={Math.max(320, window.innerWidth - (isAiChatDocked ? 608 : 320))}
+            aria-valuenow={aiChatWidth}
+            tabIndex={0}
+            onKeyDown={event => {
+              if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+              event.preventDefault();
+              const direction = event.key === 'ArrowLeft' ? 1 : -1;
+              const maxWidth = Math.max(320, window.innerWidth - (isAiChatDocked ? 608 : 320));
+              setAiChatWidth(width => Math.max(320, Math.min(maxWidth, width + direction * 20)));
+            }}
+            onPointerDown={event => {
+              event.preventDefault();
+              event.currentTarget.setPointerCapture(event.pointerId);
+              resizeStartRef.current = {
+                pointerId: event.pointerId,
+                x: event.clientX,
+                width: aiChatWidth,
+              };
+            }}
+            onPointerMove={event => {
+              const start = resizeStartRef.current;
+              if (!start || start.pointerId !== event.pointerId) return;
+              const maxWidth = Math.max(320, window.innerWidth - (isAiChatDocked ? 608 : 320));
+              setAiChatWidth(Math.max(320, Math.min(maxWidth, start.width + start.x - event.clientX)));
+            }}
+            onPointerUp={event => {
+              if (resizeStartRef.current?.pointerId === event.pointerId) {
+                resizeStartRef.current = null;
+                event.currentTarget.releasePointerCapture(event.pointerId);
+              }
+            }}
+            onPointerCancel={() => { resizeStartRef.current = null; }}
+            className="absolute inset-y-0 left-0 z-10 flex w-3 -translate-x-1/2 cursor-col-resize touch-none items-center justify-center outline-none"
+          >
+            <span className="h-12 w-1 rounded-full bg-slate-500/40 transition-colors hover:bg-blue-400" />
+          </div>
+        )}
+        <div
+          className="h-full max-w-[100vw] shadow-2xl"
+          style={{
+            width: isAiChatDocked && !isMobile
+              ? '100%'
+              : isMobile
+                ? '100vw'
+                : `min(${aiChatWidth}px, 100vw)`,
+          }}
+        >
+          <AIChatbotFloating
+            presentation="sidebar"
+            isOpen={isAiChatOpen}
+            isDocked={isAiChatDocked && !isMobile}
+            showDockToggle={!isMobile}
+            onToggleDock={() => setIsAiChatDocked(docked => !docked)}
+            onClose={() => setIsAiChatOpen(false)}
+            userRole={user.role}
+            activeProjectName={selectedCompanyProject?.name}
+          />
+        </div>
+      </div>
 
     </div>
   );

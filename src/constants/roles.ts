@@ -7,6 +7,46 @@ export const ROLES = {
 
 export type Role = typeof ROLES[keyof typeof ROLES];
 
+export interface UserCredential {
+  employeeId: string;
+  pin: string;
+  fullName: string;
+  role: Role;
+}
+
+export const USER_CREDENTIALS: UserCredential[] = [
+  {
+    employeeId: 'ADMIN',
+    pin: '111111',
+    fullName: 'System Administrator',
+    role: 'ADMIN',
+  },
+  {
+    employeeId: 'TECHNICIAN',
+    pin: '111111',
+    fullName: 'Technician',
+    role: 'TECHNICIAN',
+  },
+  {
+    employeeId: 'ACCOUNTING',
+    pin: '111111',
+    fullName: 'Accounting Manager',
+    role: 'ACCOUNTING',
+  },
+  {
+    employeeId: 'AA0085',
+    pin: '111111',
+    fullName: 'Jherwin',
+    role: 'TECHNICIAN',
+  },
+  {
+    employeeId: 'AA0051',
+    pin: '111111',
+    fullName: 'Christopher',
+    role: 'TECHNICIAN',
+  },
+];
+
 // User roles and their permissions
 export const ROLE_PERMISSIONS: Record<Role, string[]> = {
   [ROLES.ACCOUNTING]: [
