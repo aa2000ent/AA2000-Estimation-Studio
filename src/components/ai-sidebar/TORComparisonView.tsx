@@ -180,15 +180,20 @@ export default function TORComparisonView({ userRole, onSaveAIScan, onScanningCh
   const confLabel = conf >= 75 ? 'High Confidence' : conf >= 50 ? 'Medium Confidence' : conf >= 25 ? 'Low Confidence' : 'Poor Quality';
 
   return (
-    <div className="flex flex-col h-full  transition-colors p-6 overflow-y-auto space-y-6">
+    <div className="flex w-full flex-col space-y-6 transition-colors">
       {/* Section Title */}
-      <div className="flex items-center gap-2 pt-1">
-        <span className="text-blue-600 dark:text-blue-400 text-lg">✨</span>
-        <h2 className="text-xl font-black text-slate-900 dark:text-white">AI Document Reader</h2>
+      <div className="flex min-w-0 items-start gap-3">
+        <span className="pt-0.5 text-lg text-blue-600 dark:text-blue-400">✨</span>
+        <div className="min-w-0">
+          <h2 className="text-xl font-black text-slate-900 dark:text-white">AI Document Reader</h2>
+          <p className="mt-1 text-xs font-medium leading-relaxed text-slate-500 dark:text-slate-400">
+            Upload TORs, proposals, or floor plans to extract requirements and generate BOQs.
+          </p>
+        </div>
       </div>
 
       {/* Info Banner */}
-      <div className="rounded-lg bg-blue-50/70 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/50 px-5 py-8">
+      <div className="rounded-xl border border-blue-100 bg-blue-50/70 px-4 py-4 dark:border-blue-900/50 dark:bg-blue-950/30 sm:px-5">
         <p className="text-xs text-blue-700 dark:text-blue-300 font-medium leading-relaxed">
           Upload a <span className="font-bold">Floor Plan, Terms of Reference (TOR), or Proposal.</span> AI reads your document first. For floor plans, choose the sections where AA2000 items will be installed.
         </p>
@@ -199,31 +204,31 @@ export default function TORComparisonView({ userRole, onSaveAIScan, onScanningCh
         <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-white">
           What document do you have?
         </h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid w-full min-w-0 grid-cols-3 gap-2 sm:gap-4">
           {/* Card 1: Floor Plan */}
           <div
             onClick={() => setSelectedDocType('floor_plan')}
-            className={`p-5 rounded-lg cursor-pointer transition-all duration-200 flex flex-col justify-between ${
+            className={`flex min-h-36 min-w-0 cursor-pointer flex-col justify-between rounded-xl p-3 transition-all duration-200 sm:p-5 ${
               selectedDocType === 'floor_plan'
                 ? 'border-2 border-blue-600 dark:border-blue-500 bg-blue-50/40 dark:bg-blue-950/30 shadow-xs'
                 : 'border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#131B2E] hover:border-blue-300'
             }`}
           >
             <div>
-              <svg className="w-6 h-6 text-blue-600 dark:text-blue-400 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <svg className="mb-2 h-5 w-5 text-blue-600 dark:text-blue-400 sm:h-6 sm:w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 4.5 4 6v13.5l5-1.5 6 1.5 5-1.5V4.5l-5 1.5-6-1.5Z" />
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 4.5v13.5M15 6v13.5" />
               </svg>
-              <h4 className="text-sm font-bold text-slate-900 dark:text-white">Floor Plan</h4>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed font-medium">
+              <h4 className="break-words text-xs font-bold text-slate-900 dark:text-white sm:text-sm">Floor Plan</h4>
+              <p className="mt-1 break-words text-[10px] font-medium leading-relaxed text-slate-500 dark:text-slate-400 sm:text-xs">
                 Identify rooms and select installation areas.
               </p>
             </div>
             <div className="mt-2">
               {selectedDocType === 'floor_plan' ? (
-                <span className="text-xs font-bold text-blue-600 dark:text-blue-400 flex items-center gap-1">✓ Selected</span>
+                <span className="flex items-center gap-1 break-words text-[10px] font-bold text-blue-600 dark:text-blue-400 sm:text-xs">✓ Selected</span>
               ) : (
-                <span className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline">Select document type</span>
+                <span className="break-words text-[10px] font-bold text-blue-600 hover:underline dark:text-blue-400 sm:text-xs">Select document type</span>
               )}
             </div>
           </div>
@@ -231,27 +236,27 @@ export default function TORComparisonView({ userRole, onSaveAIScan, onScanningCh
           {/* Card 2: Terms of Reference */}
           <div
             onClick={() => setSelectedDocType('tor')}
-            className={`p-5 rounded-lg cursor-pointer transition-all duration-200 flex flex-col justify-between ${
+            className={`flex min-h-36 min-w-0 cursor-pointer flex-col justify-between rounded-xl p-3 transition-all duration-200 sm:p-5 ${
               selectedDocType === 'tor'
                 ? 'border-2 border-blue-600 dark:border-blue-500 bg-blue-50/40 dark:bg-blue-950/30 shadow-xs'
                 : 'border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#131B2E] hover:border-blue-300'
             }`}
           >
             <div>
-              <svg className="w-6 h-6 text-blue-600 dark:text-blue-400 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <svg className="mb-2 h-5 w-5 text-blue-600 dark:text-blue-400 sm:h-6 sm:w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M7 3.5h7l4 4v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1v-16a1 1 0 0 1 1-1Z" />
                 <path strokeLinecap="round" strokeLinejoin="round" d="M14 3.5V8h4.5M9 12h6M9 15h6" />
               </svg>
-              <h4 className="text-sm font-bold text-slate-900 dark:text-white">Terms of Reference</h4>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed font-medium">
+              <h4 className="break-words text-xs font-bold text-slate-900 dark:text-white sm:text-sm">Terms of Reference</h4>
+              <p className="mt-1 break-words text-[10px] font-medium leading-relaxed text-slate-500 dark:text-slate-400 sm:text-xs">
                 Extract the required systems and specifications.
               </p>
             </div>
             <div className="mt-2">
               {selectedDocType === 'tor' ? (
-                <span className="text-xs font-bold text-blue-600 dark:text-blue-400 flex items-center gap-1">✓ Selected</span>
+                <span className="flex items-center gap-1 break-words text-[10px] font-bold text-blue-600 dark:text-blue-400 sm:text-xs">✓ Selected</span>
               ) : (
-                <span className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline">Select document type</span>
+                <span className="break-words text-[10px] font-bold text-blue-600 hover:underline dark:text-blue-400 sm:text-xs">Select document type</span>
               )}
             </div>
           </div>
@@ -259,27 +264,27 @@ export default function TORComparisonView({ userRole, onSaveAIScan, onScanningCh
           {/* Card 3: Proposal */}
           <div
             onClick={() => setSelectedDocType('proposal')}
-            className={`p-5 rounded-lg cursor-pointer transition-all duration-200 flex flex-col justify-between ${
+            className={`flex min-h-36 min-w-0 cursor-pointer flex-col justify-between rounded-xl p-3 transition-all duration-200 sm:p-5 ${
               selectedDocType === 'proposal'
                 ? 'border-2 border-blue-600 dark:border-blue-500 bg-blue-50/40 dark:bg-blue-950/30 shadow-xs'
                 : 'border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#131B2E] hover:border-blue-300'
             }`}
           >
             <div>
-              <svg className="w-6 h-6 text-blue-600 dark:text-blue-400 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <svg className="mb-2 h-5 w-5 text-blue-600 dark:text-blue-400 sm:h-6 sm:w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M7 3.5h7l4 4v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1v-16a1 1 0 0 1 1-1Z" />
                 <path strokeLinecap="round" strokeLinejoin="round" d="M14 3.5V8h4.5M9.5 13.5h5M12 11v5" />
               </svg>
-              <h4 className="text-sm font-bold text-slate-900 dark:text-white">Proposal</h4>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed font-medium">
+              <h4 className="break-words text-xs font-bold text-slate-900 dark:text-white sm:text-sm">Proposal</h4>
+              <p className="mt-1 break-words text-[10px] font-medium leading-relaxed text-slate-500 dark:text-slate-400 sm:text-xs">
                 Review proposed equipment and quantities.
               </p>
             </div>
             <div className="mt-2">
               {selectedDocType === 'proposal' ? (
-                <span className="text-xs font-bold text-blue-600 dark:text-blue-400 flex items-center gap-1">✓ Selected</span>
+                <span className="flex items-center gap-1 break-words text-[10px] font-bold text-blue-600 dark:text-blue-400 sm:text-xs">✓ Selected</span>
               ) : (
-                <span className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline">Select document type</span>
+                <span className="break-words text-[10px] font-bold text-blue-600 hover:underline dark:text-blue-400 sm:text-xs">Select document type</span>
               )}
             </div>
           </div>
@@ -287,7 +292,7 @@ export default function TORComparisonView({ userRole, onSaveAIScan, onScanningCh
       </div>
 
       {/* Dashed Upload Dropzone Box */}
-      <div className="relative border-2 border-dashed border-blue-200 dark:border-blue-900/60 bg-blue-50/10 dark:bg-blue-950/10 rounded-lg p-8 sm:p-12 flex flex-col items-center justify-center text-center my-6 gap-3">
+      <div className="relative flex w-full flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed border-blue-200 bg-blue-50/10 px-4 py-8 text-center dark:border-blue-900/60 dark:bg-blue-950/10 sm:px-8 sm:py-10">
         
         <h3 className="text-lg font-black text-blue-600 dark:text-blue-400">
           {selectedDocType === 'floor_plan'
@@ -306,8 +311,8 @@ export default function TORComparisonView({ userRole, onSaveAIScan, onScanningCh
 
         {/* Active file or upload button */}
         {currentFile ? (
-          <div className="flex items-center gap-3 bg-white dark:bg-[#131B2E] p-3 px-5 rounded-2xl border border-blue-200 dark:border-blue-900 shadow-xs mt-2">
-            <span className="font-bold text-xs text-slate-800 dark:text-white">{currentFile.parsed.fileName}</span>
+          <div className="mt-2 flex w-full max-w-2xl flex-wrap items-center justify-center gap-3 rounded-xl border border-blue-200 bg-white p-3 px-5 shadow-xs dark:border-blue-900 dark:bg-[#131B2E]">
+            <span className="min-w-0 break-all text-center text-xs font-bold text-slate-800 dark:text-white">{currentFile.parsed.fileName}</span>
             <button
               type="button"
               onClick={() => {
@@ -357,14 +362,14 @@ export default function TORComparisonView({ userRole, onSaveAIScan, onScanningCh
       </div>
 
       {/* Action Footer */}
-      <div className="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-slate-800 mt-6">
+      <div className="flex flex-col gap-3 border-t border-slate-100 pt-4 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between">
         <span className="text-xs font-medium text-slate-400 dark:text-slate-500">
           {currentFile ? 'Document ready for AI analysis' : 'Choose a document to enable AI analysis'}
         </span>
         <button
           onClick={handleRunComparison}
           disabled={!currentFile || auditing}
-          className={`flex items-center gap-2 px-6 py-3 rounded-full text-xs font-bold transition-all cursor-pointer ${
+          className={`flex items-center justify-center gap-2 rounded-full px-6 py-3 text-xs font-bold transition-all cursor-pointer sm:w-auto ${
             currentFile
               ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-md shadow-blue-500/20'
               : 'bg-blue-50 dark:bg-blue-950/40 text-blue-300 dark:text-blue-700 cursor-not-allowed'
@@ -377,7 +382,7 @@ export default function TORComparisonView({ userRole, onSaveAIScan, onScanningCh
 
       {/* Real-time AI Audit Scanning Progress Animation */}
       {auditing && (
-        <div className="mt-6 rounded-2xl bg-gradient-to-b from-blue-50/90 via-blue-50/40 to-indigo-50/30 border border-blue-200/80 p-6 space-y-5 shadow-sm">
+        <div className="rounded-2xl border border-blue-200/80 bg-gradient-to-b from-blue-50/90 via-blue-50/40 to-indigo-50/30 p-4 shadow-sm sm:p-6">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-blue-100/80 pb-4">
             <div className="flex items-center gap-3">
               <div className="relative w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center text-white shadow-md shadow-blue-500/20">
@@ -406,7 +411,7 @@ export default function TORComparisonView({ userRole, onSaveAIScan, onScanningCh
 
       {/* Results View */}
       {auditResult && (
-        <div className="mt-6 rounded-2xl border border-slate-200 bg-white overflow-hidden p-6 space-y-6">
+        <div className="w-full min-w-0 space-y-6 overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
           <div className="flex items-center justify-between pb-4 border-b">
             <h3 className="text-base font-black text-slate-800">AI Document Analysis Results</h3>
             <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full">

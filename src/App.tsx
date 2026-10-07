@@ -204,6 +204,7 @@ export default function App() {
   const [projects, setProjects] = useState<Project[]>(() => loadFromStorage<Project[]>(STORAGE_KEYS.projects, []));
   const [notifications, setNotifications] = useState<Notification[]>(() => loadFromStorage<Notification[]>(STORAGE_KEYS.notifications, defaultNotifications));
   const [prefilledCompanyName, setPrefilledCompanyName] = useState<string>('');
+  const [prefilledSurveyData, setPrefilledSurveyData] = useState<SurveyFormData | null>(null);
   const [currentCompanyProject, setCurrentCompanyProject] = useState<Project | null>(null);
   // Saved audits live on the backend, per account. Loaded once the session has
   // hydrated, because the request needs the session token the account carries.
@@ -620,11 +621,18 @@ export default function App() {
     handleGoBack();
   }, [handleGoBack]);
 
-  const handleNavigateToCreate = useCallback((companyName?: any) => {
-    const nameStr = typeof companyName === 'object' && companyName !== null
-      ? companyName.name || ''
-      : String(companyName || '');
+  const handleNavigateToCreate = useCallback((initial?: SurveyFormData | string | { name?: string }) => {
+    const initialData = typeof initial === 'object' && initial !== null && 'projectName' in initial
+      ? initial as SurveyFormData
+      : null;
+    const legacyCompanyName = typeof initial === 'string'
+      ? initial
+      : typeof initial === 'object' && initial !== null && 'name' in initial
+        ? initial.name || ''
+        : '';
+    const nameStr = initialData?.companyName || legacyCompanyName;
     setPrefilledCompanyName(nameStr);
+    setPrefilledSurveyData(initialData);
     navigateToScreen('create-survey');
   }, [navigateToScreen]);
 
@@ -655,6 +663,7 @@ export default function App() {
     };
 
     setPrefilledCompanyName('');
+    setPrefilledSurveyData(null);
 
     setProjects(prev => {
       const clean = (s?: string) => (s || '').trim().toLowerCase();
@@ -700,6 +709,7 @@ export default function App() {
 
   const handleExitCreateSurvey = useCallback(() => {
     setPrefilledCompanyName('');
+    setPrefilledSurveyData(null);
     handleGoBack();
   }, [handleGoBack]);
 
@@ -745,6 +755,7 @@ export default function App() {
                 initialClientEmail={companyProject?.clientEmail}
                 initialClientContactNumber={companyProject?.clientPhone}
                 initialSystemTypes={companyProject?.systemTypes as any}
+                initialData={prefilledSurveyData ?? undefined}
                 isDark={isDark}
               />
             }

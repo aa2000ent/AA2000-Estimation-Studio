@@ -13,6 +13,7 @@ interface Props {
   initialClientEmail?: string;
   initialClientContactNumber?: string;
   initialSystemTypes?: SystemType[];
+  initialData?: Partial<SurveyFormData>;
   isDark?: boolean;
 }
 
@@ -85,6 +86,7 @@ export default function CreateSurveyForm({
   initialClientEmail = '',
   initialClientContactNumber = '',
   initialSystemTypes = [],
+  initialData,
   isDark,
 }: Props) {
   const dark = isDark ?? (typeof document !== 'undefined' && document.documentElement.classList.contains('dark'));
@@ -93,22 +95,22 @@ export default function CreateSurveyForm({
     : String(initialCompanyName || '');
 
   const [form, setForm] = useState<SurveyFormData>({
-    companyName: parsedCompanyName,
-    projectName: '',
-    clientEmail: initialClientEmail,
-    clientName: initialClientName,
-    clientContactNumber: initialClientContactNumber,
-    locationName: initialLocationName,
-    latitude: initialLatitude !== undefined ? initialLatitude : 14.5995,
-    longitude: initialLongitude !== undefined ? initialLongitude : 120.9842,
-    surveyScope: '',
-    systemTypes: initialSystemTypes && initialSystemTypes.length > 0 ? initialSystemTypes : [],
-    buildingType: '',
-    floors: '',
-    buildingLength: '',
-    buildingWidth: '',
-    floorHeight: '',
-    startDate: new Date().toISOString().split('T')[0],
+    companyName: initialData?.companyName ?? parsedCompanyName,
+    projectName: initialData?.projectName ?? '',
+    clientEmail: initialData?.clientEmail ?? initialClientEmail,
+    clientName: initialData?.clientName ?? initialClientName,
+    clientContactNumber: initialData?.clientContactNumber ?? initialClientContactNumber,
+    locationName: initialData?.locationName ?? initialLocationName,
+    latitude: initialData?.latitude ?? (initialLatitude !== undefined ? initialLatitude : 14.5995),
+    longitude: initialData?.longitude ?? (initialLongitude !== undefined ? initialLongitude : 120.9842),
+    surveyScope: initialData?.surveyScope ?? '',
+    systemTypes: initialData?.systemTypes ?? (initialSystemTypes && initialSystemTypes.length > 0 ? initialSystemTypes : []),
+    buildingType: initialData?.buildingType ?? '',
+    floors: initialData?.floors ?? '',
+    buildingLength: initialData?.buildingLength ?? '',
+    buildingWidth: initialData?.buildingWidth ?? '',
+    floorHeight: initialData?.floorHeight ?? '',
+    startDate: initialData?.startDate ?? new Date().toISOString().split('T')[0],
   });
 
   const toggleSystemType = (type: SystemType) => {

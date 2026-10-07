@@ -1,10 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { createPortal } from 'react-dom';
 import type { User, Project, AIScanGroup } from '../../App';
 import type { Notification } from '../notifications/NotificationBell';
 import { getRoleTheme } from '../../utils/RoleTheme';
 import { getSavedBOQCount } from '../floor-plan/SavedBOQsView';
-import { AIChatbotFloating } from '../chatbot/AIChatbotFloating';
 
 export type View =
   | 'home' | 'dashboard' | 'workspace' | 'create-survey'
@@ -27,6 +25,8 @@ export interface Props {
   isMobile?: boolean;
   isDark?: boolean;
   activeProjectName?: string;
+  isAiChatOpen?: boolean;
+  onOpenAiChat?: () => void;
 }
 
 const navIcons: Record<string, React.FC<{ size?: number; className?: string }>> = {
@@ -122,7 +122,8 @@ export default function Sidebar({
   onNewSurvey,
   isMobile = false,
   isDark = false,
-  activeProjectName,
+  isAiChatOpen = false,
+  onOpenAiChat,
 }: Props) {
   const isAdmin = user.role === 'ADMIN';
   const isAccounting = user.role === 'ACCOUNTING';
@@ -132,10 +133,6 @@ export default function Sidebar({
   const [isPinned, setIsPinned] = useState(true);
   const [isHovered, setIsHovered] = useState(false);
   const [savedBOQCount, setSavedBOQCount] = useState(0);
-  const [isAiChatOpen, setIsAiChatOpen] = useState(false);
-  const [aiChatWidth, setAiChatWidth] = useState(480);
-  const resizeStartRef = React.useRef<{ pointerId: number; x: number; width: number } | null>(null);
-
   // Sidebar is expanded if pinned OR hovered
   const isExpanded = !isMobile && (isPinned || isHovered);
 
@@ -324,14 +321,12 @@ export default function Sidebar({
                         key={item.view}
                         type="button"
                         onClick={() => {
-                          if (item.view === 'ai-chat') setIsAiChatOpen(true);
+                          if (item.view === 'ai-chat') onOpenAiChat?.();
                           else if (item.view === 'create-survey') {
-                            setIsAiChatOpen(false);
                             if (onNewSurvey) onNewSurvey();
                             else onNavigate('create-survey');
                           }
                           else {
-                            setIsAiChatOpen(false);
                             onNavigate(item.view);
                           }
                         }}
@@ -362,14 +357,12 @@ export default function Sidebar({
                       key={item.view}
                       type="button"
                       onClick={() => {
-                        if (item.view === 'ai-chat') setIsAiChatOpen(true);
+                        if (item.view === 'ai-chat') onOpenAiChat?.();
                         else if (item.view === 'create-survey') {
-                          setIsAiChatOpen(false);
                           if (onNewSurvey) onNewSurvey();
                           else onNavigate('create-survey');
                         }
                         else {
-                          setIsAiChatOpen(false);
                           onNavigate(item.view);
                         }
                       }}
@@ -403,64 +396,6 @@ export default function Sidebar({
 
       </div>
     </aside>
-    {createPortal(
-      <div className={`fixed inset-y-0 right-0 z-[60] ${isAiChatOpen ? '' : 'hidden'}`}>
-        <div
-          role="separator"
-          aria-label="Resize AI Assistant panel"
-          aria-orientation="vertical"
-          aria-valuemin={320}
-          aria-valuemax={Math.max(320, window.innerWidth - 320)}
-          aria-valuenow={aiChatWidth}
-          tabIndex={0}
-          onKeyDown={event => {
-            if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
-            event.preventDefault();
-            const direction = event.key === 'ArrowLeft' ? 1 : -1;
-            const maxWidth = Math.max(320, window.innerWidth - 320);
-            setAiChatWidth(width => Math.max(320, Math.min(maxWidth, width + direction * 20)));
-          }}
-          onPointerDown={event => {
-            event.preventDefault();
-            event.currentTarget.setPointerCapture(event.pointerId);
-            resizeStartRef.current = {
-              pointerId: event.pointerId,
-              x: event.clientX,
-              width: aiChatWidth,
-            };
-          }}
-          onPointerMove={event => {
-            const start = resizeStartRef.current;
-            if (!start || start.pointerId !== event.pointerId) return;
-            const maxWidth = Math.max(320, window.innerWidth - 320);
-            setAiChatWidth(Math.max(320, Math.min(maxWidth, start.width + start.x - event.clientX)));
-          }}
-          onPointerUp={event => {
-            if (resizeStartRef.current?.pointerId === event.pointerId) {
-              resizeStartRef.current = null;
-              event.currentTarget.releasePointerCapture(event.pointerId);
-            }
-          }}
-          onPointerCancel={() => { resizeStartRef.current = null; }}
-          className="absolute inset-y-0 left-0 z-10 flex w-3 -translate-x-1/2 cursor-col-resize touch-none items-center justify-center outline-none"
-        >
-          <span className="h-12 w-1 rounded-full bg-slate-500/40 transition-colors hover:bg-blue-400" />
-        </div>
-        <div
-          className="h-full max-w-[100vw] border-l border-slate-700 shadow-2xl"
-          style={{ width: `min(${aiChatWidth}px, 100vw)` }}
-        >
-          <AIChatbotFloating
-            presentation="sidebar"
-            isOpen={isAiChatOpen}
-            onClose={() => setIsAiChatOpen(false)}
-            userRole={user.role}
-            activeProjectName={activeProjectName}
-          />
-        </div>
-      </div>,
-      document.body,
-    )}
     </>
   );
 }

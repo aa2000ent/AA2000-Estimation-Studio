@@ -17,8 +17,10 @@ import { StatBuilding, StatClipboard, StatBolt, StatCalendar, StatCheckCircle, C
 import AISidebar from '../ai-sidebar/AISidebar';
 import FloorPlanView from '../floor-plan/FloorPlanView';
 import EstimationHub from '../estimation/EstimationHub';
+import { AIChatbotFloating } from '../chatbot/AIChatbotFloating';
 import SavedBOQsView from '../floor-plan/SavedBOQsView';
 import SavedEstimationsView from '../estimation/SavedEstimationsView';
+import type { SurveyFormData } from '../estimation/CreateSurveyForm';
 import SavedFoldersView from '../ai-sidebar/SavedFoldersView';
 import SparklineCard from './cards/SparklineCard';
 
@@ -30,7 +32,7 @@ interface Props {
   onSelectProject: (project: Project) => void;
   onCreateProject: (project: Project, keepOnHome?: boolean) => void;
   onSettings: () => void;
-  onNavigateToCreate: () => void;
+  onNavigateToCreate: (data?: SurveyFormData) => void;
   selectedCompanyProject: Project | null;
   setSelectedCompanyProject: (project: Project | null) => void;
   onMarkNotificationsAsRead?: (type: string) => void;
@@ -373,6 +375,10 @@ export default function Dashboard({
   const [view, setView] = useState<View>('dashboard');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 1024);
+  const [isAiChatOpen, setIsAiChatOpen] = useState(false);
+  const [isAiChatDocked, setIsAiChatDocked] = useState(true);
+  const [aiChatWidth, setAiChatWidth] = useState(400);
+  const resizeStartRef = useRef<{ pointerId: number; x: number; width: number } | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [isCompanyMode, setIsCompanyMode] = useState(false);
   const [activeNotifTab, setActiveNotifTab] = useState<'ongoing' | 'upcoming' | 'missing' | 'approval' | 'finalize'>('ongoing');
@@ -579,6 +585,7 @@ export default function Dashboard({
   const navigate = (v: View) => {
     setMobileMenuOpen(false);
     setSelectedCompanyProject(null);
+    setIsAiChatOpen(false);
     if (v === 'create-survey') { onNavigateToCreate(); return; }
     // estimation-hub is rendered inside dashboard with sidebar — no full-screen override needed
     if (contentOverride && onExitOverride) {
@@ -629,8 +636,10 @@ export default function Dashboard({
             projects={projects}
             aiScans={aiScans}
             isDark={isDark}
-            activeProjectName={selectedCompanyProject?.name}
+            isAiChatOpen={isAiChatOpen}
+            onOpenAiChat={() => setIsAiChatOpen(true)}
             onNewSurvey={() => {
+              setIsAiChatOpen(false);
               setIsCompanyMode(false);
               setShowCreate(true);
             }}
@@ -668,8 +677,13 @@ export default function Dashboard({
                 projects={projects}
                 aiScans={aiScans}
                 isDark={isDark}
-                activeProjectName={selectedCompanyProject?.name}
+                isAiChatOpen={isAiChatOpen}
+                onOpenAiChat={() => {
+                  setIsAiChatOpen(true);
+                  setMobileMenuOpen(false);
+                }}
                 onNewSurvey={() => {
+                  setIsAiChatOpen(false);
                   setMobileMenuOpen(false);
                   setIsCompanyMode(false);
                   setShowCreate(true);
@@ -820,7 +834,7 @@ export default function Dashboard({
               projects={projectList}
               onBack={() => setSelectedCompanyProject(null)}
               onSelectProject={onSelectProject}
-              onNewSurvey={onNavigateToCreate}
+              onNewSurvey={() => onNavigateToCreate()}
               onDeleteProject={handleDelete}
             />
           ) : view === 'home' || view === 'ai-reader' || view === 'floor-plan' || isCategoryView ? (
@@ -1431,6 +1445,81 @@ export default function Dashboard({
           </div>
         )}
       </main>
+
+      <div
+        aria-hidden={!isAiChatOpen}
+        className={isAiChatDocked && !isMobile
+          ? `relative h-full shrink-0 overflow-hidden transition-[width] duration-200 ${isAiChatOpen ? 'border-l border-slate-700' : 'border-l-0'}`
+          : `fixed inset-y-0 right-0 z-[60] ${isAiChatOpen ? '' : 'invisible pointer-events-none'}`}
+        style={isAiChatDocked && !isMobile
+          ? { width: isAiChatOpen ? `min(${aiChatWidth}px, calc(100vw - 38rem))` : 0 }
+          : undefined}
+      >
+        {isAiChatOpen && (
+          <div
+            role="separator"
+            aria-label="Resize AI Assistant panel"
+            aria-orientation="vertical"
+            aria-valuemin={320}
+            aria-valuemax={Math.max(320, window.innerWidth - (isAiChatDocked ? 608 : 320))}
+            aria-valuenow={aiChatWidth}
+            tabIndex={0}
+            onKeyDown={event => {
+              if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+              event.preventDefault();
+              const direction = event.key === 'ArrowLeft' ? 1 : -1;
+              const maxWidth = Math.max(320, window.innerWidth - (isAiChatDocked ? 608 : 320));
+              setAiChatWidth(width => Math.max(320, Math.min(maxWidth, width + direction * 20)));
+            }}
+            onPointerDown={event => {
+              event.preventDefault();
+              event.currentTarget.setPointerCapture(event.pointerId);
+              resizeStartRef.current = {
+                pointerId: event.pointerId,
+                x: event.clientX,
+                width: aiChatWidth,
+              };
+            }}
+            onPointerMove={event => {
+              const start = resizeStartRef.current;
+              if (!start || start.pointerId !== event.pointerId) return;
+              const maxWidth = Math.max(320, window.innerWidth - (isAiChatDocked ? 608 : 320));
+              setAiChatWidth(Math.max(320, Math.min(maxWidth, start.width + start.x - event.clientX)));
+            }}
+            onPointerUp={event => {
+              if (resizeStartRef.current?.pointerId === event.pointerId) {
+                resizeStartRef.current = null;
+                event.currentTarget.releasePointerCapture(event.pointerId);
+              }
+            }}
+            onPointerCancel={() => { resizeStartRef.current = null; }}
+            className="absolute inset-y-0 left-0 z-10 flex w-3 -translate-x-1/2 cursor-col-resize touch-none items-center justify-center outline-none"
+          >
+            <span className="h-12 w-1 rounded-full bg-slate-500/40 transition-colors hover:bg-blue-400" />
+          </div>
+        )}
+        <div
+          className="h-full max-w-[100vw] shadow-2xl"
+          style={{
+            width: isAiChatDocked && !isMobile
+              ? '100%'
+              : isMobile
+                ? '100vw'
+                : `min(${aiChatWidth}px, 100vw)`,
+          }}
+        >
+          <AIChatbotFloating
+            presentation="sidebar"
+            isOpen={isAiChatOpen}
+            isDocked={isAiChatDocked && !isMobile}
+            showDockToggle={!isMobile}
+            onToggleDock={() => setIsAiChatDocked(docked => !docked)}
+            onClose={() => setIsAiChatOpen(false)}
+            userRole={user.role}
+            activeProjectName={selectedCompanyProject?.name}
+          />
+        </div>
+      </div>
 
     </div>
   );
