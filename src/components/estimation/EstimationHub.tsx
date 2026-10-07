@@ -15,7 +15,7 @@ interface Props {
   initialMode?: 'manual' | 'ai';
 }
 
-export default function EstimationHub({ user, onNavigateToCreate, onSaveAIScan, initialMode, isDark }: Props) {
+export default function EstimationHub({ user, onCreateProject, onSelectProject, onNavigateToCreate, onSaveAIScan, initialMode, isDark }: Props) {
   const [selectedMode, setSelectedMode] = useState<'manual' | 'ai' | null>(initialMode ?? null);
   const [activeManualStep, setActiveManualStep] = useState<number | null>(null);
   const [isSurveyWizardActive, setIsSurveyWizardActive] = useState(false);
@@ -94,18 +94,43 @@ export default function EstimationHub({ user, onNavigateToCreate, onSaveAIScan, 
     setActiveManualStep(3);
   };
 
-  const continueToSurvey = () => onNavigateToCreate?.({
-    ...projectDetails,
-    systemTypes,
-    surveyScope: surveyNotes,
-    latitude: 14.5995,
-    longitude: 120.9842,
-    buildingType: '',
-    floors: '',
-    buildingLength: '',
-    buildingWidth: '',
-    floorHeight: '',
-  });
+  const continueToSurvey = () => {
+    const now = new Date().toISOString();
+    const newProj: Project = {
+      id: `project-${Date.now()}`,
+      name: projectDetails.projectName || 'Manual Estimate Project',
+      clientName: projectDetails.companyName || 'General Client',
+      clientContactName: projectDetails.clientName,
+      clientEmail: projectDetails.clientEmail,
+      clientPhone: projectDetails.clientContactNumber,
+      location: projectDetails.locationName || 'Project Site',
+      locationName: projectDetails.locationName,
+      status: 'Pending',
+      startDate: projectDetails.startDate,
+      assignedTechnicians: [],
+      createdAt: now,
+      systemTypes: systemTypes.length > 0 ? systemTypes : ['CCTV'],
+    };
+
+    if (onCreateProject) {
+      onCreateProject(newProj);
+    } else if (onSelectProject) {
+      onSelectProject(newProj);
+    } else if (onNavigateToCreate) {
+      onNavigateToCreate({
+        ...projectDetails,
+        systemTypes,
+        surveyScope: surveyNotes,
+        latitude: 14.5995,
+        longitude: 120.9842,
+        buildingType: '',
+        floors: '',
+        buildingLength: '',
+        buildingWidth: '',
+        floorHeight: '',
+      });
+    }
+  };
 
   return (
     <div className="min-h-full w-full p-4 sm:p-6">
