@@ -18,12 +18,17 @@ import type {
 /** AI output collected by the wizard, handed to the save path alongside the form data. */
 export interface EstimationFlowAiContext {
   mode: 'manual' | 'ai';
-  /** Manual flow — API #3 result (only when the user chose "Yes — use AI analysis"). */
+  /**
+   * API #3 (Estimation Analysis) result — the project-wide BOQ. Present for the
+   * manual flow when the user chose "Yes — use AI analysis", and for the
+   * AI-assisted flow when the chained analysis ran (auto after #2, or on demand).
+   * When present it wins over the section-level rows for manpower/materials/fees.
+   */
   estimation?: EstimationAnalyzeResult | null;
   /** AI-Assisted flow — API #1 result. */
   floorPlan?: FloorPlanAnalyzeResult | null;
   selectedSection?: FloorPlanSection | null;
-  /** AI-Assisted flow — API #2 result. */
+  /** AI-Assisted flow — API #2 result (fallback rows when #3 never ran). */
   sectionRequirements?: SectionRequirementsResult | null;
 }
 
@@ -257,7 +262,7 @@ function buildScopeRows(data: SurveyFormData, ai?: EstimationFlowAiContext) {
     );
   }
 
-  if (ai?.mode !== 'ai' && ai?.estimation) {
+  if (ai?.estimation) {
     const analysis = ai.estimation;
     const materialItems = (analysis.materials ?? []).reduce(
       (sum, category) => sum + (category.items?.length ?? 0),
@@ -271,10 +276,12 @@ function buildScopeRows(data: SurveyFormData, ai?: EstimationFlowAiContext) {
   }
 
   // Work items the AI extracted — form-shaped rows the user can edit directly.
+  // Project-wide scope from #3 wins; the section scope (#2) is the fallback
+  // when the chained estimation analysis never ran (mixing both would risk
+  // double-counting overlapping work items).
   const aiScope =
-    ai?.mode === 'ai'
-      ? ai.sectionRequirements?.scopeOfWorks
-      : ai?.estimation?.scopeOfWorks;
+    ai?.estimation?.scopeOfWorks ??
+    (ai?.mode === 'ai' ? ai.sectionRequirements?.scopeOfWorks : undefined);
   (aiScope ?? []).forEach(item => {
     if (!item.description) return;
     rows.push({
@@ -297,15 +304,25 @@ export function buildWizardEstimationCache(
   const now = new Date().toISOString();
 
   const isManual = ai?.mode !== 'ai';
-  const manpower = isManual ? mapAnalysisManpower(ai?.estimation) : mapSectionManpower(ai?.sectionRequirements);
-  const consumables = isManual
-    ? mapAnalysisConsumables(ai?.estimation)
-    : mapSectionConsumables(ai?.sectionRequirements);
+  // API #3 (project-wide) drives the rows whenever it ran — both flows. The
+  // AI-assisted flow falls back to the section-level #2 rows when #3 was
+  // skipped; the manual flow without AI has no rows at all.
+  const estimation = ai?.estimation ?? null;
+  const section = isManual ? null : (ai?.sectionRequirements ?? null);
+  const manpower = estimation
+    ? mapAnalysisManpower(estimation)
+    : section
+      ? mapSectionManpower(section)
+      : [];
+  const consumables = estimation
+    ? mapAnalysisConsumables(estimation)
+    : section
+      ? mapSectionConsumables(section)
+      : [];
   // #2 has no fees (section-level fees make no sense); #3 carries the form's fee rows.
-  const fees = isManual ? mapAnalysisFees(ai?.estimation) : [];
+  const fees = estimation ? mapAnalysisFees(estimation) : [];
 
-  const responseConstraints =
-    (isManual ? ai?.estimation?.constraints : ai?.sectionRequirements?.constraints) ?? null;
+  const responseConstraints = estimation?.constraints ?? section?.constraints ?? null;
   const constraints = {
     physical: responseConstraints?.physical || '',
     electrical: responseConstraints?.electrical || '',
@@ -313,26 +330,26 @@ export function buildWizardEstimationCache(
   };
 
   const hasAi = Boolean(ai && (ai.estimation || ai.floorPlan || ai.sectionRequirements));
-  const confidenceScore = isManual
-    ? ai?.estimation?.confidenceScore ?? null
-    : ai?.sectionRequirements?.confidenceScore ?? ai?.floorPlan?.confidenceScore ?? null;
+  const confidenceScore =
+    estimation?.confidenceScore ?? section?.confidenceScore ?? ai?.floorPlan?.confidenceScore ?? null;
   const generatedAt =
-    (isManual
-      ? ai?.estimation?.analyzedAt
-      : ai?.sectionRequirements?.analyzedAt ?? ai?.floorPlan?.analyzedAt) || now;
+    (estimation?.analyzedAt ?? section?.analyzedAt ?? ai?.floorPlan?.analyzedAt) || now;
 
-  const sectionRecommendations = ai?.sectionRequirements?.recommendations ?? [];
-  const technicianNotes = isManual
-    ? ai?.estimation?.assumptions?.length
-      ? `AI assumptions:\n${ai.estimation.assumptions.map(item => `• ${item}`).join('\n')}`
-      : ''
-    : sectionRecommendations.length
-      ? `AI recommendations:\n${sectionRecommendations
-          .map(item =>
-            `• ${[item.priority, item.system].filter(Boolean).join(' · ')}${item.action ? ` — ${item.action}` : ''}`
-          )
-          .join('\n')}`
-      : '';
+  const sectionRecommendations = section?.recommendations ?? [];
+  const aiNotes: string[] = [];
+  if (estimation?.assumptions?.length) {
+    aiNotes.push(`AI assumptions:\n${estimation.assumptions.map(item => `• ${item}`).join('\n')}`);
+  }
+  if (sectionRecommendations.length) {
+    aiNotes.push(
+      `AI recommendations:\n${sectionRecommendations
+        .map(item =>
+          `• ${[item.priority, item.system].filter(Boolean).join(' · ')}${item.action ? ` — ${item.action}` : ''}`
+        )
+        .join('\n')}`
+    );
+  }
+  const technicianNotes = aiNotes.join('\n\n');
 
   return {
     manpower,

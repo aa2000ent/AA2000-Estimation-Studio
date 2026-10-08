@@ -46,6 +46,8 @@ interface Props {
   initialClientEmail?: string;
   initialClientContactNumber?: string;
   initialSystemTypes?: SystemType[];
+  /** Full form prefill (e.g. reopening an existing project's data). */
+  initialData?: SurveyFormData;
   isDark?: boolean;
 }
 
@@ -84,7 +86,8 @@ const BUILDING_TYPES = [
 ];
 
 // Per-system configuration defaults (editable in the Project-Specific step).
-// Only used when the manual flow runs the estimation analysis endpoint.
+// The manual flow edits them directly; the AI flow falls back to these, with
+// equipment counts detected from the floor plan (API #1) taking precedence.
 const SYSTEM_CONFIG_DEFAULTS = {
   cameraCount: '10',
   resolution: '5MP',
@@ -138,6 +141,7 @@ export default function CreateEstimationFlow({
   initialClientEmail = '',
   initialClientContactNumber = '',
   initialSystemTypes = [],
+  initialData,
   isDark,
 }: Props) {
   const dark =
@@ -148,22 +152,28 @@ export default function CreateEstimationFlow({
   const [mode, setMode] = useState<FlowMode | null>(null);
   const [step, setStep] = useState(0);
   const [form, setForm] = useState<SurveyFormData>({
-    companyName: String(initialCompanyName || ''),
-    projectName: '',
-    clientEmail: initialClientEmail,
-    clientName: initialClientName,
-    clientContactNumber: initialClientContactNumber,
-    locationName: initialLocationName,
-    latitude: initialLatitude !== undefined ? initialLatitude : 14.5995,
-    longitude: initialLongitude !== undefined ? initialLongitude : 120.9842,
-    surveyScope: '',
-    systemTypes: initialSystemTypes && initialSystemTypes.length > 0 ? initialSystemTypes : [],
-    buildingType: '',
-    floors: '',
-    buildingLength: '',
-    buildingWidth: '',
-    floorHeight: '',
-    startDate: new Date().toISOString().split('T')[0],
+    // Explicit initial* props win only where the full prefill has no data.
+    companyName: initialData?.companyName || String(initialCompanyName || ''),
+    projectName: initialData?.projectName || '',
+    clientEmail: initialData?.clientEmail || initialClientEmail,
+    clientName: initialData?.clientName || initialClientName,
+    clientContactNumber: initialData?.clientContactNumber || initialClientContactNumber,
+    locationName: initialData?.locationName || initialLocationName,
+    latitude: initialData?.latitude ?? initialLatitude ?? 14.5995,
+    longitude: initialData?.longitude ?? initialLongitude ?? 120.9842,
+    surveyScope: initialData?.surveyScope || '',
+    systemTypes:
+      initialData?.systemTypes?.length
+        ? initialData.systemTypes
+        : initialSystemTypes && initialSystemTypes.length > 0
+          ? initialSystemTypes
+          : [],
+    buildingType: initialData?.buildingType || '',
+    floors: initialData?.floors || '',
+    buildingLength: initialData?.buildingLength || '',
+    buildingWidth: initialData?.buildingWidth || '',
+    floorHeight: initialData?.floorHeight || '',
+    startDate: initialData?.startDate || new Date().toISOString().split('T')[0],
   });
   const [isNewBuilding, setIsNewBuilding] = useState(false);
   const [systemConfig, setSystemConfig] = useState<SystemConfig>(SYSTEM_CONFIG_DEFAULTS);
@@ -299,8 +309,27 @@ export default function CreateEstimationFlow({
       const length = toNum(form.buildingLength);
       const width = toNum(form.buildingWidth);
       const height = toNum(form.floorHeight);
+      // Floor-plan context (AI flow): the drawing's measured area fills in when
+      // the manual dimensions are missing, and the extracted room count goes
+      // into siteInfo so API #3 sees what API #1 found.
+      const planSummary = planResult?.summary;
       const totalFloorArea =
-        length && width ? length * width * Math.max(1, floors) : undefined;
+        length && width
+          ? length * width * Math.max(1, floors)
+          : planSummary?.totalArea;
+      // Detected equipment from the floor plan (API #1) — the AI flow never
+      // visits the Project-Specific step, so its counts override the defaults.
+      const detectedCoverage = (name: string) => {
+        const coverage = planSummary?.systemsCoverage;
+        if (!coverage) return undefined;
+        return (
+          coverage[name] ??
+          coverage[name.toLowerCase()] ??
+          Object.entries(coverage).find(
+            ([key]) => key.toUpperCase().replace(/[^A-Z]/g, '') === name
+          )?.[1]
+        );
+      };
       const systems: Record<string, Record<string, unknown>> = {
         CCTV: { enabled: false },
         FDAS: { enabled: false },
@@ -312,9 +341,13 @@ export default function CreateEstimationFlow({
       const selected = form.systemTypes;
 
       if (selected.includes('CCTV')) {
+        const detectedCameras = detectedCoverage('CCTV')?.cameraCount;
         systems.CCTV = {
           enabled: true,
-          cameraCount: num(cfg.cameraCount, 1, 1),
+          cameraCount:
+            detectedCameras && detectedCameras > 0
+              ? detectedCameras
+              : num(cfg.cameraCount, 1, 1),
           resolution: cfg.resolution,
           environment: cfg.environment,
         };
@@ -379,6 +412,7 @@ export default function CreateEstimationFlow({
           buildingWidth: width,
           floorHeight: height,
           totalFloorArea,
+          roomsCount: planSummary?.totalRooms,
           locationName: form.locationName,
           latitude: Number(form.latitude) || 0,
           longitude: Number(form.longitude) || 0,
@@ -642,6 +676,17 @@ export default function CreateEstimationFlow({
   // Extraction starts from the "Extract Section Requirements" button below —
   // it must not auto-run on step entry, so the user can attach TOR/Proposal
   // documents first (the upload card renders above the button).
+
+  // Chain the full estimation analysis (API #3) once section requirements (#2)
+  // land, so the AI flow ends with a complete project BOQ (materials, fees,
+  // constraints, scope) instead of section-level rows only. The standalone
+  // button in the step covers users who skip section extraction entirely.
+  useEffect(() => {
+    if (mode !== 'ai' || !reqResult) return;
+    if (estResult || estLoading || estError) return;
+    void runEstimationAnalysis();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, reqResult]);
 
   // -- Shared styling -------------------------------------------------------
 
@@ -1303,6 +1348,38 @@ export default function CreateEstimationFlow({
           Extract Section Requirements
         </button>
       )}
+
+      {/* Full estimation analysis (API #3) — runs automatically after the
+          section requirements succeed, or on demand when they were skipped. */}
+      {!reqResult && !estResult && !estLoading && !estError && (
+        <div className="mt-4">
+          <button
+            type="button"
+            onClick={() => runEstimationAnalysis()}
+            className="px-6 py-3 rounded-xl text-xs font-bold text-white transition-all inline-flex items-center gap-2 cursor-pointer"
+            style={{ background: '#0F766E' }}
+          >
+            <ChartBar className="w-4 h-4" />
+            Generate AI Estimation
+          </button>
+          <p className="text-[11px] font-semibold mt-2" style={{ color: dark ? '#64748B' : '#94A3B8' }}>
+            Runs the full estimation AI on the project details and floor plan — materials, manpower, fees and scope of work.
+          </p>
+        </div>
+      )}
+      {estLoading && loadingNote('Analyzing site & systems for the full estimation… this can take up to 2 minutes.')}
+      {estError && errorBanner(estError)}
+      {estError && !estLoading && (
+        <button
+          type="button"
+          onClick={() => runEstimationAnalysis()}
+          className="px-5 py-2.5 rounded-xl text-xs font-bold text-white mb-4 cursor-pointer"
+          style={{ background: '#1E3A8A' }}
+        >
+          Retry Estimation Analysis
+        </button>
+      )}
+      {estResult && <EstimationAnalysisResultPanel result={estResult} isDark={dark} />}
     </div>
   );
 
@@ -1465,12 +1542,19 @@ export default function CreateEstimationFlow({
       return;
     }
 
+    if (planLoading || reqLoading || estLoading) {
+      setErrorMsg('The AI analysis is still running — wait for it to finish before saving.');
+      return;
+    }
+
     setSaving(true);
     setErrorMsg('');
     try {
       const ai: EstimationFlowAiContext = {
         mode: mode === 'ai' ? 'ai' : 'manual',
-        estimation: mode === 'manual' && useAi ? estResult : null,
+        // API #3 result drives the saved rows in both flows when it ran:
+        // manual (Yes — use AI) and the AI-assisted flow (chained after #2).
+        estimation: estResult && (mode === 'ai' || useAi) ? estResult : null,
         floorPlan: mode === 'ai' ? planResult : null,
         selectedSection: mode === 'ai' ? selectedSection : null,
         sectionRequirements: mode === 'ai' ? reqResult : null,
@@ -1655,8 +1739,8 @@ export default function CreateEstimationFlow({
                 ? 'Saving the estimation to the database…'
                 : mode === 'manual' && useAi === null
                   ? 'Select Yes or No above before saving.'
-                  : mode === 'ai' && !reqResult
-                    ? 'Tip: you can save now — requirements extraction is optional.'
+                  : mode === 'ai' && !reqResult && !estResult
+                    ? 'Tip: you can save now - requirements extraction and the AI estimation are both optional.'
                     : 'Saving stores the estimation in the database and opens Cost Estimation with your AI results applied.'}
             </p>
           )}

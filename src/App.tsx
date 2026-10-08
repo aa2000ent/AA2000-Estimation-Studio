@@ -706,6 +706,10 @@ export default function App() {
       });
 
       setCurrentProject(newProject);
+      // Build + write the local Cost Estimation cache from the wizard rows and
+      // the AI context, so the next screen opens with everything applied.
+      const cache = buildWizardEstimationCache(data, ai);
+      cacheWizardEstimation(newProject.id, cache);
       // Cost Estimation opens straight away with the AI results (if any) already
       // applied as editable rows from the local cache written above. History is
       // cleared so Back never reopens the completed wizard.
