@@ -1,11 +1,17 @@
 import React, { useState, useCallback } from 'react';
 import { parseFile, type ParsedFile } from '../../services/fileParser';
-import { auditTorDocument, analyzeProposalOnly, type AuditDetails } from '../../services/torAuditorService';
-import { exportAuditPdf } from '../../utils/pdfExporter';
-import type { AIScanGroup, AIScanFile } from '../../App';
 import { useToast } from '../utils/Toast';
-import { canViewPrices } from '../../constants/roles';
 import FloorPlanSelectionSectionView from '../estimation/FloorPlanSelectionSectionView';
+import DocumentRequirementsView from '../estimation/DocumentRequirementsView';
+import { SYSTEM_OPTIONS, type SystemType } from '../estimation/CreateSurveyForm';
+import { Check, systemBadgeIcons } from '../../utils/Icons';
+import type { SaveEstimationFn } from '../../services/estimationWizardSnapshot';
+import {
+  analyzeFloorPlan,
+  analyzeEstimation,
+  type FloorPlanAnalyzeResult,
+  type EstimationAnalyzeResult,
+} from '../../services/api/estimationFlow';
 
 interface FileWithContent {
   file: File;
@@ -15,41 +21,118 @@ interface FileWithContent {
 }
 
 interface Props {
-  userRole?: string;
-  onSaveAIScan?: (scan: AIScanGroup) => Promise<void>;
   onScanningChange?: (scanning: boolean) => void;
+  /** AI Estimation: saves the analysis to the database after collecting client details + systems. */
+  onSaveEstimation?: SaveEstimationFn;
 }
 
-const TOR_AUDIT_STEPS = [
-  'Ingesting & parsing document structure...',
-  'Extracting technical specifications & hardware requirements...',
-  'Cross-referencing equipment models with Philippine market standards...',
-  'Calculating labor ratios, installation man-hours & engineering team...',
-  'Auditing cabling lengths, conduits & consumable allowances...',
-  'Computing confidence score and finalizing technical audit report...',
+const ANALYSIS_STEPS = [
+  'Reading & parsing the uploaded document...',
+  'Extracting requirements & system specifications...',
+  'Matching products against the AA2000 catalog...',
+  'Computing manpower, materials, fees & schedule...',
+  'Building scope of works, constraints & risk assessment...',
 ];
 
-export default function TORComparisonView({ userRole, onSaveAIScan, onScanningChange }: Props) {
+// Backend supplemental-doc cap (services/Applications/ESTIMATION/supplementalDocs.js).
+const SUPPLEMENTAL_CONTENT_CHARS = 6000;
+
+// API #3 payload per system bucket. Only the buckets matching the user's
+// pre-analysis system selection end up enabled (see buildDocSystems), so the
+// AI scopes its requirements to the project. The detail fields say
+// "per document" instead of a fabricated quantity so the prompt does not
+// present invented counts as facts.
+const DOC_SYSTEMS = {
+  CCTV: { enabled: true, cameraCount: 'per document', resolution: 'per document', environment: 'per document' },
+  FDAS: { enabled: true, systemType: 'per document', smokeDetectors: 'per document', heatDetectors: 'per document', mcpCount: 'per document', sounders: 'per document' },
+  ACCESS_CONTROL: { enabled: true, doorCount: 'per document', doorType: 'per document', readerType: 'per document', lockType: 'per document' },
+  BURGLAR_ALARM: { enabled: true, pirSensors: 'per document', doorContacts: 'per document', glassBreak: 'per document', outdoorSensors: 'per document' },
+  FIRE_PROTECTION: { enabled: true, suppressionType: 'per document', zones: 'per document', cylinders: 'per document' },
+  OTHER: { enabled: true },
+};
+
+// Non-core SystemType values roll up into API #3's OTHER bucket
+// (same mapping as CreateEstimationFlow's OTHER_SYSTEM_TYPES).
+const OTHER_SYSTEM_TYPES: SystemType[] = [
+  'DOOR_LOCK', 'EAS_SYSTEM', 'FIXED_ARM_ELEVATOR', 'INTERCOM_NURSE_CALL',
+  'PABX_PAGING', 'PARKING_BARRIER', 'POS_SYSTEM', 'ROOM_ALERT', 'XRAY_SECURITY',
+];
+
+/** Selected systems -> API #3 `systems` payload (only the selection is enabled). */
+function buildDocSystems(selected: SystemType[]): Record<string, Record<string, unknown>> {
+  const set = new Set(selected);
+  const hasOther = OTHER_SYSTEM_TYPES.some(t => set.has(t));
+  const out: Record<string, Record<string, unknown>> = {};
+  (Object.keys(DOC_SYSTEMS) as (keyof typeof DOC_SYSTEMS)[]).forEach(key => {
+    out[key] = {
+      ...DOC_SYSTEMS[key],
+      enabled: key === 'OTHER' ? hasOther : set.has(key as SystemType),
+    };
+  });
+  return out;
+}
+
+// siteInfo.buildingType is required by API #3; the document is the only source
+// of project facts here, so infer the building type from its text.
+const BUILDING_TYPE_KEYWORDS: [string, string][] = [
+  ['data center', 'Data Center'],
+  ['university', 'School / University'],
+  ['school', 'School'],
+  ['hospital', 'Hospital / Medical'],
+  ['warehouse', 'Warehouse / Logistics'],
+  ['hotel', 'Hotel / Hospitality'],
+  ['condominium', 'Residential / Condo'],
+  ['condo', 'Residential / Condo'],
+  ['residential', 'Residential'],
+  ['mall', 'Mall / Retail'],
+  ['retail', 'Retail'],
+  ['factory', 'Industrial / Factory'],
+  ['industrial', 'Industrial'],
+  ['parking', 'Parking Structure'],
+  ['government', 'Government / BPO'],
+  ['bpo', 'Government / BPO'],
+  ['office', 'Office'],
+];
+
+function inferBuildingType(text: string): string {
+  const lower = text.toLowerCase();
+  for (const [keyword, buildingType] of BUILDING_TYPE_KEYWORDS) {
+    if (lower.includes(keyword)) return buildingType;
+  }
+  return 'Office';
+}
+
+export default function TORComparisonView({ onScanningChange, onSaveEstimation }: Props) {
   const { toast } = useToast();
-  const showPrices = canViewPrices(userRole);
   const [selectedDocType, setSelectedDocType] = useState<'floor_plan' | 'tor' | 'proposal'>('floor_plan');
   const [showFloorPlanSelection, setShowFloorPlanSelection] = useState(false);
   const [torFile, setTorFile] = useState<FileWithContent | null>(null);
   const [proposalFile, setProposalFile] = useState<FileWithContent | null>(null);
-  const [auditResult, setAuditResult] = useState<AuditDetails | null>(null);
-  const [auditing, setAuditing] = useState(false);
-  const [auditStep, setAuditStep] = useState(0);
-  const [downloading, setDownloading] = useState(false);
-  const [scanGroupName, setScanGroupName] = useState('');
-  const [showSaveModal, setShowSaveModal] = useState(false);
-  const [isSaved, setIsSaved] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
+  const [floorPlanFile, setFloorPlanFile] = useState<FileWithContent | null>(null);
+  const [floorPlanResult, setFloorPlanResult] = useState<FloorPlanAnalyzeResult | null>(null);
+  const [floorPlanLoading, setFloorPlanLoading] = useState(false);
+  const [estResult, setEstResult] = useState<EstimationAnalyzeResult | null>(null);
+  const [estError, setEstError] = useState('');
+  const [showDocResults, setShowDocResults] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analysisStep, setAnalysisStep] = useState(0);
+  // Collected BEFORE the analysis and passed to every endpoint so the AI scopes
+  // its recommendations to the project's systems.
+  const [systemTypes, setSystemTypes] = useState<SystemType[]>([]);
+
+  const toggleSystemType = (type: SystemType) =>
+    setSystemTypes(prev =>
+      prev.includes(type) ? prev.filter(t => t !== type) : [...prev, type]
+    );
 
   const handleTorFiles = useCallback(async (files: FileList | File[]) => {
     const fileArray = Array.from(files);
     if (fileArray.length === 0) return;
     const file = fileArray[0];
     setTorFile({ file, parsed: { fileName: file.name, fileType: '', content: '', size: file.size }, loading: true, error: null });
+    setEstResult(null);
+    setEstError('');
+    setShowDocResults(false);
     try {
       const parsed = await parseFile(file);
       setTorFile({ file, parsed, loading: false, error: null });
@@ -65,6 +148,9 @@ export default function TORComparisonView({ userRole, onSaveAIScan, onScanningCh
     if (fileArray.length === 0) return;
     const file = fileArray[0];
     setProposalFile({ file, parsed: { fileName: file.name, fileType: '', content: '', size: file.size }, loading: true, error: null });
+    setEstResult(null);
+    setEstError('');
+    setShowDocResults(false);
     try {
       const parsed = await parseFile(file);
       setProposalFile({ file, parsed, loading: false, error: null });
@@ -75,12 +161,76 @@ export default function TORComparisonView({ userRole, onSaveAIScan, onScanningCh
     }
   }, [toast]);
 
-  const removeTorFile = useCallback(() => setTorFile(null), []);
-  const removeProposalFile = useCallback(() => setProposalFile(null), []);
+  const handleFloorPlanFiles = useCallback(async (files: FileList | File[]) => {
+    const fileArray = Array.from(files);
+    if (fileArray.length === 0) return;
+    const file = fileArray[0];
+    setFloorPlanFile({ file, parsed: { fileName: file.name, fileType: '', content: '', size: file.size }, loading: true, error: null });
+    setFloorPlanResult(null);
+    try {
+      const parsed = await parseFile(file);
+      setFloorPlanFile({ file, parsed, loading: false, error: null });
+      toast.success(`Floor plan "${file.name}" loaded successfully`);
+    } catch (err) {
+      setFloorPlanFile({ file, parsed: { fileName: file.name, fileType: '', content: '', size: file.size }, loading: false, error: 'Failed to parse file' });
+      toast.error(`Failed to parse floor plan: ${err}`);
+    }
+  }, [toast]);
+
+  const removeTorFile = useCallback(() => {
+    setTorFile(null);
+    setEstResult(null);
+    setEstError('');
+    setShowDocResults(false);
+  }, []);
+  const removeProposalFile = useCallback(() => {
+    setProposalFile(null);
+    setEstResult(null);
+    setEstError('');
+    setShowDocResults(false);
+  }, []);
+  const removeFloorPlanFile = useCallback(() => {
+    setFloorPlanFile(null);
+    setFloorPlanResult(null);
+  }, []);
 
   const handleRunComparison = useCallback(async () => {
     if (selectedDocType === 'floor_plan') {
-      setShowFloorPlanSelection(true);
+      if (!floorPlanFile) {
+        toast.error('Please upload a floor plan to analyze.');
+        return;
+      }
+      if (systemTypes.length === 0) {
+        toast.error('Select at least one system type before the analysis.');
+        return;
+      }
+
+      setFloorPlanLoading(true);
+      setFloorPlanResult(null);
+      onScanningChange?.(true);
+      try {
+        const result = await analyzeFloorPlan({
+          files: [floorPlanFile.file],
+          // Selected systems reach the prompt as "System types of interest".
+          projectContext: { systemTypes },
+          analysisOptions: {
+            extractDimensions: true,
+            extractAnnotations: true,
+            detectSystems: true,
+            classifyRooms: true,
+            outputFormat: 'structured',
+            coordinateSystem: 'meters',
+          },
+        });
+        setFloorPlanResult(result);
+        setShowFloorPlanSelection(true);
+        toast.success('Floor plan analyzed — sections extracted!');
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Floor plan analysis failed');
+      } finally {
+        setFloorPlanLoading(false);
+        onScanningChange?.(false);
+      }
       return;
     }
 
@@ -89,107 +239,111 @@ export default function TORComparisonView({ userRole, onSaveAIScan, onScanningCh
       toast.error('Please select or upload a document to analyze.');
       return;
     }
+    if (systemTypes.length === 0) {
+      toast.error('Select at least one system type before the analysis.');
+      return;
+    }
 
-    setAuditStep(0);
-    setAuditing(true);
-    setAuditResult(null);
+    // API #3 has no OCR: the requirements must come from readable document text.
+    const content = (activeFile.parsed.content || '').trim();
+    const unreadable =
+      !content ||
+      activeFile.parsed.error !== undefined ||
+      /^\[(Unsupported file type|Error parsing file)/.test(content);
+    if (unreadable) {
+      toast.error(
+        `No readable text in "${activeFile.parsed.fileName}" — upload a text-based PDF, DOCX or XLSX so the requirements can be extracted.`
+      );
+      return;
+    }
+
+    setAnalysisStep(0);
+    setAnalyzing(true);
+    setEstResult(null);
+    setEstError('');
     onScanningChange?.(true);
 
     const stepInterval = setInterval(() => {
-      setAuditStep(prev => (prev < TOR_AUDIT_STEPS.length - 1 ? prev + 1 : prev));
+      setAnalysisStep(prev => (prev < ANALYSIS_STEPS.length - 1 ? prev + 1 : prev));
     }, 2200);
 
     try {
-      let auditDetails: AuditDetails;
-      if (selectedDocType === 'proposal' && proposalFile) {
-        auditDetails = await analyzeProposalOnly(proposalFile.parsed.fileName, proposalFile.parsed.content, proposalFile.file);
-      } else if (torFile) {
-        auditDetails = await auditTorDocument(torFile.parsed.fileName, torFile.parsed.content, { torFile: torFile.file });
-      } else {
-        throw new Error('No valid file available for analysis.');
-      }
-      setAuditResult(auditDetails);
-      toast.success('AI Document Analysis completed!');
+      const result = await analyzeEstimation({
+        siteInfo: {
+          buildingType: inferBuildingType(content),
+          locationName: 'the Philippines',
+          surveyScope: `Requirements for ${systemTypes.join(', ')} extracted from ${activeFile.parsed.fileName}`,
+        },
+        // Only the pre-analysis selection is enabled — scopes the prompt,
+        // the catalog lookup and the recommendations to the project.
+        systems: buildDocSystems(systemTypes),
+        clientContext: {
+          projectName: activeFile.parsed.fileName,
+          budgetTier: 'standard',
+          prioritySystems: systemTypes,
+          existingInfrastructure: false,
+        },
+        supplementalDocuments: [
+          {
+            name: activeFile.parsed.fileName,
+            content: content.slice(0, SUPPLEMENTAL_CONTENT_CHARS),
+          },
+        ],
+        analysisOptions: {
+          includeLaborBreakdown: true,
+          includeMaterialAlternates: true,
+          includePhaseSchedule: true,
+          confidenceThreshold: 50,
+          currency: 'PHP',
+          market: 'philippines',
+        },
+      });
+      setEstResult(result);
+      setShowDocResults(true);
+      toast.success('Requirements extracted from the document!');
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'AI analysis failed');
+      const message = err instanceof Error ? err.message : 'Requirements extraction failed.';
+      setEstError(message);
+      toast.error(message);
     } finally {
       clearInterval(stepInterval);
-      setAuditing(false);
+      setAnalyzing(false);
       onScanningChange?.(false);
     }
-  }, [selectedDocType, torFile, proposalFile, toast, onScanningChange]);
+  }, [selectedDocType, torFile, proposalFile, floorPlanFile, systemTypes, toast, onScanningChange]);
 
-  const handleSave = useCallback(async () => {
-    if (!onSaveAIScan || !scanGroupName.trim() || !auditResult) return;
-    const activeFile = selectedDocType === 'proposal' ? proposalFile : torFile;
-    if (!activeFile) return;
-
-    const files: AIScanFile[] = [{
-      fileName: activeFile.parsed.fileName,
-      fileType: activeFile.parsed.fileType || activeFile.parsed.fileName.split('.').pop() || '',
-      fileSizeLabel: `${(activeFile.parsed.content.length / 1024).toFixed(1)} KB extracted`,
-      parsedContent: activeFile.parsed.content.slice(0, 10000),
-      aiResult: { auditDetails: auditResult },
-      role: selectedDocType === 'proposal' ? 'technician_proposal' : 'tor',
-    }];
-
-    const group: AIScanGroup = {
-      id: `scan-${Date.now()}`,
-      name: scanGroupName.trim(),
-      createdAt: new Date().toISOString(),
-      files,
-    };
-
-    setIsSaving(true);
-    try {
-      await onSaveAIScan(group);
-      setIsSaved(true);
-      setShowSaveModal(false);
-      toast.success('Analysis saved successfully!');
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'The analysis could not be saved.');
-    } finally {
-      setIsSaving(false);
-    }
-  }, [onSaveAIScan, scanGroupName, selectedDocType, torFile, proposalFile, auditResult, toast]);
-
-  const handleDownload = async () => {
-    if (!auditResult) return;
-    setDownloading(true);
-    toast.info('Generating PDF...');
-    try {
-      const primaryName = torFile?.parsed.fileName || proposalFile?.parsed.fileName || 'Audit';
-      await exportAuditPdf({
-        title: `${primaryName.replace(/\.[^.]+$/, '')} — Document Analysis`,
-        torFileName: torFile?.parsed.fileName,
-        proposalFileName: proposalFile?.parsed.fileName,
-        confidenceScore: auditResult.confidenceScore,
-        totalTechnicianCost: auditResult.totalTechnicianCost,
-        totalAiRecommendedCost: auditResult.totalAiRecommendedCost,
-        varianceAmount: auditResult.varianceAmount,
-        variancePercent: auditResult.variancePercent,
-        overallAuditRationale: auditResult.overallAuditRationale,
-        equipmentComparison: auditResult.equipmentComparison,
-        manpowerComparison: auditResult.manpowerComparison,
-        consumablesComparison: auditResult.consumablesComparison,
-      });
-      toast.success('PDF downloaded!');
-    } catch (err) {
-      console.error('PDF Generation Error:', err);
-      toast.error(err instanceof Error ? err.message : 'Failed to generate PDF.');
-    } finally {
-      setDownloading(false);
-    }
-  };
-
-  const currentFile = selectedDocType === 'proposal' ? proposalFile : torFile;
-  const conf = auditResult?.confidenceScore ?? 0;
-  const confLabel = conf >= 75 ? 'High Confidence' : conf >= 50 ? 'Medium Confidence' : conf >= 25 ? 'Low Confidence' : 'Poor Quality';
+  const currentFile =
+    selectedDocType === 'proposal'
+      ? proposalFile
+      : selectedDocType === 'floor_plan'
+        ? floorPlanFile
+        : torFile;
 
   if (showFloorPlanSelection) {
     return (
       <FloorPlanSelectionSectionView
+        result={floorPlanResult}
+        onSaveEstimation={onSaveEstimation}
+        initialSystemTypes={systemTypes}
         onBackToDocument={() => setShowFloorPlanSelection(false)}
+      />
+    );
+  }
+
+  // Same interface as the floorplan module's results view — section selection skipped.
+  if (showDocResults && estResult) {
+    return (
+      <DocumentRequirementsView
+        result={estResult}
+        fileName={currentFile?.parsed.fileName}
+        docType={selectedDocType === 'proposal' ? 'proposal' : 'tor'}
+        onSaveEstimation={onSaveEstimation}
+        initialSystemTypes={systemTypes}
+        onBackToDocument={() => setShowDocResults(false)}
+        onReanalyze={() => {
+          setShowDocResults(false);
+          handleRunComparison();
+        }}
       />
     );
   }
@@ -332,6 +486,7 @@ export default function TORComparisonView({ userRole, onSaveAIScan, onScanningCh
               type="button"
               onClick={() => {
                 if (selectedDocType === 'proposal') removeProposalFile();
+                else if (selectedDocType === 'floor_plan') removeFloorPlanFile();
                 else removeTorFile();
               }}
               className="text-slate-400 hover:text-red-500 text-xs font-bold cursor-pointer"
@@ -348,12 +503,18 @@ export default function TORComparisonView({ userRole, onSaveAIScan, onScanningCh
               <span>Open File / Select from Device</span>
               <input
                 type="file"
-                accept=".pdf,.xlsx,.xls,.docx,.doc,.png,.jpg,.jpeg"
+                accept={
+                  selectedDocType === 'floor_plan'
+                    ? '.pdf,.png,.jpg,.jpeg,.gif,.webp'
+                    : '.pdf,.xlsx,.xls,.docx,.doc,.png,.jpg,.jpeg'
+                }
                 className="hidden"
                 onChange={e => {
                   if (e.target.files && e.target.files.length > 0) {
                     if (selectedDocType === 'proposal') {
                       handleProposalFiles(e.target.files);
+                    } else if (selectedDocType === 'floor_plan') {
+                      handleFloorPlanFiles(e.target.files);
                     } else {
                       handleTorFiles(e.target.files);
                     }
@@ -378,31 +539,134 @@ export default function TORComparisonView({ userRole, onSaveAIScan, onScanningCh
         )}
 
         <p className="text-[10px] font-medium text-slate-400 dark:text-slate-500 mt-2">
-          PDF, PNG, JPG, DOCX, XLSX • Preview uses simulated analysis
+          {selectedDocType === 'floor_plan'
+            ? 'PDF, PNG, JPG, GIF, WEBP • Sections extracted by /api/floorplan/analyze'
+            : 'PDF, DOCX, XLSX • Requirements extracted by /service/estimation/ai/analyze'}
+        </p>
+      </div>
+
+      {/* System Types — collected BEFORE the analysis and sent to the endpoint */}
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs dark:border-slate-800 dark:bg-[#131B2E] sm:p-5">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400">
+            System Types *
+          </p>
+          <p className="text-[10px] font-medium text-slate-400 dark:text-slate-500">
+            Selected before analysis so the AI recommends requirements for this project's systems.
+          </p>
+        </div>
+        <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {SYSTEM_OPTIONS.map(opt => {
+            const selected = systemTypes.includes(opt.type);
+            const IconComp = systemBadgeIcons[opt.type];
+            return (
+              <button
+                key={opt.type}
+                type="button"
+                onClick={() => toggleSystemType(opt.type)}
+                className={`flex items-center gap-2.5 rounded-xl border-2 p-2.5 text-left transition-all cursor-pointer ${
+                  selected
+                    ? 'border-blue-600 bg-blue-50 dark:border-blue-500 dark:bg-blue-950/60'
+                    : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 hover:border-blue-300 dark:hover:border-blue-800'
+                }`}
+              >
+                <span className={`shrink-0 ${selected ? 'text-blue-600 dark:text-blue-400' : 'text-slate-400 dark:text-slate-500'}`}>
+                  {IconComp ? <IconComp className="h-4 w-4" /> : null}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className={`block truncate text-[11px] font-black ${selected ? 'text-blue-700 dark:text-blue-300' : 'text-slate-700 dark:text-slate-300'}`}>
+                    {opt.label}
+                  </span>
+                  {selected && (
+                    <span className="mt-0.5 inline-flex items-center gap-1 rounded bg-blue-700 px-1.5 py-0.5 text-[9px] font-bold text-white">
+                      SELECTED <Check className="h-2.5 w-2.5" />
+                    </span>
+                  )}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+        <p className="mt-3 text-[10px] font-semibold text-slate-400 dark:text-slate-500">
+          {systemTypes.length === 0
+            ? 'Select at least one system type to enable AI analysis.'
+            : `${systemTypes.length} system type${systemTypes.length === 1 ? '' : 's'} selected.`}
         </p>
       </div>
 
       {/* Action Footer */}
       <div className="flex flex-col gap-3 border-t border-slate-100 pt-4 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between">
         <span className="text-xs font-medium text-slate-400 dark:text-slate-500">
-          {selectedDocType === 'floor_plan' || currentFile ? 'Document ready for AI analysis' : 'Choose a document to enable AI analysis'}
+          {systemTypes.length === 0
+            ? 'Select at least one system type to enable AI analysis'
+            : selectedDocType === 'floor_plan'
+              ? floorPlanFile
+                ? 'Floor plan ready for AI analysis'
+                : 'Upload a floor plan to enable AI analysis'
+              : currentFile
+                ? 'Document ready for AI analysis'
+                : 'Choose a document to enable AI analysis'}
         </span>
         <button
           onClick={handleRunComparison}
-          disabled={selectedDocType !== 'floor_plan' && (!currentFile || auditing)}
+          disabled={
+            systemTypes.length === 0 ||
+            (selectedDocType === 'floor_plan'
+              ? !floorPlanFile || floorPlanLoading
+              : !currentFile || analyzing)
+          }
           className={`flex items-center justify-center gap-2 rounded-full px-6 py-3 text-xs font-bold transition-all cursor-pointer sm:w-auto ${
-            selectedDocType === 'floor_plan' || currentFile
+            systemTypes.length > 0 &&
+            (selectedDocType === 'floor_plan' ? floorPlanFile : currentFile) &&
+            !floorPlanLoading &&
+            !analyzing
               ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-md shadow-blue-500/20'
               : 'bg-blue-50 dark:bg-blue-950/40 text-blue-300 dark:text-blue-700 cursor-not-allowed'
           }`}
         >
           <span>✨</span>
-          <span>{auditing ? 'Analyzing Document...' : 'Analyze Document'}</span>
+          <span>
+            {floorPlanLoading
+              ? 'Analyzing Floor Plan...'
+              : analyzing
+                ? 'Extracting Requirements...'
+                : 'Analyze Document'}
+          </span>
         </button>
       </div>
 
-      {/* Real-time AI Audit Scanning Progress Animation */}
-      {auditing && (
+      {/* Floor plan analysis progress */}
+      {floorPlanLoading && (
+        <div className="rounded-2xl border border-blue-200/80 bg-gradient-to-b from-blue-50/90 via-blue-50/40 to-indigo-50/30 p-4 shadow-sm sm:p-6">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="relative w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center text-white shadow-md shadow-blue-500/20">
+                <svg className="w-5 h-5 animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 4.5 4 6v13.5l5-1.5 6 1.5 5-1.5V4.5l-5 1.5-6-1.5Z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 4.5v13.5M15 6v13.5" />
+                </svg>
+              </div>
+              <div>
+                <h4 className="text-sm font-black text-slate-900 flex items-center gap-2">
+                  Floor Plan Analysis in Progress
+                  <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-blue-100 text-blue-700 uppercase tracking-wider">
+                    Neural Engine
+                  </span>
+                </h4>
+                <p className="text-xs text-slate-500 font-medium mt-0.5">
+                  Extracting rooms, corridors, vertical circulation &amp; utility areas...
+                </p>
+              </div>
+            </div>
+            <span className="text-xs font-black text-blue-700 bg-white border border-blue-200 px-3 py-1 rounded-full shadow-2xs">
+              POST /api/floorplan/analyze
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Requirements extraction progress (API #3) */}
+      {analyzing && (
         <div className="rounded-2xl border border-blue-200/80 bg-gradient-to-b from-blue-50/90 via-blue-50/40 to-indigo-50/30 p-4 shadow-sm sm:p-6">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-blue-100/80 pb-4">
             <div className="flex items-center gap-3">
@@ -413,83 +677,37 @@ export default function TORComparisonView({ userRole, onSaveAIScan, onScanningCh
               </div>
               <div>
                 <h4 className="text-sm font-black text-slate-900 flex items-center gap-2">
-                  AI Document Auditor in Progress
+                  Extracting Requirements in Progress
                   <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-blue-100 text-blue-700 uppercase tracking-wider">
                     Neural Engine
                   </span>
                 </h4>
                 <p className="text-xs text-slate-500 font-medium mt-0.5">
-                  Extracting hardware specs, quantities, labor hours &amp; compliance rules from document...
+                  Reading the document and generating requirements, BOQ, manpower &amp; schedule...
                 </p>
               </div>
             </div>
             <span className="text-xs font-black text-blue-700 bg-white border border-blue-200 px-3 py-1 rounded-full shadow-2xs">
-              Step {auditStep + 1} of {TOR_AUDIT_STEPS.length}
+              Step {analysisStep + 1} of {ANALYSIS_STEPS.length}
             </span>
           </div>
+          <p className="text-[11px] font-semibold text-blue-700/80 mt-3">
+            {ANALYSIS_STEPS[analysisStep]}
+          </p>
         </div>
       )}
 
-      {/* Results View */}
-      {auditResult && (
-        <div className="w-full min-w-0 space-y-6 overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
-          <div className="flex items-center justify-between pb-4 border-b">
-            <h3 className="text-base font-black text-slate-800">AI Document Analysis Results</h3>
-            <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full">
-              Confidence Score: {conf}% ({confLabel})
-            </span>
-          </div>
-
-          <div className="p-4 bg-slate-50 rounded-xl border text-xs text-slate-700 font-medium leading-relaxed">
-            {typeof auditResult.overallAuditRationale === 'string'
-              ? auditResult.overallAuditRationale
-              : 'Document analysis completed successfully.'}
-          </div>
-
-          <div className="flex justify-end gap-3 pt-4 border-t">
-            <button
-              onClick={handleDownload}
-              disabled={downloading}
-              className="px-5 py-2.5 rounded-xl text-xs font-bold border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 cursor-pointer"
-            >
-              {downloading ? 'Generating PDF...' : 'Download PDF Report'}
-            </button>
-            {onSaveAIScan && (
-              <button
-                onClick={() => {
-                  const primaryName = currentFile?.parsed.fileName || 'Document';
-                  setScanGroupName(`${primaryName} Analysis`);
-                  setShowSaveModal(true);
-                }}
-                className="px-5 py-2.5 rounded-xl text-xs font-bold bg-slate-800 text-white hover:bg-slate-700 cursor-pointer"
-              >
-                Save Analysis
-              </button>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Save Modal */}
-      {showSaveModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 animate-fade-in">
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl animate-scale-in">
-            <h3 className="text-lg font-black text-slate-800 mb-1">Save Analysis</h3>
-            <p className="text-xs text-slate-500 mb-4">Enter a folder name for this document analysis.</p>
-            <input
-              type="text"
-              value={scanGroupName}
-              onChange={e => setScanGroupName(e.target.value)}
-              placeholder="e.g. Building A Blueprint Scan"
-              className="w-full px-4 py-2 rounded-xl border border-slate-200 text-xs font-medium outline-none focus:border-blue-400 mb-4"
-            />
-            <div className="flex justify-end gap-3">
-              <button onClick={() => setShowSaveModal(false)} className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 bg-slate-100">Cancel</button>
-              <button onClick={handleSave} disabled={isSaving || !scanGroupName.trim()} className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-blue-600 hover:bg-blue-700">
-                {isSaving ? 'Saving...' : 'Save'}
-              </button>
-            </div>
-          </div>
+      {/* Requirements extraction error */}
+      {estError && !analyzing && (
+        <div className="p-3.5 px-4 bg-red-50/80 dark:bg-red-950/40 border border-red-100 dark:border-red-900/40 rounded-xl text-xs text-red-600 dark:text-red-300 font-semibold leading-relaxed flex items-start justify-between gap-3">
+          <span>{estError}</span>
+          <button
+            type="button"
+            onClick={handleRunComparison}
+            className="shrink-0 px-4 py-1.5 rounded-full text-[11px] font-bold bg-red-600 hover:bg-red-700 text-white cursor-pointer"
+          >
+            Retry
+          </button>
         </div>
       )}
     </div>

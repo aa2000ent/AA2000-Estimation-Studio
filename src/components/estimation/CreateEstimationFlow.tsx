@@ -77,7 +77,7 @@ const SUPP_ACCEPTED = '.pdf,.docx,.doc,.xlsx,.xls,.csv,.txt';
 const MAX_SUPP_DOCS = 4;
 const MAX_SUPP_CHARS = 12000;
 
-const BUILDING_TYPES = [
+export const BUILDING_TYPES = [
   'Office', 'Office Building', 'Retail', 'Mall / Retail', 'Warehouse',
   'Warehouse / Logistics', 'School', 'School / University', 'Hospital',
   'Hospital / Medical', 'Residential', 'Residential / Condo',

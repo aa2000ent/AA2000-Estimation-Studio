@@ -32,6 +32,16 @@ export interface EstimationFlowAiContext {
   sectionRequirements?: SectionRequirementsResult | null;
 }
 
+/**
+ * Save callback shared by the Create Estimation wizard and the AI Estimation
+ * "Save to Database" form: takes the collected client details + system
+ * selection together with the AI context and persists the estimation.
+ */
+export type SaveEstimationFn = (
+  data: SurveyFormData,
+  ai: EstimationFlowAiContext
+) => Promise<{ success: boolean; message?: string; projId?: number }>;
+
 /** Local cache shape written to aa2000_estimation_<id> and reloaded by the Cost Estimation screen. */
 export interface WizardEstimationCache {
   manpower: EstimationManpowerEntry[];

@@ -21,6 +21,7 @@ import { AIChatbotFloating } from '../chatbot/AIChatbotFloating';
 import SavedBOQsView from '../floor-plan/SavedBOQsView';
 import SavedEstimationsView from '../estimation/SavedEstimationsView';
 import type { SurveyFormData } from '../estimation/CreateSurveyForm';
+import type { SaveEstimationFn } from '../../services/estimationWizardSnapshot';
 import SavedFoldersView from '../ai-sidebar/SavedFoldersView';
 import SparklineCard from './cards/SparklineCard';
 
@@ -40,6 +41,8 @@ interface Props {
   onUpdateProject?: (project: Project) => void;
   aiScans?: AIScanGroup[];
   onSaveAIScan?: (scan: AIScanGroup) => Promise<void>;
+  /** AI Estimation: saves the analysis to the database (client details + systems collected in the view). */
+  onSaveAiEstimation?: SaveEstimationFn;
   onRenameAIScan?: (id: string, name: string) => Promise<void>;
   onDeleteAIScan?: (id: string) => Promise<void>;
   onUpdateAIScan?: (scan: AIScanGroup) => Promise<void>;
@@ -363,6 +366,7 @@ export default function Dashboard({
   onUpdateProject,
   aiScans = [],
   onSaveAIScan,
+  onSaveAiEstimation,
   onRenameAIScan,
   onDeleteAIScan,
   onUpdateAIScan,
@@ -822,6 +826,7 @@ export default function Dashboard({
                   onCreateProject={onCreateProject}
                   onSelectProject={onSelectProject}
                   onSaveAIScan={onSaveAIScan}
+                  onSaveEstimation={onSaveAiEstimation}
                   onNavigateToCreate={onNavigateToCreate}
                   isDark={isDark}
                   initialMode={view === 'manual-estimation' ? 'manual' : view === 'ai-estimation' ? 'ai' : undefined}

@@ -3,6 +3,7 @@ import type { User, AIScanGroup, Project, SurveyType } from '../../App';
 import type { SurveyFormData, SystemType } from './CreateSurveyForm';
 import TORComparisonView from '../ai-sidebar/TORComparisonView';
 import SurveyWizard from '../surveys/SurveyWizard';
+import type { SaveEstimationFn } from '../../services/estimationWizardSnapshot';
 
 interface Props {
   user?: User;
@@ -10,12 +11,14 @@ interface Props {
   onCreateProject?: (project: Project, keepOnHome?: boolean) => void;
   onSelectProject?: (project: Project) => void;
   onSaveAIScan?: (scan: AIScanGroup) => Promise<void>;
+  /** AI Estimation: saves the analysis to the database after collecting client details + systems. */
+  onSaveEstimation?: SaveEstimationFn;
   onNavigateToCreate?: (data?: SurveyFormData) => void;
   isDark?: boolean;
   initialMode?: 'manual' | 'ai';
 }
 
-export default function EstimationHub({ user, onCreateProject, onSelectProject, onNavigateToCreate, onSaveAIScan, initialMode, isDark }: Props) {
+export default function EstimationHub({ user, onCreateProject, onSelectProject, onNavigateToCreate, onSaveAIScan, onSaveEstimation, initialMode, isDark }: Props) {
   const [selectedMode, setSelectedMode] = useState<'manual' | 'ai' | null>(initialMode ?? null);
   const [activeManualStep, setActiveManualStep] = useState<number | null>(null);
   const [isSurveyWizardActive, setIsSurveyWizardActive] = useState(false);
@@ -382,11 +385,7 @@ export default function EstimationHub({ user, onCreateProject, onSelectProject, 
           )}
         </div>
       ) : (
-        <TORComparisonView
-          userRole={user?.role}
-          onSaveAIScan={onSaveAIScan}
-          onScanningChange={setIsDocScanning}
-        />
+        <TORComparisonView onSaveEstimation={onSaveEstimation} onScanningChange={setIsDocScanning} />
       )}
     </div>
   );

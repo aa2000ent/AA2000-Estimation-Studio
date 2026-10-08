@@ -725,6 +725,60 @@ export default function App() {
     [toast, user]
   );
 
+  // AI Estimation (document analysis) -> save to the database. Collects the
+  // client details + system selection in the view, then maps the API #3
+  // analysis onto snapshot rows and POSTs the same save route the Cost
+  // Estimation screen uses (fresh project starts as PENDING).
+  const handleSaveAiEstimation = useCallback(
+    async (
+      data: SurveyFormData,
+      ai: EstimationFlowAiContext
+    ): Promise<{ success: boolean; message?: string; projId?: number }> => {
+      const now = new Date().toISOString();
+      const project: Project = {
+        id: `project-${Date.now()}`,
+        name: data.projectName,
+        clientName: data.companyName,
+        clientContactName: data.clientName,
+        clientEmail: data.clientEmail,
+        clientPhone: data.clientContactNumber,
+        location: data.locationName,
+        locationName: data.locationName,
+        latitude: data.latitude,
+        longitude: data.longitude,
+        buildingType: data.buildingType,
+        floors: data.floors || undefined,
+        buildingLength: data.buildingLength || undefined,
+        buildingWidth: data.buildingWidth || undefined,
+        floorHeight: data.floorHeight || undefined,
+        systemTypes: data.systemTypes,
+        surveyScope: data.surveyScope,
+        status: 'Pending',
+        startDate: data.startDate,
+        assignedTechnicians: DEFAULT_TECHNICIANS,
+        createdAt: now,
+      };
+
+      const cache = buildWizardEstimationCache(data, ai);
+      const result = await submitEstimationToDB({
+        project: project as any,
+        user: user as any,
+        manpower: cache.manpower,
+        consumables: cache.consumables,
+        fees: cache.fees,
+        scopeOfWorks: cache.scopeOfWorks,
+        constraints: cache.constraints,
+        priceTier: cache.priceTier,
+        aiBaseline: cache.aiBaseline,
+        technicianNotes: cache.technicianNotes,
+        discrepancyJustifications: cache.discrepancyJustifications,
+        statusOverride: 'PENDING',
+      });
+      return { success: result.success, message: result.message, projId: result.projId };
+    },
+    [user]
+  );
+
   const handleExitCreateSurvey = useCallback(() => {
     setPrefilledCompanyName('');
     setPrefilledSurveyData(null);
@@ -1022,6 +1076,7 @@ export default function App() {
         onRenameAIScan={handleRenameAIScan}
         onDeleteAIScan={handleDeleteAIScan}
         onUpdateAIScan={handleUpdateAIScan}
+        onSaveAiEstimation={handleSaveAiEstimation}
         isDark={isDark}
         onToggleDark={toggleDark}
       />
