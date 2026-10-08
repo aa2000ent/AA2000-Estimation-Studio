@@ -20,8 +20,7 @@ export interface ApiResponse<T> {
   };
 }
 
-// Request options: per-request timeout (AI calls can exceed the 30s default)
-// and the ability to drop Content-Type so fetch can set a multipart boundary.
+// Request options: per-request timeout and multipart handling
 export interface RequestOptions extends RequestInit {
   timeoutMs?: number;
   omitContentType?: boolean;
@@ -50,15 +49,17 @@ export interface PaginatedResponse<T> {
 // API client utility for making HTTP requests
 export class ApiClient {
   private baseURL: string;
-  private defaultHeaders: HeadersInit;
+  private defaultHeaders: Record<string, string>;
   private sessionToken: string | null = null;
 
-  constructor(baseURL: string, defaultHeaders?: HeadersInit) {
+  constructor(baseURL: string, defaultHeaders?: Record<string, string>) {
     const trimmed = (baseURL || '').trim();
     this.baseURL =
       trimmed && !/^https?:\/\//i.test(trimmed) && !trimmed.startsWith('/')
         ? `http://${trimmed}`
         : trimmed;
+
+    // Ensure defaultHeaders is handled safely as a key-value object
     this.defaultHeaders = {
       'Content-Type': 'application/json',
       ...defaultHeaders,
@@ -67,9 +68,18 @@ export class ApiClient {
 
   setSessionToken(token: string | null): void {
     this.sessionToken = token;
+    if (token && typeof window !== 'undefined') {
+      localStorage.setItem('session_token', token);
+    } else if (!token && typeof window !== 'undefined') {
+      localStorage.removeItem('session_token');
+    }
   }
 
   getSessionToken(): string | null {
+    // Auto-hydrate from localStorage if in-memory token is null
+    if (!this.sessionToken && typeof window !== 'undefined') {
+      this.sessionToken = localStorage.getItem('session_token') || localStorage.getItem('token');
+    }
     return this.sessionToken;
   }
 
@@ -77,21 +87,40 @@ export class ApiClient {
     headers?: HeadersInit,
     omitContentType?: boolean
   ): Record<string, string> {
-    const authHeaders: Record<string, string> = this.sessionToken
+    const activeToken = this.getSessionToken();
+
+    const authHeaders: Record<string, string> = activeToken
       ? {
-          Authorization: `Bearer ${this.sessionToken}`,
-          'X-Session-Id': this.sessionToken,
+          Authorization: `Bearer ${activeToken}`,
+          'X-Session-Id': activeToken,
         }
       : {};
 
+    // Normalize incoming headers parameter into a standard object
+    let customHeaders: Record<string, string> = {};
+    if (headers) {
+      if (headers instanceof Headers) {
+        headers.forEach((value, key) => {
+          customHeaders[key] = value;
+        });
+      } else if (Array.isArray(headers)) {
+        headers.forEach(([key, value]) => {
+          customHeaders[key] = value;
+        });
+      } else {
+        customHeaders = { ...headers };
+      }
+    }
+
     const merged: Record<string, string> = {
-      ...(this.defaultHeaders as Record<string, string>),
+      ...this.defaultHeaders,
       ...authHeaders,
-      ...(headers as Record<string, string> | undefined),
+      ...customHeaders,
     };
 
     if (omitContentType) {
       delete merged['Content-Type'];
+      delete merged['content-type'];
     }
 
     return merged;
@@ -118,22 +147,29 @@ export class ApiClient {
 
       if (!response.ok) {
         let errorMessage = `HTTP ${response.status}`;
+        let errorCode = `HTTP_${response.status}`;
 
         try {
           const errorData = await response.json();
+          // Extract error message & code from standardized server response
           errorMessage =
             errorData.message ||
             errorData.error ||
+            (typeof errorData.error === 'object' ? errorData.error.message : null) ||
             errorMessage;
+
+          if (errorData.code) {
+            errorCode = errorData.code;
+          }
         } catch {
-          // Ignore JSON parse errors for error response
+          // Fallback if response body is not JSON
         }
 
         return {
           success: false,
           error: {
             message: errorMessage,
-            code: `HTTP_${response.status}`,
+            code: errorCode,
           },
         };
       }
@@ -172,7 +208,8 @@ export class ApiClient {
 
   async get<T>(
     url: string,
-    params?: QueryParams
+    params?: QueryParams,
+    options?: RequestOptions
   ): Promise<ApiResponse<T>> {
     const searchParams = new URLSearchParams();
 
@@ -189,11 +226,10 @@ export class ApiClient {
     }
 
     const queryString = searchParams.toString();
-    const fullUrl = queryString
-      ? `${url}?${queryString}`
-      : url;
+    const fullUrl = queryString ? `${url}?${queryString}` : url;
 
     return this.request<T>(fullUrl, {
+      ...options,
       method: 'GET',
     });
   }
@@ -210,8 +246,7 @@ export class ApiClient {
     });
   }
 
-  // Multipart upload: Content-Type is omitted so the browser can set
-  // `multipart/form-data` with the correct boundary.
+  // Multipart upload: Content-Type is omitted so browser sets boundary
   async postForm<T>(
     url: string,
     formData: FormData,
@@ -227,16 +262,22 @@ export class ApiClient {
 
   async put<T>(
     url: string,
-    data?: unknown
+    data?: unknown,
+    options?: RequestOptions
   ): Promise<ApiResponse<T>> {
     return this.request<T>(url, {
+      ...options,
       method: 'PUT',
       body: data ? JSON.stringify(data) : undefined,
     });
   }
 
-  async delete<T>(url: string): Promise<ApiResponse<T>> {
+  async delete<T>(
+    url: string,
+    options?: RequestOptions
+  ): Promise<ApiResponse<T>> {
     return this.request<T>(url, {
+      ...options,
       method: 'DELETE',
     });
   }
