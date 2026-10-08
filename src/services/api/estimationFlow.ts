@@ -164,7 +164,7 @@ export async function analyzeFloorPlan(
 
   const formData = new FormData();
   // Single file uses `file`; multi-sheet sets use `files[]` per api-specs.md.
-  const field = files.length === 1 ? 'file' : 'files';
+  const field = files.length === 1 ? 'file' : 'files[]';
   files.forEach((file, index) => {
     formData.append(field, file, file.name || `floorplan_${index + 1}`);
   });
