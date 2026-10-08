@@ -1336,7 +1336,14 @@ export default function CreateEstimationFlow({
           Retry Extraction
         </button>
       )}
-      {reqResult && <SectionRequirementsPanel result={reqResult} isDark={dark} />}
+          {reqResult && (
+            <SectionRequirementsPanel
+              result={reqResult}
+              isDark={dark}
+              editable
+              onChange={next => setReqResult(next)}
+            />
+          )}
       {!reqResult && !reqLoading && !reqError && selectedSection && (
         <button
           type="button"

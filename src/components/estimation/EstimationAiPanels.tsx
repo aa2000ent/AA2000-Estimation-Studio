@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import {
   Check,
   StatBuilding,
@@ -18,7 +19,10 @@ import type {
   FloorPlanAnalyzeResult,
   FloorPlanSection,
   FormConstraints,
+  FormManpowerRow,
+  FormMaterialItem,
   FormScopeRow,
+  SectionRequirementEntry,
   SectionRequirementsResult,
 } from '../../services/api/estimationFlow';
 import { computeEstimationStats } from '../../services/estimationStats';
@@ -158,20 +162,78 @@ const PRIORITY_COLORS: Record<string, string> = {
   low: '#2563EB',
 };
 
+/** Category rollup rebuilt from the item rows so edits never go stale. */
+function rebuildMaterialSummary(
+  rows: FormMaterialItem[],
+  currency: string
+): SectionRequirementsResult['materialSummary'] {
+  const categories = Object.values(
+    rows.reduce((acc, row) => {
+      const key = String(row.category || 'Materials');
+      const entry =
+        acc[key] || (acc[key] = { category: key, itemCount: 0, estimatedCost: 0 });
+      entry.itemCount += 1;
+      entry.estimatedCost += Number(row.totalPrice) || 0;
+      return acc;
+    }, {} as Record<string, { category: string; itemCount: number; estimatedCost: number }>)
+  );
+  return {
+    categories,
+    totalEstimatedCost: categories.reduce((sum, c) => sum + c.estimatedCost, 0),
+    currency,
+  };
+}
+
 /** Numbered work items — shown by both the API #2 and API #3 result panels. */
 function ScopeOfWorksCard({
   rows,
   currency,
   dark,
+  editable = false,
+  onChange,
 }: {
   rows: FormScopeRow[];
   currency: string;
   dark?: boolean;
+  /** Shows description/unit/price inputs plus add & remove. */
+  editable?: boolean;
+  onChange?: (rows: FormScopeRow[]) => void;
 }) {
-  if (!rows.length) return null;
+  const editing = editable && typeof onChange === 'function';
+  if (!rows.length && !editing) return null;
+
+  const renumber = (list: FormScopeRow[]) =>
+    list.map((row, i) => ({ ...row, itemNumber: i + 1 }));
+  const update = (i: number, patch: Partial<FormScopeRow>) =>
+    onChange?.(rows.map((row, idx) => (idx === i ? { ...row, ...patch } : row)));
+  const remove = (i: number) =>
+    onChange?.(renumber(rows.filter((_, idx) => idx !== i)));
+  const add = () =>
+    onChange?.(renumber([...rows, { description: '', unit: '1 LOT', totalPrice: 0 }]));
+
+  const cellCls = 'w-full px-2 py-1 rounded-lg text-xs font-semibold outline-none';
+
   return (
     <div style={cardStyle(dark)}>
-      <PanelHeading icon={<StatClipboard className="w-4 h-4 inline mr-1.5" />} title="SCOPE OF WORKS" dark={dark} />
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <p
+          className="text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5"
+          style={{ color: accent(dark) }}
+        >
+          <StatClipboard className="w-4 h-4 inline mr-1.5" />
+          SCOPE OF WORKS
+        </p>
+        {editing && (
+          <button
+            type="button"
+            onClick={add}
+            className="text-[10px] font-bold px-2.5 py-1 rounded-lg cursor-pointer"
+            style={{ background: 'rgba(37,99,235,0.12)', color: dark ? '#93C5FD' : '#1D4ED8' }}
+          >
+            + Add item
+          </button>
+        )}
+      </div>
       <div className="space-y-2">
         {rows.map((row, i) => (
           <div
@@ -179,18 +241,79 @@ function ScopeOfWorksCard({
             className="flex items-start justify-between gap-3 text-xs"
             style={{ borderTop: i > 0 ? `1px solid ${dark ? '#1E293B' : '#F1F5F9'}` : undefined }}
           >
-            <div className="flex items-start gap-2 min-w-0">
+            <div className="flex items-start gap-2 min-w-0 flex-1">
               <Badge color="#3B82F6">#{row.itemNumber ?? i + 1}</Badge>
-              <div className="min-w-0">
-                <p className="font-semibold" style={{ color: heading(dark) }}>{row.description}</p>
-                <p className="text-[10px]" style={{ color: muted(dark) }}>{row.unit || '1 LOT'}</p>
-              </div>
+              {editing ? (
+                <div className="min-w-0 flex-1 space-y-1.5">
+                  <input
+                    type="text"
+                    value={row.description || ''}
+                    onChange={e => update(i, { description: e.target.value })}
+                    placeholder="Work item description"
+                    className={cellCls}
+                    style={{
+                      background: dark ? '#0F172A' : '#FFFFFF',
+                      border: `1px solid ${dark ? '#1E293B' : '#E2E8F0'}`,
+                      color: heading(dark),
+                    }}
+                  />
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={row.unit || ''}
+                      onChange={e => update(i, { unit: e.target.value })}
+                      placeholder="Unit"
+                      className={`${cellCls} w-24`}
+                      style={{
+                        background: dark ? '#0F172A' : '#FFFFFF',
+                        border: `1px solid ${dark ? '#1E293B' : '#E2E8F0'}`,
+                        color: heading(dark),
+                      }}
+                    />
+                    <input
+                      type="number"
+                      min={0}
+                      value={row.totalPrice ?? 0}
+                      onChange={e => update(i, { totalPrice: Number(e.target.value) || 0 })}
+                      placeholder="Total price"
+                      className={`${cellCls} w-32`}
+                      style={{
+                        background: dark ? '#0F172A' : '#FFFFFF',
+                        border: `1px solid ${dark ? '#1E293B' : '#E2E8F0'}`,
+                        color: heading(dark),
+                      }}
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="min-w-0">
+                  <p className="font-semibold" style={{ color: heading(dark) }}>{row.description}</p>
+                  <p className="text-[10px]" style={{ color: muted(dark) }}>{row.unit || '1 LOT'}</p>
+                </div>
+              )}
             </div>
-            <p className="font-black shrink-0" style={{ color: accent(dark) }}>
-              {row.totalPrice ? formatMoney(row.totalPrice, currency) : '—'}
-            </p>
+            {editing ? (
+              <button
+                type="button"
+                onClick={() => remove(i)}
+                aria-label="Remove item"
+                className="shrink-0 w-6 h-6 rounded-full text-[10px] font-black cursor-pointer"
+                style={{ background: dark ? '#0F172A' : '#F1F5F9', color: '#DC2626' }}
+              >
+                ✕
+              </button>
+            ) : (
+              <p className="font-black shrink-0" style={{ color: accent(dark) }}>
+                {row.totalPrice ? formatMoney(row.totalPrice, currency) : '—'}
+              </p>
+            )}
           </div>
         ))}
+        {editing && rows.length === 0 && (
+          <p className="text-[10px]" style={{ color: muted(dark) }}>
+            No work items yet — add the first one.
+          </p>
+        )}
       </div>
     </div>
   );
@@ -200,25 +323,33 @@ function ScopeOfWorksCard({
 function ConstraintsCard({
   constraints,
   dark,
+  editable = false,
+  onChange,
 }: {
   constraints?: FormConstraints;
   dark?: boolean;
+  /** Shows a textarea per constraint, including the empty ones. */
+  editable?: boolean;
+  onChange?: (next: FormConstraints) => void;
 }) {
-  const blocks: [string, string | undefined][] = [
-    ['Physical', constraints?.physical],
-    ['Electrical', constraints?.electrical],
-    ['Installation', constraints?.installation],
+  const editing = editable && typeof onChange === 'function';
+  const blocks: [string, keyof FormConstraints][] = [
+    ['Physical', 'physical'],
+    ['Electrical', 'electrical'],
+    ['Installation', 'installation'],
   ];
-  const filled = blocks.filter(([, value]) => value && String(value).trim());
-  if (!filled.length) return null;
+  const shown = editing
+    ? blocks
+    : blocks.filter(([, key]) => constraints?.[key] && String(constraints[key]).trim());
+  if (!shown.length) return null;
 
   return (
     <div style={cardStyle(dark)}>
       <PanelHeading icon={<StatPin className="w-4 h-4 inline mr-1.5" />} title="SITE CONSTRAINTS" dark={dark} />
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        {filled.map(([label, value]) => (
+        {shown.map(([label, key]) => (
           <div
-            key={label}
+            key={key}
             className="p-3 rounded-xl"
             style={{
               background: dark ? '#0F172A' : '#F8FAFC',
@@ -228,7 +359,22 @@ function ConstraintsCard({
             <p className="text-[9px] font-black uppercase tracking-wider mb-1" style={{ color: muted(dark) }}>
               {label}
             </p>
-            <p className="text-xs" style={{ color: heading(dark) }}>{value}</p>
+            {editing ? (
+              <textarea
+                rows={3}
+                value={constraints?.[key] ?? ''}
+                onChange={e => onChange?.({ ...constraints, [key]: e.target.value })}
+                placeholder={`${label} constraints…`}
+                className="w-full text-xs rounded-lg px-2 py-1.5 outline-none resize-y"
+                style={{
+                  background: dark ? '#0F172A' : '#FFFFFF',
+                  border: `1px solid ${dark ? '#1E293B' : '#E2E8F0'}`,
+                  color: heading(dark),
+                }}
+              />
+            ) : (
+              <p className="text-xs" style={{ color: heading(dark) }}>{constraints?.[key]}</p>
+            )}
           </div>
         ))}
       </div>
@@ -693,8 +839,24 @@ export function SectionCard({
 export function SectionRequirementsPanel({
   result,
   isDark,
-}: PanelProps & { result: SectionRequirementsResult }) {
+  editable = false,
+  onChange,
+}: PanelProps & {
+  result: SectionRequirementsResult;
+  /** Adds an Edit/Done toggle so the SYSTEM REQUIREMENTS block becomes inputs. */
+  editable?: boolean;
+  /** Receives the updated result on every edit — the caller stores it. */
+  onChange?: (next: SectionRequirementsResult) => void;
+}) {
+  const [editing, setEditing] = useState(false);
   const requirements = result.requirements || {};
+  const canEdit = editable && typeof onChange === 'function';
+  const updateEntry = (key: string, patch: Partial<SectionRequirementEntry>) => {
+    onChange?.({
+      ...result,
+      requirements: { ...requirements, [key]: { ...requirements[key], ...patch } },
+    });
+  };
   const reqEntries = Object.entries(requirements).filter(
     ([, value]) => value && typeof value === 'object'
   );
@@ -707,9 +869,186 @@ export function SectionRequirementsPanel({
   const scopeOfWorks = result.scopeOfWorks || [];
   const constraints = result.constraints;
   const currency = materials?.currency || 'PHP';
+  const activeEdit = canEdit && editing;
+  const displayTotalHours = manpower.length
+    ? manpower.reduce(
+        (sum, row) => sum + (Number(row.hours) || 0) * (Number(row.headcount) || 0),
+        0
+      )
+    : labor?.totalHours;
+
+  const cellInputCls = 'w-full px-2 py-1 rounded-lg text-[10px] font-semibold outline-none';
+  const cellInputStyle = {
+    background: isDark ? '#0F172A' : '#FFFFFF',
+    border: `1px solid ${isDark ? '#1E293B' : '#E2E8F0'}`,
+    color: heading(isDark),
+  };
+
+  // Form-row editors — active only while the Edit toggle is on.
+  const emit = (patch: Partial<SectionRequirementsResult>) => {
+    onChange?.({ ...result, ...patch });
+  };
+
+  const updateManpowerRow = (i: number, patch: Partial<FormManpowerRow>) => {
+    emit({
+      manpower: manpower.map((row, idx) => {
+        if (idx !== i) return row;
+        const merged = { ...row, ...patch };
+        return {
+          ...merged,
+          totalCost: (Number(merged.dayRate) || 0) * (Number(merged.manDays) || 0),
+        };
+      }),
+    });
+  };
+  const removeManpowerRow = (i: number) =>
+    emit({ manpower: manpower.filter((_, idx) => idx !== i) });
+  const addManpowerRow = () =>
+    emit({
+      manpower: [
+        ...manpower,
+        {
+          role: 'Technician',
+          headcount: 1,
+          hours: 8,
+          manDays: 1,
+          dayRate: 1200,
+          totalCost: 1200,
+          responsibilities: '',
+        },
+      ],
+    });
+
+  const setCrewCount = (role: string, count: number) =>
+    emit({
+      laborEstimates: { ...labor, crewMix: { ...(labor?.crewMix || {}), [role]: count } },
+    });
+  const renameCrewRole = (from: string, to: string) => {
+    const crewMix: Record<string, number> = {};
+    Object.entries(labor?.crewMix || {}).forEach(([role, count]) => {
+      crewMix[role === from ? to : role] = count;
+    });
+    emit({ laborEstimates: { ...labor, crewMix } });
+  };
+  const removeCrewRole = (role: string) => {
+    const crewMix = { ...(labor?.crewMix || {}) };
+    delete crewMix[role];
+    emit({ laborEstimates: { ...labor, crewMix } });
+  };
+  const addCrewRole = () =>
+    emit({
+      laborEstimates: { ...labor, crewMix: { ...(labor?.crewMix || {}), 'New Role': 1 } },
+    });
+
+  const materialPatch = (rows: FormMaterialItem[]) => ({
+    materials: rows,
+    materialSummary: rebuildMaterialSummary(rows, currency),
+  });
+  const updateMaterialRow = (i: number, patch: Partial<FormMaterialItem>) => {
+    const next = materialItems.map((row, idx) => {
+      if (idx !== i) return row;
+      const merged = { ...row, ...patch };
+      const price = Number(merged.unitPrice ?? merged.srp) || 0;
+      const qty = Number(merged.quantity) || 0;
+      return {
+        ...merged,
+        srp: price,
+        unitPrice: price,
+        contractorPrice: Math.round(price * 0.85),
+        dealerPrice: Math.round(price * 0.75),
+        totalPrice: Math.round(price * qty),
+      };
+    });
+    emit(materialPatch(next));
+  };
+  const removeMaterialRow = (i: number) =>
+    emit(materialPatch(materialItems.filter((_, idx) => idx !== i)));
+  const addMaterialRow = () =>
+    emit(
+      materialPatch([
+        ...materialItems,
+        {
+          name: '',
+          category: 'Hardware',
+          brand: '',
+          quantity: 1,
+          unit: 'pcs',
+          srp: 0,
+          unitPrice: 0,
+          contractorPrice: 0,
+          dealerPrice: 0,
+          totalPrice: 0,
+          source: 'market',
+        },
+      ])
+    );
+
+  const updateRecommendation = (
+    i: number,
+    patch: { priority?: string; system?: string; action?: string; estimatedCost?: number }
+  ) =>
+    emit({
+      recommendations: recommendations.map((rec, idx) =>
+        idx === i ? { ...rec, ...patch } : rec
+      ),
+    });
+  const removeRecommendation = (i: number) =>
+    emit({ recommendations: recommendations.filter((_, idx) => idx !== i) });
+  const addRecommendation = () =>
+    emit({
+      recommendations: [
+        ...recommendations,
+        { priority: 'medium', system: 'general', action: '', estimatedCost: 0 },
+      ],
+    });
+
+  const updateGap = (
+    i: number,
+    patch: { system?: string; requirement?: string; status?: string; recommendation?: string }
+  ) => {
+    const base = result.compliance || {};
+    emit({
+      compliance: {
+        ...base,
+        gaps: (base.gaps || []).map((gap, idx) => (idx === i ? { ...gap, ...patch } : gap)),
+      },
+    });
+  };
+  const removeGap = (i: number) => {
+    const base = result.compliance || {};
+    emit({
+      compliance: { ...base, gaps: (base.gaps || []).filter((_, idx) => idx !== i) },
+    });
+  };
+  const setOverallCompliance = (raw: string) => {
+    const base = result.compliance || {};
+    emit({
+      compliance: { ...base, overallCompliance: Math.max(0, Math.min(100, Number(raw) || 0)) },
+    });
+  };
 
   return (
     <div className="space-y-5">
+      {canEdit && (
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-[10px] font-semibold" style={{ color: muted(isDark) }}>
+            {editing
+              ? 'Editing — the changes are stored with the estimate.'
+              : 'Materials, labor, scope, constraints and recommendations are editable.'}
+          </p>
+          <button
+            type="button"
+            onClick={() => setEditing(v => !v)}
+            className="shrink-0 text-[10px] font-bold px-3 py-1.5 rounded-lg cursor-pointer"
+            style={{
+              background: editing ? 'rgba(5,150,105,0.12)' : 'rgba(37,99,235,0.12)',
+              color: editing ? '#059669' : isDark ? '#93C5FD' : '#1D4ED8',
+            }}
+          >
+            {editing ? 'Done' : 'Edit requirements'}
+          </button>
+        </div>
+      )}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <StatTile
           label="Confidence"
@@ -724,7 +1063,7 @@ export function SectionRequirementsPanel({
         />
         <StatTile
           label="Labor Hours"
-          value={formatNumber(labor?.totalHours)}
+          value={formatNumber(displayTotalHours)}
           sub="total"
           dark={isDark}
         />
@@ -758,29 +1097,100 @@ export function SectionRequirementsPanel({
                     <p className="text-xs font-black" style={{ color: heading(isDark) }}>
                       {SYSTEM_KEY_LABELS[key] || key}
                     </p>
-                    <Badge color={value.required === false ? '#64748B' : '#059669'}>
-                      {value.required === false ? 'optional' : 'required'}
-                    </Badge>
+                    {editing ? (
+                      <button
+                        type="button"
+                        onClick={() => updateEntry(key, { required: value.required === false })}
+                        className="cursor-pointer"
+                        title="Toggle required / optional"
+                      >
+                        <Badge color={value.required === false ? '#64748B' : '#059669'}>
+                          {value.required === false ? 'optional' : 'required'}
+                        </Badge>
+                      </button>
+                    ) : (
+                      <Badge color={value.required === false ? '#64748B' : '#059669'}>
+                        {value.required === false ? 'optional' : 'required'}
+                      </Badge>
+                    )}
                   </div>
-                  {specs && (
-                    <p className="text-[10px] mb-1" style={{ color: muted(isDark) }}>
-                      {specs}
-                      {value.cameraCount !== undefined ? ` · ${value.cameraCount} cameras` : ''}
-                    </p>
-                  )}
-                  {standards.length > 0 && (
-                    <div className="flex flex-wrap gap-1 mt-1">
-                      {standards.slice(0, 4).map((s, i) => (
-                        <span
-                          key={i}
-                          className="text-[8px] font-bold px-1.5 py-0.5 rounded"
-                          style={{ background: 'rgba(37,99,235,0.12)', color: isDark ? '#93C5FD' : '#1D4ED8' }}
-                        >
-                          {s}
-                        </span>
-                      ))}
+
+                  {editing ? (
+                    <div className="space-y-1.5 mb-1">
+                      <input
+                        type="text"
+                        value={typeof value.coverage === 'string' ? value.coverage : ''}
+                        onChange={e => updateEntry(key, { coverage: e.target.value })}
+                        placeholder="Coverage / specification"
+                        className="w-full px-2 py-1.5 rounded-lg text-[10px] font-semibold outline-none"
+                        style={{
+                          background: isDark ? '#0F172A' : '#FFFFFF',
+                          border: `1px solid ${isDark ? '#1E293B' : '#E2E8F0'}`,
+                          color: heading(isDark),
+                        }}
+                      />
+                      {value.cameraCount !== undefined && (
+                        <label className="flex items-center gap-2 text-[10px]" style={{ color: muted(isDark) }}>
+                          Cameras
+                          <input
+                            type="number"
+                            min={0}
+                            value={Number(value.cameraCount) || 0}
+                            onChange={e =>
+                              updateEntry(key, { cameraCount: Math.max(0, Number(e.target.value) || 0) })
+                            }
+                            className="w-20 px-2 py-1 rounded-lg text-[10px] font-semibold outline-none"
+                            style={{
+                              background: isDark ? '#0F172A' : '#FFFFFF',
+                              border: `1px solid ${isDark ? '#1E293B' : '#E2E8F0'}`,
+                              color: heading(isDark),
+                            }}
+                          />
+                        </label>
+                      )}
+                      {standards.length > 0 && (
+                        <input
+                          type="text"
+                          value={standards.join(', ')}
+                          onChange={e =>
+                            updateEntry(key, {
+                              standards: e.target.value.split(',').map(s => s.trim()).filter(Boolean),
+                            })
+                          }
+                          placeholder="Standards, comma-separated"
+                          className="w-full px-2 py-1.5 rounded-lg text-[10px] outline-none"
+                          style={{
+                            background: isDark ? '#0F172A' : '#FFFFFF',
+                            border: `1px solid ${isDark ? '#1E293B' : '#E2E8F0'}`,
+                            color: heading(isDark),
+                          }}
+                        />
+                      )}
                     </div>
+                  ) : (
+                    <>
+                      {specs && (
+                        <p className="text-[10px] mb-1" style={{ color: muted(isDark) }}>
+                          {specs}
+                          {value.cameraCount !== undefined ? ` · ${value.cameraCount} cameras` : ''}
+                        </p>
+                      )}
+                      {standards.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {standards.slice(0, 4).map((s, i) => (
+                            <span
+                              key={i}
+                              className="text-[8px] font-bold px-1.5 py-0.5 rounded"
+                              style={{ background: 'rgba(37,99,235,0.12)', color: isDark ? '#93C5FD' : '#1D4ED8' }}
+                            >
+                              {s}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </>
                   )}
+
                   {codeRefs.length > 0 && (
                     <p className="text-[9px] mt-1 font-semibold" style={{ color: muted(isDark) }}>
                       Codes: {codeRefs.slice(0, 3).join(', ')}
@@ -796,7 +1206,25 @@ export function SectionRequirementsPanel({
 
       {manpower.length > 0 && (
         <div style={cardStyle(isDark)}>
-          <PanelHeading icon={<Users className="w-4 h-4 inline mr-1.5" />} title="MANPOWER (FORM ROWS)" dark={isDark} />
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <p
+              className="text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5"
+              style={{ color: accent(isDark) }}
+            >
+              <Users className="w-4 h-4 inline mr-1.5" />
+              MANPOWER (FORM ROWS)
+            </p>
+            {activeEdit && (
+              <button
+                type="button"
+                onClick={addManpowerRow}
+                className="text-[10px] font-bold px-2.5 py-1 rounded-lg cursor-pointer"
+                style={{ background: 'rgba(37,99,235,0.12)', color: isDark ? '#93C5FD' : '#1D4ED8' }}
+              >
+                + Add row
+              </button>
+            )}
+          </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left">
               <thead>
@@ -807,17 +1235,88 @@ export function SectionRequirementsPanel({
                   <th className="pb-2 pr-3 font-bold">Man-Days</th>
                   <th className="pb-2 pr-3 font-bold">Day Rate</th>
                   <th className="pb-2 pr-3 font-bold">Total Cost</th>
+                  {activeEdit && <th className="pb-2" />}
                 </tr>
               </thead>
               <tbody>
                 {manpower.map((m, i) => (
                   <tr key={i} className="text-xs" style={{ color: heading(isDark), borderTop: `1px solid ${isDark ? '#1E293B' : '#F1F5F9'}` }}>
-                    <td className="py-2 pr-3 font-bold">{m.role || 'Technician'}</td>
-                    <td className="py-2 pr-3">{m.headcount}</td>
-                    <td className="py-2 pr-3">{formatNumber(m.hours)}</td>
-                    <td className="py-2 pr-3">{formatNumber(m.manDays)}</td>
-                    <td className="py-2 pr-3">{m.dayRate ? formatMoney(m.dayRate, currency) : '—'}</td>
-                    <td className="py-2 pr-3 font-bold">{m.totalCost ? formatMoney(m.totalCost, currency) : '—'}</td>
+                    {activeEdit ? (
+                      <>
+                        <td className="py-2 pr-3">
+                          <input
+                            type="text"
+                            value={m.role || ''}
+                            onChange={e => updateManpowerRow(i, { role: e.target.value })}
+                            className={cellInputCls}
+                            style={cellInputStyle}
+                          />
+                        </td>
+                        <td className="py-2 pr-3">
+                          <input
+                            type="number"
+                            min={0}
+                            value={m.headcount ?? 0}
+                            onChange={e => updateManpowerRow(i, { headcount: Number(e.target.value) || 0 })}
+                            className={cellInputCls}
+                            style={cellInputStyle}
+                          />
+                        </td>
+                        <td className="py-2 pr-3">
+                          <input
+                            type="number"
+                            min={0}
+                            value={m.hours ?? 0}
+                            onChange={e => updateManpowerRow(i, { hours: Number(e.target.value) || 0 })}
+                            className={cellInputCls}
+                            style={cellInputStyle}
+                          />
+                        </td>
+                        <td className="py-2 pr-3">
+                          <input
+                            type="number"
+                            min={0}
+                            value={m.manDays ?? 0}
+                            onChange={e => updateManpowerRow(i, { manDays: Number(e.target.value) || 0 })}
+                            className={cellInputCls}
+                            style={cellInputStyle}
+                          />
+                        </td>
+                        <td className="py-2 pr-3">
+                          <input
+                            type="number"
+                            min={0}
+                            value={m.dayRate ?? 0}
+                            onChange={e => updateManpowerRow(i, { dayRate: Number(e.target.value) || 0 })}
+                            className={cellInputCls}
+                            style={cellInputStyle}
+                          />
+                        </td>
+                        <td className="py-2 pr-3 font-black">
+                          {formatMoney(m.totalCost, currency)}
+                        </td>
+                        <td className="py-2">
+                          <button
+                            type="button"
+                            onClick={() => removeManpowerRow(i)}
+                            aria-label="Remove manpower row"
+                            className="w-6 h-6 rounded-full text-[10px] font-black cursor-pointer"
+                            style={{ background: isDark ? '#1E293B' : '#FFFFFF', color: '#DC2626' }}
+                          >
+                            ✕
+                          </button>
+                        </td>
+                      </>
+                    ) : (
+                      <>
+                        <td className="py-2 pr-3 font-bold">{m.role || 'Technician'}</td>
+                        <td className="py-2 pr-3">{m.headcount}</td>
+                        <td className="py-2 pr-3">{formatNumber(m.hours)}</td>
+                        <td className="py-2 pr-3">{formatNumber(m.manDays)}</td>
+                        <td className="py-2 pr-3">{m.dayRate ? formatMoney(m.dayRate, currency) : '—'}</td>
+                        <td className="py-2 pr-3 font-bold">{m.totalCost ? formatMoney(m.totalCost, currency) : '—'}</td>
+                      </>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -828,56 +1327,213 @@ export function SectionRequirementsPanel({
 
       {labor && manpower.length === 0 && (labor.totalHours !== undefined || Object.keys(labor.crewMix || {}).length > 0) && (
         <div style={cardStyle(isDark)}>
-          <PanelHeading icon={<RoleWrench className="w-4 h-4 inline mr-1.5" />} title="LABOR ESTIMATES" dark={isDark} />
-          <div className="flex flex-wrap gap-2">
-            {Object.entries(labor.crewMix || {}).map(([role, count]) => (
-              <span
-                key={role}
-                className="text-[10px] font-bold px-2.5 py-1 rounded-lg"
-                style={{
-                  background: isDark ? 'rgba(37,99,235,0.2)' : 'rgba(30,58,138,0.06)',
-                  color: isDark ? '#93C5FD' : '#1E3A8A',
-                  border: `1px solid ${isDark ? 'rgba(37,99,235,0.4)' : 'rgba(30,58,138,0.1)'}`,
-                }}
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <p
+              className="text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5"
+              style={{ color: accent(isDark) }}
+            >
+              <RoleWrench className="w-4 h-4 inline mr-1.5" />
+              LABOR ESTIMATES
+            </p>
+            {activeEdit && (
+              <button
+                type="button"
+                onClick={addCrewRole}
+                className="text-[10px] font-bold px-2.5 py-1 rounded-lg cursor-pointer"
+                style={{ background: 'rgba(37,99,235,0.12)', color: isDark ? '#93C5FD' : '#1D4ED8' }}
               >
-                {role} × {count}
-              </span>
-            ))}
+                + Add crew
+              </button>
+            )}
           </div>
+          {activeEdit ? (
+            <div className="space-y-2">
+              <label className="flex items-center gap-2 text-[10px] font-bold" style={{ color: muted(isDark) }}>
+                Total hours
+                <input
+                  type="number"
+                  min={0}
+                  value={labor.totalHours ?? 0}
+                  onChange={e =>
+                    emit({ laborEstimates: { ...labor, totalHours: Number(e.target.value) || 0 } })
+                  }
+                  className={`${cellInputCls} w-24`}
+                  style={cellInputStyle}
+                />
+              </label>
+              {Object.entries(labor.crewMix || {}).map(([role, count], idx) => (
+                <div key={idx} className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={role}
+                    onChange={e => renameCrewRole(role, e.target.value)}
+                    className={`${cellInputCls} w-40`}
+                    style={cellInputStyle}
+                  />
+                  <input
+                    type="number"
+                    min={0}
+                    value={count}
+                    onChange={e => setCrewCount(role, Number(e.target.value) || 0)}
+                    className={`${cellInputCls} w-20`}
+                    style={cellInputStyle}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeCrewRole(role)}
+                    aria-label="Remove crew role"
+                    className="shrink-0 w-6 h-6 rounded-full text-[10px] font-black cursor-pointer"
+                    style={{ background: isDark ? '#1E293B' : '#FFFFFF', color: '#DC2626' }}
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {Object.entries(labor.crewMix || {}).map(([role, count]) => (
+                <span
+                  key={role}
+                  className="text-[10px] font-bold px-2.5 py-1 rounded-lg"
+                  style={{
+                    background: isDark ? 'rgba(37,99,235,0.2)' : 'rgba(30,58,138,0.06)',
+                    color: isDark ? '#93C5FD' : '#1E3A8A',
+                    border: `1px solid ${isDark ? 'rgba(37,99,235,0.4)' : 'rgba(30,58,138,0.1)'}`,
+                  }}
+                >
+                  {role} × {count}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
-      {materialItems.length > 0 && (
+      {(materialItems.length > 0 || activeEdit) && (
         <div style={cardStyle(isDark)}>
-          <PanelHeading icon={<Package className="w-4 h-4 inline mr-1.5" />} title="MATERIAL ITEMS" dark={isDark} />
-          <div className="space-y-2">
-            {materialItems.slice(0, 12).map((item, i) => (
-              <div
-                key={i}
-                className="flex items-start justify-between gap-3 text-xs"
-                style={{ borderTop: i > 0 ? `1px solid ${isDark ? '#1E293B' : '#F1F5F9'}` : undefined }}
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <p
+              className="text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5"
+              style={{ color: accent(isDark) }}
+            >
+              <Package className="w-4 h-4 inline mr-1.5" />
+              MATERIAL ITEMS
+            </p>
+            {activeEdit && (
+              <button
+                type="button"
+                onClick={addMaterialRow}
+                className="text-[10px] font-bold px-2.5 py-1 rounded-lg cursor-pointer"
+                style={{ background: 'rgba(37,99,235,0.12)', color: isDark ? '#93C5FD' : '#1D4ED8' }}
               >
-                <div className="min-w-0">
-                  <p className="font-bold" style={{ color: heading(isDark) }}>
-                    {item.name || item.description || 'Material'}
-                    {item.brand ? ` · ${item.brand}` : ''}
-                  </p>
-                  <p className="text-[10px]" style={{ color: muted(isDark) }}>
-                    {formatNumber(item.quantity)} {item.unit || 'unit'} @ {formatMoney(item.unitPrice || item.srp, currency)}
-                    {' · '}
-                    <span style={{ color: isDark ? '#93C5FD' : '#1D4ED8' }}>
-                      Contractor {formatMoney(item.contractorPrice, currency)} · Dealer {formatMoney(item.dealerPrice, currency)}
+                + Add material
+              </button>
+            )}
+          </div>
+          <div className="space-y-2">
+            {(activeEdit ? materialItems : materialItems.slice(0, 12)).map((item, i) =>
+              activeEdit ? (
+                <div
+                  key={i}
+                  className="p-2 rounded-xl space-y-1.5"
+                  style={{
+                    background: isDark ? '#0F172A' : '#F8FAFC',
+                    border: `1px solid ${isDark ? '#1E293B' : '#E2E8F0'}`,
+                  }}
+                >
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={item.name || item.description || ''}
+                      onChange={e => updateMaterialRow(i, { name: e.target.value })}
+                      placeholder="Item name"
+                      className={`${cellInputCls} flex-1`}
+                      style={cellInputStyle}
+                    />
+                    <input
+                      type="text"
+                      value={item.brand || ''}
+                      onChange={e => updateMaterialRow(i, { brand: e.target.value })}
+                      placeholder="Brand"
+                      className={`${cellInputCls} w-28`}
+                      style={cellInputStyle}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeMaterialRow(i)}
+                      aria-label="Remove material"
+                      className="shrink-0 w-6 h-6 rounded-full text-[10px] font-black cursor-pointer"
+                      style={{ background: isDark ? '#1E293B' : '#FFFFFF', color: '#DC2626' }}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-2 text-[10px]" style={{ color: muted(isDark) }}>
+                    <input
+                      type="number"
+                      min={0}
+                      value={item.quantity ?? 0}
+                      onChange={e => updateMaterialRow(i, { quantity: Number(e.target.value) || 0 })}
+                      title="Quantity"
+                      className={`${cellInputCls} w-20`}
+                      style={cellInputStyle}
+                    />
+                    <input
+                      type="text"
+                      value={item.unit || ''}
+                      onChange={e => updateMaterialRow(i, { unit: e.target.value })}
+                      title="Unit"
+                      className={`${cellInputCls} w-16`}
+                      style={cellInputStyle}
+                    />
+                    <input
+                      type="number"
+                      min={0}
+                      value={item.unitPrice ?? item.srp ?? 0}
+                      onChange={e => updateMaterialRow(i, { unitPrice: Number(e.target.value) || 0 })}
+                      title="Unit price"
+                      className={`${cellInputCls} w-28`}
+                      style={cellInputStyle}
+                    />
+                    <span className="font-black ml-auto shrink-0" style={{ color: accent(isDark) }}>
+                      {formatMoney(item.totalPrice, currency)}
                     </span>
+                  </div>
+                </div>
+              ) : (
+                <div
+                  key={i}
+                  className="flex items-start justify-between gap-3 text-xs"
+                  style={{ borderTop: i > 0 ? `1px solid ${isDark ? '#1E293B' : '#F1F5F9'}` : undefined }}
+                >
+                  <div className="min-w-0">
+                    <p className="font-bold" style={{ color: heading(isDark) }}>
+                      {item.name || item.description || 'Material'}
+                      {item.brand ? ` · ${item.brand}` : ''}
+                    </p>
+                    <p className="text-[10px]" style={{ color: muted(isDark) }}>
+                      {formatNumber(item.quantity)} {item.unit || 'unit'} @ {formatMoney(item.unitPrice || item.srp, currency)}
+                      {' · '}
+                      <span style={{ color: isDark ? '#93C5FD' : '#1D4ED8' }}>
+                        Contractor {formatMoney(item.contractorPrice, currency)} · Dealer {formatMoney(item.dealerPrice, currency)}
+                      </span>
+                    </p>
+                  </div>
+                  <p className="font-black shrink-0" style={{ color: accent(isDark) }}>
+                    {formatMoney(item.totalPrice, currency)}
                   </p>
                 </div>
-                <p className="font-black shrink-0" style={{ color: accent(isDark) }}>
-                  {formatMoney(item.totalPrice, currency)}
-                </p>
-              </div>
-            ))}
-            {materialItems.length > 12 && (
+              )
+            )}
+            {!activeEdit && materialItems.length > 12 && (
               <p className="text-[10px]" style={{ color: muted(isDark) }}>
                 +{materialItems.length - 12} more items applied to the form
+              </p>
+            )}
+            {activeEdit && materialItems.length === 0 && (
+              <p className="text-[10px]" style={{ color: muted(isDark) }}>
+                No materials yet — add the first one.
               </p>
             )}
           </div>
@@ -903,56 +1559,220 @@ export function SectionRequirementsPanel({
         </div>
       )}
 
-      {compliance && (compliance.overallCompliance !== undefined || (compliance.gaps || []).length > 0) && (
+      {compliance && (compliance.overallCompliance !== undefined || (compliance.gaps || []).length > 0 || activeEdit) && (
         <div style={cardStyle(isDark)}>
           <PanelHeading icon={<NotifExclamation className="w-4 h-4 inline mr-1.5" />} title="COMPLIANCE" dark={isDark} />
-          {compliance.overallCompliance !== undefined && (
-            <div className="mb-3">
-              <Badge color={compliance.overallCompliance >= 80 ? '#059669' : compliance.overallCompliance >= 60 ? '#D97706' : '#DC2626'}>
-                {compliance.overallCompliance}% compliant
+          {(compliance.overallCompliance !== undefined || activeEdit) && (
+            <div className="mb-3 flex items-center gap-2">
+              <Badge color={compliance.overallCompliance !== undefined && compliance.overallCompliance >= 80 ? '#059669' : compliance.overallCompliance !== undefined && compliance.overallCompliance >= 60 ? '#D97706' : '#DC2626'}>
+                {compliance.overallCompliance !== undefined ? compliance.overallCompliance : 0}% compliant
               </Badge>
+              {activeEdit && (
+                <label className="flex items-center gap-1.5 text-[10px] font-bold" style={{ color: muted(isDark) }}>
+                  Overall
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={compliance.overallCompliance ?? 0}
+                    onChange={e => setOverallCompliance(e.target.value)}
+                    className={`${cellInputCls} w-20`}
+                    style={cellInputStyle}
+                  />
+                </label>
+              )}
             </div>
           )}
           <div className="space-y-2">
-            {(compliance.gaps || []).slice(0, 6).map((gap, i) => (
-              <div key={i} className="text-xs">
-                <p className="font-bold" style={{ color: heading(isDark) }}>
-                  {SYSTEM_KEY_LABELS[gap.system || ''] || gap.system} — {gap.requirement}
-                </p>
-                <p className="text-[10px]" style={{ color: muted(isDark) }}>
-                  {gap.status}: {gap.recommendation}
-                </p>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {recommendations.length > 0 && (
-        <div style={cardStyle(isDark)}>
-          <PanelHeading icon={<StatCheckCircle className="w-4 h-4 inline mr-1.5" />} title="RECOMMENDATIONS" dark={isDark} />
-          <div className="space-y-2">
-            {recommendations.map((rec, i) => (
-              <div key={i} className="flex items-start gap-2 text-xs">
-                <Badge color={PRIORITY_COLORS[(rec.priority || 'low').toLowerCase()] || '#2563EB'}>
-                  {rec.priority || 'low'}
-                </Badge>
-                <div>
-                  <p className="font-bold" style={{ color: heading(isDark) }}>{rec.action}</p>
+            {(activeEdit ? compliance.gaps || [] : (compliance.gaps || []).slice(0, 6)).map((gap, i) =>
+              activeEdit ? (
+                <div
+                  key={i}
+                  className="p-2 rounded-xl space-y-1.5 text-xs"
+                  style={{
+                    background: isDark ? '#0F172A' : '#F8FAFC',
+                    border: `1px solid ${isDark ? '#1E293B' : '#E2E8F0'}`,
+                  }}
+                >
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={gap.system || ''}
+                      onChange={e => updateGap(i, { system: e.target.value })}
+                      placeholder="System"
+                      className={`${cellInputCls} w-32`}
+                      style={cellInputStyle}
+                    />
+                    <select
+                      value={gap.status || 'missing'}
+                      onChange={e => updateGap(i, { status: e.target.value })}
+                      className={`${cellInputCls} w-28`}
+                      style={cellInputStyle}
+                    >
+                      <option value="missing">missing</option>
+                      <option value="partial">partial</option>
+                      <option value="compliant">compliant</option>
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => removeGap(i)}
+                      aria-label="Remove compliance gap"
+                      className="shrink-0 w-6 h-6 rounded-full text-[10px] font-black cursor-pointer"
+                      style={{ background: isDark ? '#1E293B' : '#FFFFFF', color: '#DC2626' }}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  <input
+                    type="text"
+                    value={gap.requirement || ''}
+                    onChange={e => updateGap(i, { requirement: e.target.value })}
+                    placeholder="Requirement"
+                    className={cellInputCls}
+                    style={cellInputStyle}
+                  />
+                  <input
+                    type="text"
+                    value={gap.recommendation || ''}
+                    onChange={e => updateGap(i, { recommendation: e.target.value })}
+                    placeholder="Recommendation"
+                    className={cellInputCls}
+                    style={cellInputStyle}
+                  />
+                </div>
+              ) : (
+                <div key={i} className="text-xs">
+                  <p className="font-bold" style={{ color: heading(isDark) }}>
+                    {SYSTEM_KEY_LABELS[gap.system || ''] || gap.system} — {gap.requirement}
+                  </p>
                   <p className="text-[10px]" style={{ color: muted(isDark) }}>
-                    {SYSTEM_KEY_LABELS[rec.system || ''] || rec.system}
-                    {rec.estimatedCost !== undefined ? ` · ${formatMoney(rec.estimatedCost, currency)}` : ''}
+                    {gap.status}: {gap.recommendation}
                   </p>
                 </div>
-              </div>
-            ))}
+              )
+            )}
           </div>
         </div>
       )}
 
-      <ScopeOfWorksCard rows={scopeOfWorks} currency={currency} dark={isDark} />
+      {(recommendations.length > 0 || activeEdit) && (
+        <div style={cardStyle(isDark)}>
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <p
+              className="text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5"
+              style={{ color: accent(isDark) }}
+            >
+              <StatCheckCircle className="w-4 h-4 inline mr-1.5" />
+              RECOMMENDATIONS
+            </p>
+            {activeEdit && (
+              <button
+                type="button"
+                onClick={addRecommendation}
+                className="text-[10px] font-bold px-2.5 py-1 rounded-lg cursor-pointer"
+                style={{ background: 'rgba(37,99,235,0.12)', color: isDark ? '#93C5FD' : '#1D4ED8' }}
+              >
+                + Add recommendation
+              </button>
+            )}
+          </div>
+          <div className="space-y-2">
+            {recommendations.map((rec, i) =>
+              activeEdit ? (
+                <div
+                  key={i}
+                  className="p-2 rounded-xl space-y-1.5 text-xs"
+                  style={{
+                    background: isDark ? '#0F172A' : '#F8FAFC',
+                    border: `1px solid ${isDark ? '#1E293B' : '#E2E8F0'}`,
+                  }}
+                >
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={(rec.priority || 'medium').toLowerCase()}
+                      onChange={e => updateRecommendation(i, { priority: e.target.value })}
+                      className={`${cellInputCls} w-28`}
+                      style={cellInputStyle}
+                    >
+                      <option value="critical">critical</option>
+                      <option value="high">high</option>
+                      <option value="medium">medium</option>
+                      <option value="low">low</option>
+                    </select>
+                    <input
+                      type="text"
+                      value={rec.system || ''}
+                      onChange={e => updateRecommendation(i, { system: e.target.value })}
+                      placeholder="System"
+                      className={`${cellInputCls} w-32`}
+                      style={cellInputStyle}
+                    />
+                    <input
+                      type="number"
+                      min={0}
+                      value={rec.estimatedCost ?? 0}
+                      onChange={e => updateRecommendation(i, { estimatedCost: Number(e.target.value) || 0 })}
+                      title="Estimated cost"
+                      className={`${cellInputCls} w-28`}
+                      style={cellInputStyle}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeRecommendation(i)}
+                      aria-label="Remove recommendation"
+                      className="shrink-0 w-6 h-6 rounded-full text-[10px] font-black cursor-pointer"
+                      style={{ background: isDark ? '#1E293B' : '#FFFFFF', color: '#DC2626' }}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  <input
+                    type="text"
+                    value={rec.action || ''}
+                    onChange={e => updateRecommendation(i, { action: e.target.value })}
+                    placeholder="Recommended action"
+                    className={cellInputCls}
+                    style={cellInputStyle}
+                  />
+                </div>
+              ) : (
+                <div key={i} className="flex items-start gap-2 text-xs">
+                  <Badge color={PRIORITY_COLORS[(rec.priority || 'low').toLowerCase()] || '#2563EB'}>
+                    {rec.priority || 'low'}
+                  </Badge>
+                  <div>
+                    <p className="font-bold" style={{ color: heading(isDark) }}>{rec.action}</p>
+                    <p className="text-[10px]" style={{ color: muted(isDark) }}>
+                      {SYSTEM_KEY_LABELS[rec.system || ''] || rec.system}
+                      {rec.estimatedCost !== undefined ? ` · ${formatMoney(rec.estimatedCost, currency)}` : ''}
+                    </p>
+                  </div>
+                </div>
+              )
+            )}
+            {activeEdit && recommendations.length === 0 && (
+              <p className="text-[10px]" style={{ color: muted(isDark) }}>
+                No recommendations yet — add the first one.
+              </p>
+            )}
+          </div>
+        </div>
+      )}
 
-      <ConstraintsCard constraints={constraints} dark={isDark} />
+      <ScopeOfWorksCard
+        rows={scopeOfWorks}
+        currency={currency}
+        dark={isDark}
+        editable={activeEdit}
+        onChange={rows => emit({ scopeOfWorks: rows })}
+      />
+
+      <ConstraintsCard
+        constraints={constraints}
+        dark={isDark}
+        editable={activeEdit}
+        onChange={next => emit({ constraints: next })}
+      />
     </div>
   );
 }

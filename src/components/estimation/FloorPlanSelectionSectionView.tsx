@@ -34,8 +34,6 @@ interface ItemSuggestion {
 
 interface Props {
   onBackToDocument?: () => void;
-  onViewEstimate?: () => void;
-  onCreateAnother?: () => void;
   isDark?: boolean;
   /** Result of POST /api/floorplan/analyze — extracted sections drive the UI. */
   result?: FloorPlanAnalyzeResult | null;
@@ -92,14 +90,12 @@ const SAMPLE_SECTIONS: PlanSection[] = [
 
 export default function FloorPlanSelectionSectionView({
   onBackToDocument,
-  onViewEstimate,
-  onCreateAnother,
   isDark = false,
   result = null,
   onSaveEstimation,
   initialSystemTypes,
 }: Props) {
-  // Wizard steps: 2 = Select areas, 3 = Review, 4 = Summary, 5 = Saved
+  // Wizard steps: 2 = Select areas, 3 = Review, 4 = Summary
   const [step, setStep] = useState<2 | 3 | 4 | 5>(2);
 
   // Step 2 State — real sections extracted by /api/floorplan/analyze
@@ -152,6 +148,13 @@ export default function FloorPlanSelectionSectionView({
     setReqLoading(true);
     setReqError('');
     try {
+      // Distinct floor numbers found in the analyzed pages (0 = unknown).
+      const floors = new Set(
+        (result?.pages ?? [])
+          .map(p => p.floorNumber)
+          .filter((n): n is number => typeof n === 'number')
+      ).size;
+
       const requirements = await extractSectionRequirements({
         section: section.raw ?? {
           sectionId: section.id,
@@ -159,6 +162,12 @@ export default function FloorPlanSelectionSectionView({
           label: section.name,
           area: section.area,
           unit: section.unit,
+        },
+        // Scopes the endpoint's recommendation: systemTypes is a strict scope
+        // (prompt + result filter), floors/buildingType tailor quantities.
+        projectContext: {
+          systemTypes: initialSystemTypes ?? [],
+          ...(floors > 0 ? { floors } : {}),
         },
         analysisOptions: {
           includeCatalogMatches: true,
@@ -194,8 +203,6 @@ export default function FloorPlanSelectionSectionView({
       setReqLoading(false);
     }
   };
-
-  const totalQuantity = suggestions.reduce((sum, s) => sum + (Number(s.quantity) || 0), 0);
 
   // Section that produced the current requirements result (step 3+)
   const analyzedSection = sections.find(s => s.id === analyzedSectionId);
@@ -417,36 +424,6 @@ export default function FloorPlanSelectionSectionView({
             </button>
           </div>
 
-          {/* Section requirements progress (API #2) */}
-          {reqLoading && (
-            <div className="rounded-2xl border border-blue-200/80 bg-gradient-to-b from-blue-50/90 via-blue-50/40 to-indigo-50/30 p-4 shadow-sm sm:p-6">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <div className="relative w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center text-white shadow-md shadow-blue-500/20">
-                    <svg className="w-5 h-5 animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
-                    </svg>
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-black text-slate-900">
-                      Extracting Section Requirements
-                      <span className="ml-2 text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-blue-100 text-blue-700 uppercase tracking-wider">
-                        Neural Engine
-                      </span>
-                    </h4>
-                    <p className="text-xs text-slate-500 font-medium mt-0.5">
-                      Identifying systems, materials, manpower &amp; compliance rules for “
-                      {selectedSections[0]?.name}”…
-                    </p>
-                  </div>
-                </div>
-                <span className="text-xs font-black text-blue-700 bg-white border border-blue-200 px-3 py-1 rounded-full shadow-2xs">
-                  POST /service/estimation/ai/section/requirements
-                </span>
-              </div>
-            </div>
-          )}
-
           {/* Requirements extraction error */}
           {reqError && !reqLoading && (
             <div className="p-3.5 px-4 bg-red-50/80 dark:bg-red-950/40 border border-red-100 dark:border-red-900/40 rounded-xl text-xs text-red-600 dark:text-red-300 font-semibold leading-relaxed flex items-start justify-between gap-3">
@@ -502,7 +479,12 @@ export default function FloorPlanSelectionSectionView({
 
           {/* Identified requirements (API #2 result) */}
           {reqResult ? (
-            <SectionRequirementsPanel result={reqResult} isDark={isDark} />
+            <SectionRequirementsPanel
+              result={reqResult}
+              isDark={isDark}
+              editable
+              onChange={next => setReqResult(next)}
+            />
           ) : (
             <div className="p-3.5 px-4 bg-amber-50/80 dark:bg-amber-950/40 border border-amber-100 dark:border-amber-900/40 rounded-xl text-xs text-amber-700 dark:text-amber-300 font-semibold">
               No requirements were returned for this section. Go back and run the analysis again.
@@ -612,14 +594,6 @@ export default function FloorPlanSelectionSectionView({
             </button>
 
             <div className="flex flex-wrap items-center gap-3">
-              <button
-                type="button"
-                onClick={() => setStep(5)}
-                className="px-6 py-2.5 rounded-full text-xs font-bold bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 hover:bg-blue-100 transition-all cursor-pointer"
-              >
-                Save Draft Estimate
-              </button>
-
               {onSaveEstimation && !dbSaved && (
                 <button
                   type="button"
@@ -640,87 +614,7 @@ export default function FloorPlanSelectionSectionView({
         </div>
       )}
 
-      {/* ── STEP 5: ESTIMATE SAVED (COMPLETION) ── */}
-      {step === 5 && (
-        <div className="space-y-6 animate-fade-in-up">
-          <div>
-            <h1 className="text-2xl font-black tracking-tight text-slate-900 dark:text-white">
-              Estimate saved
-            </h1>
-          </div>
-
-          {/* Completion Card */}
-          <div className="bg-white dark:bg-[#131B2E] border border-slate-200 dark:border-slate-800 rounded-3xl p-8 shadow-xs space-y-6">
-            <div className="text-emerald-500 text-4xl font-black">
-              ✓
-            </div>
-
-            <div>
-              <h2 className="text-xl font-black text-slate-900 dark:text-white">
-                Your draft estimate is ready
-              </h2>
-              <p className="text-xs font-bold text-slate-500 dark:text-slate-400 mt-1">
-                Office Security Installation
-              </p>
-              <p className="text-xs font-bold text-slate-400 dark:text-slate-500 mt-0.5">
-                {suggestions.length} item types • {totalQuantity} total units • Pricing pending
-              </p>
-            </div>
-
-            <div>
-              <span className="px-3 py-1 rounded-md text-[10px] font-black uppercase tracking-wider bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
-                DRAFT SAVED — PREVIEW
-              </span>
-            </div>
-
-            {/* Saved-to-database confirmation */}
-            {dbSaved && dbSaveMessage && (
-              <div className="p-3.5 px-4 bg-emerald-50/80 dark:bg-emerald-950/40 border border-emerald-100 dark:border-emerald-900/40 rounded-xl text-xs text-emerald-700 dark:text-emerald-300 font-semibold leading-relaxed">
-                {dbSaveMessage} The project is now pending validation in the Estimation workspace.
-              </div>
-            )}
-
-            <div className="flex flex-wrap items-center gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
-              {onSaveEstimation && !dbSaved && (
-                <button
-                  type="button"
-                  onClick={() => setShowSaveModal(true)}
-                  className="px-6 py-2.5 rounded-full text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-md shadow-blue-500/20 cursor-pointer transition-all"
-                >
-                  Save to Database
-                </button>
-              )}
-
-              {dbSaved && (
-                <span className="px-5 py-2.5 rounded-full text-xs font-bold bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-900">
-                  ✓ Saved to Database
-                </span>
-              )}
-
-              <button
-                type="button"
-                onClick={() => onViewEstimate && onViewEstimate()}
-                className="px-6 py-2.5 rounded-full text-xs font-bold bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 hover:bg-blue-100 transition-all cursor-pointer"
-              >
-                View Estimate
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  if (onCreateAnother) onCreateAnother();
-                  setStep(2);
-                }}
-                className="px-6 py-2.5 rounded-full text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-md shadow-blue-500/20 cursor-pointer transition-all"
-              >
-                Create Another Estimate
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Save dialog (wizard client details + system selection) */}
+      {/* Save dialog (wizard client details) */}
       {onSaveEstimation && (
         <SaveEstimationModal
           open={showSaveModal}

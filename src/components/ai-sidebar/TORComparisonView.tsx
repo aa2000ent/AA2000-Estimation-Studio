@@ -4,7 +4,7 @@ import { useToast } from '../utils/Toast';
 import FloorPlanSelectionSectionView from '../estimation/FloorPlanSelectionSectionView';
 import DocumentRequirementsView from '../estimation/DocumentRequirementsView';
 import { SYSTEM_OPTIONS, type SystemType } from '../estimation/CreateSurveyForm';
-import { Check, systemBadgeIcons } from '../../utils/Icons';
+import SystemSelectionModal from '../estimation/SystemSelectionModal';
 import type { SaveEstimationFn } from '../../services/estimationWizardSnapshot';
 import {
   analyzeFloorPlan,
@@ -25,14 +25,6 @@ interface Props {
   /** AI Estimation: saves the analysis to the database after collecting client details + systems. */
   onSaveEstimation?: SaveEstimationFn;
 }
-
-const ANALYSIS_STEPS = [
-  'Reading & parsing the uploaded document...',
-  'Extracting requirements & system specifications...',
-  'Matching products against the AA2000 catalog...',
-  'Computing manpower, materials, fees & schedule...',
-  'Building scope of works, constraints & risk assessment...',
-];
 
 // Backend supplemental-doc cap (services/Applications/ESTIMATION/supplementalDocs.js).
 const SUPPLEMENTAL_CONTENT_CHARS = 6000;
@@ -115,15 +107,10 @@ export default function TORComparisonView({ onScanningChange, onSaveEstimation }
   const [estError, setEstError] = useState('');
   const [showDocResults, setShowDocResults] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
-  const [analysisStep, setAnalysisStep] = useState(0);
-  // Collected BEFORE the analysis and passed to every endpoint so the AI scopes
-  // its recommendations to the project's systems.
+  // Collected BEFORE the analysis (in a modal) and passed to every endpoint
+  // so the AI scopes its recommendations to the project's systems.
   const [systemTypes, setSystemTypes] = useState<SystemType[]>([]);
-
-  const toggleSystemType = (type: SystemType) =>
-    setSystemTypes(prev =>
-      prev.includes(type) ? prev.filter(t => t !== type) : [...prev, type]
-    );
+  const [showSystemModal, setShowSystemModal] = useState(false);
 
   const handleTorFiles = useCallback(async (files: FileList | File[]) => {
     const fileArray = Array.from(files);
@@ -201,7 +188,7 @@ export default function TORComparisonView({ onScanningChange, onSaveEstimation }
         return;
       }
       if (systemTypes.length === 0) {
-        toast.error('Select at least one system type before the analysis.');
+        setShowSystemModal(true);
         return;
       }
 
@@ -240,7 +227,7 @@ export default function TORComparisonView({ onScanningChange, onSaveEstimation }
       return;
     }
     if (systemTypes.length === 0) {
-      toast.error('Select at least one system type before the analysis.');
+      setShowSystemModal(true);
       return;
     }
 
@@ -257,15 +244,10 @@ export default function TORComparisonView({ onScanningChange, onSaveEstimation }
       return;
     }
 
-    setAnalysisStep(0);
     setAnalyzing(true);
     setEstResult(null);
     setEstError('');
     onScanningChange?.(true);
-
-    const stepInterval = setInterval(() => {
-      setAnalysisStep(prev => (prev < ANALYSIS_STEPS.length - 1 ? prev + 1 : prev));
-    }, 2200);
 
     try {
       const result = await analyzeEstimation({
@@ -306,7 +288,6 @@ export default function TORComparisonView({ onScanningChange, onSaveEstimation }
       setEstError(message);
       toast.error(message);
     } finally {
-      clearInterval(stepInterval);
       setAnalyzing(false);
       onScanningChange?.(false);
     }
@@ -545,54 +526,31 @@ export default function TORComparisonView({ onScanningChange, onSaveEstimation }
         </p>
       </div>
 
-      {/* System Types — collected BEFORE the analysis and sent to the endpoint */}
-      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs dark:border-slate-800 dark:bg-[#131B2E] sm:p-5">
+      {/* System Types — selection happens in a modal, before the analysis */}
+      <button
+        type="button"
+        onClick={() => setShowSystemModal(true)}
+        className="w-full rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-xs transition-all hover:border-blue-300 dark:border-slate-800 dark:bg-[#131B2E] dark:hover:border-blue-800 sm:p-5 cursor-pointer"
+      >
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <p className="text-[10px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400">
             System Types *
           </p>
-          <p className="text-[10px] font-medium text-slate-400 dark:text-slate-500">
-            Selected before analysis so the AI recommends requirements for this project's systems.
+          <p className="text-[10px] font-bold text-blue-600 dark:text-blue-400">
+            {systemTypes.length === 0 ? 'Choose systems' : 'Change'}
           </p>
         </div>
-        <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          {SYSTEM_OPTIONS.map(opt => {
-            const selected = systemTypes.includes(opt.type);
-            const IconComp = systemBadgeIcons[opt.type];
-            return (
-              <button
-                key={opt.type}
-                type="button"
-                onClick={() => toggleSystemType(opt.type)}
-                className={`flex items-center gap-2.5 rounded-xl border-2 p-2.5 text-left transition-all cursor-pointer ${
-                  selected
-                    ? 'border-blue-600 bg-blue-50 dark:border-blue-500 dark:bg-blue-950/60'
-                    : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 hover:border-blue-300 dark:hover:border-blue-800'
-                }`}
-              >
-                <span className={`shrink-0 ${selected ? 'text-blue-600 dark:text-blue-400' : 'text-slate-400 dark:text-slate-500'}`}>
-                  {IconComp ? <IconComp className="h-4 w-4" /> : null}
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className={`block truncate text-[11px] font-black ${selected ? 'text-blue-700 dark:text-blue-300' : 'text-slate-700 dark:text-slate-300'}`}>
-                    {opt.label}
-                  </span>
-                  {selected && (
-                    <span className="mt-0.5 inline-flex items-center gap-1 rounded bg-blue-700 px-1.5 py-0.5 text-[9px] font-bold text-white">
-                      SELECTED <Check className="h-2.5 w-2.5" />
-                    </span>
-                  )}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-        <p className="mt-3 text-[10px] font-semibold text-slate-400 dark:text-slate-500">
+        <p className="mt-1 text-xs font-semibold text-slate-600 dark:text-slate-300">
           {systemTypes.length === 0
-            ? 'Select at least one system type to enable AI analysis.'
-            : `${systemTypes.length} system type${systemTypes.length === 1 ? '' : 's'} selected.`}
+            ? 'None selected — open the modal to pick the systems for this project.'
+            : `${systemTypes.length} selected: ${systemTypes
+                .map(t => SYSTEM_OPTIONS.find(o => o.type === t)?.label ?? t)
+                .join(', ')}`}
         </p>
-      </div>
+        <p className="mt-2 text-[10px] font-medium text-slate-400 dark:text-slate-500">
+          Selected before analysis so the AI recommends requirements for this project's systems.
+        </p>
+      </button>
 
       {/* Action Footer */}
       <div className="flex flex-col gap-3 border-t border-slate-100 pt-4 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between">
@@ -635,68 +593,6 @@ export default function TORComparisonView({ onScanningChange, onSaveEstimation }
         </button>
       </div>
 
-      {/* Floor plan analysis progress */}
-      {floorPlanLoading && (
-        <div className="rounded-2xl border border-blue-200/80 bg-gradient-to-b from-blue-50/90 via-blue-50/40 to-indigo-50/30 p-4 shadow-sm sm:p-6">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="relative w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center text-white shadow-md shadow-blue-500/20">
-                <svg className="w-5 h-5 animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 4.5 4 6v13.5l5-1.5 6 1.5 5-1.5V4.5l-5 1.5-6-1.5Z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 4.5v13.5M15 6v13.5" />
-                </svg>
-              </div>
-              <div>
-                <h4 className="text-sm font-black text-slate-900 flex items-center gap-2">
-                  Floor Plan Analysis in Progress
-                  <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-blue-100 text-blue-700 uppercase tracking-wider">
-                    Neural Engine
-                  </span>
-                </h4>
-                <p className="text-xs text-slate-500 font-medium mt-0.5">
-                  Extracting rooms, corridors, vertical circulation &amp; utility areas...
-                </p>
-              </div>
-            </div>
-            <span className="text-xs font-black text-blue-700 bg-white border border-blue-200 px-3 py-1 rounded-full shadow-2xs">
-              POST /api/floorplan/analyze
-            </span>
-          </div>
-        </div>
-      )}
-
-      {/* Requirements extraction progress (API #3) */}
-      {analyzing && (
-        <div className="rounded-2xl border border-blue-200/80 bg-gradient-to-b from-blue-50/90 via-blue-50/40 to-indigo-50/30 p-4 shadow-sm sm:p-6">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-blue-100/80 pb-4">
-            <div className="flex items-center gap-3">
-              <div className="relative w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center text-white shadow-md shadow-blue-500/20">
-                <svg className="w-5 h-5 animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09Z" />
-                </svg>
-              </div>
-              <div>
-                <h4 className="text-sm font-black text-slate-900 flex items-center gap-2">
-                  Extracting Requirements in Progress
-                  <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-blue-100 text-blue-700 uppercase tracking-wider">
-                    Neural Engine
-                  </span>
-                </h4>
-                <p className="text-xs text-slate-500 font-medium mt-0.5">
-                  Reading the document and generating requirements, BOQ, manpower &amp; schedule...
-                </p>
-              </div>
-            </div>
-            <span className="text-xs font-black text-blue-700 bg-white border border-blue-200 px-3 py-1 rounded-full shadow-2xs">
-              Step {analysisStep + 1} of {ANALYSIS_STEPS.length}
-            </span>
-          </div>
-          <p className="text-[11px] font-semibold text-blue-700/80 mt-3">
-            {ANALYSIS_STEPS[analysisStep]}
-          </p>
-        </div>
-      )}
-
       {/* Requirements extraction error */}
       {estError && !analyzing && (
         <div className="p-3.5 px-4 bg-red-50/80 dark:bg-red-950/40 border border-red-100 dark:border-red-900/40 rounded-xl text-xs text-red-600 dark:text-red-300 font-semibold leading-relaxed flex items-start justify-between gap-3">
@@ -710,6 +606,17 @@ export default function TORComparisonView({ onScanningChange, onSaveEstimation }
           </button>
         </div>
       )}
+
+      {/* System selection modal (pre-analysis scope for every endpoint) */}
+      <SystemSelectionModal
+        open={showSystemModal}
+        onClose={() => setShowSystemModal(false)}
+        onConfirm={selected => {
+          setSystemTypes(selected);
+          setShowSystemModal(false);
+        }}
+        selected={systemTypes}
+      />
     </div>
   );
 }
