@@ -289,14 +289,13 @@ export async function analyzeFloorPlan(
   }
 
   const formData = new FormData();
-  // Single file uses `file`; multi-sheet sets use `files[]` per api-specs.md.
-  const field = files.length === 1 ? 'file' : 'files[]';
+  // Always attach primary file as `file` required by /api/floorplan/analyze schema
   files.forEach((file, index) => {
-    formData.append(field, file, file.name || `floorplan_${index + 1}`);
+    formData.append('file', file, file.name || `floorplan_${index + 1}`);
   });
 
-  const fileType = request.fileType || fileTypeFromName(files[0].name);
-  if (fileType) formData.append('fileType', fileType);
+  const fileType = (request.fileType || fileTypeFromName(files[0]?.name || '') || 'pdf').toLowerCase().replace('.', '');
+  formData.append('fileType', fileType);
   if (request.projectContext) {
     formData.append('projectContext', JSON.stringify(request.projectContext));
   }
