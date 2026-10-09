@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import { parseFile, type ParsedFile } from '../../services/fileParser';
 import { useToast } from '../utils/Toast';
 import FloorPlanSelectionSectionView from '../estimation/FloorPlanSelectionSectionView';
@@ -6,6 +6,13 @@ import DocumentRequirementsView from '../estimation/DocumentRequirementsView';
 import { SYSTEM_OPTIONS, type SystemType } from '../estimation/CreateSurveyForm';
 import SystemSelectionModal from '../estimation/SystemSelectionModal';
 import type { SaveEstimationFn } from '../../services/estimationWizardSnapshot';
+import { FileTypeIcon } from '../utils/FileTypeBadges';
+import {
+  FLOOR_PLAN_ACCEPT,
+  REFERENCE_DOCUMENT_ACCEPT,
+  isFloorPlanFile,
+  isReferenceDocument,
+} from '../../utils/uploadFileTypes';
 import {
   analyzeFloorPlan,
   analyzeEstimation,
@@ -107,6 +114,7 @@ export default function TORComparisonView({ onScanningChange, onSaveEstimation }
   const [estError, setEstError] = useState('');
   const [showDocResults, setShowDocResults] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
+  const analysisControllerRef = useRef<AbortController | null>(null);
   // Collected BEFORE the analysis (in a modal) and passed to every endpoint
   // so the AI scopes its recommendations to the project's systems.
   const [systemTypes, setSystemTypes] = useState<SystemType[]>([]);
@@ -116,6 +124,10 @@ export default function TORComparisonView({ onScanningChange, onSaveEstimation }
     const fileArray = Array.from(files);
     if (fileArray.length === 0) return;
     const file = fileArray[0];
+    if (!isReferenceDocument(file)) {
+      toast.error('Unsupported TOR file. Upload a PDF or Word document (.docx).');
+      return;
+    }
     setTorFile({ file, parsed: { fileName: file.name, fileType: '', content: '', size: file.size }, loading: true, error: null });
     setEstResult(null);
     setEstError('');
@@ -134,6 +146,10 @@ export default function TORComparisonView({ onScanningChange, onSaveEstimation }
     const fileArray = Array.from(files);
     if (fileArray.length === 0) return;
     const file = fileArray[0];
+    if (!isReferenceDocument(file)) {
+      toast.error('Unsupported reference file. Upload a PDF or Word document (.docx).');
+      return;
+    }
     setProposalFile({ file, parsed: { fileName: file.name, fileType: '', content: '', size: file.size }, loading: true, error: null });
     setEstResult(null);
     setEstError('');
@@ -152,6 +168,10 @@ export default function TORComparisonView({ onScanningChange, onSaveEstimation }
     const fileArray = Array.from(files);
     if (fileArray.length === 0) return;
     const file = fileArray[0];
+    if (!isFloorPlanFile(file)) {
+      toast.error('Unsupported floor plan. Upload a PDF, PNG, or JPG image.');
+      return;
+    }
     setFloorPlanFile({ file, parsed: { fileName: file.name, fileType: '', content: '', size: file.size }, loading: true, error: null });
     setFloorPlanResult(null);
     try {
@@ -195,6 +215,8 @@ export default function TORComparisonView({ onScanningChange, onSaveEstimation }
       setFloorPlanLoading(true);
       setFloorPlanResult(null);
       onScanningChange?.(true);
+      const controller = new AbortController();
+      analysisControllerRef.current = controller;
       try {
         const result = await analyzeFloorPlan({
           files: [floorPlanFile.file],
@@ -208,15 +230,20 @@ export default function TORComparisonView({ onScanningChange, onSaveEstimation }
             outputFormat: 'structured',
             coordinateSystem: 'meters',
           },
-        });
+        }, controller.signal);
         setFloorPlanResult(result);
         setShowFloorPlanSelection(true);
         toast.success('Floor plan analyzed — sections extracted!');
       } catch (err) {
-        toast.error(err instanceof Error ? err.message : 'Floor plan analysis failed');
+        if (!controller.signal.aborted) {
+          toast.error(err instanceof Error ? err.message : 'Floor plan analysis failed');
+        }
       } finally {
-        setFloorPlanLoading(false);
-        onScanningChange?.(false);
+        if (analysisControllerRef.current === controller) {
+          analysisControllerRef.current = null;
+          setFloorPlanLoading(false);
+          onScanningChange?.(false);
+        }
       }
       return;
     }
@@ -248,6 +275,8 @@ export default function TORComparisonView({ onScanningChange, onSaveEstimation }
     setEstResult(null);
     setEstError('');
     onScanningChange?.(true);
+    const controller = new AbortController();
+    analysisControllerRef.current = controller;
 
     try {
       const result = await analyzeEstimation({
@@ -279,19 +308,32 @@ export default function TORComparisonView({ onScanningChange, onSaveEstimation }
           currency: 'PHP',
           market: 'philippines',
         },
-      });
+      }, controller.signal);
       setEstResult(result);
       setShowDocResults(true);
       toast.success('Requirements extracted from the document!');
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Requirements extraction failed.';
-      setEstError(message);
-      toast.error(message);
+      if (!controller.signal.aborted) {
+        const message = err instanceof Error ? err.message : 'Requirements extraction failed.';
+        setEstError(message);
+        toast.error(message);
+      }
     } finally {
-      setAnalyzing(false);
-      onScanningChange?.(false);
+      if (analysisControllerRef.current === controller) {
+        analysisControllerRef.current = null;
+        setAnalyzing(false);
+        onScanningChange?.(false);
+      }
     }
   }, [selectedDocType, torFile, proposalFile, floorPlanFile, systemTypes, toast, onScanningChange]);
+
+  const cancelAnalysis = () => {
+    analysisControllerRef.current?.abort();
+    analysisControllerRef.current = null;
+    setFloorPlanLoading(false);
+    setAnalyzing(false);
+    onScanningChange?.(false);
+  };
 
   const currentFile =
     selectedDocType === 'proposal'
@@ -304,6 +346,7 @@ export default function TORComparisonView({ onScanningChange, onSaveEstimation }
     return (
       <FloorPlanSelectionSectionView
         result={floorPlanResult}
+        uploadedFile={floorPlanFile?.file}
         onSaveEstimation={onSaveEstimation}
         initialSystemTypes={systemTypes}
         onBackToDocument={() => setShowFloorPlanSelection(false)}
@@ -442,91 +485,111 @@ export default function TORComparisonView({ onScanningChange, onSaveEstimation }
       </div>
 
       {/* Dashed Upload Dropzone Box */}
-      <div className="relative flex w-full flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed border-blue-200 bg-blue-50/10 px-4 py-8 text-center dark:border-blue-900/60 dark:bg-blue-950/10 sm:px-8 sm:py-10">
-        
-        <h3 className="text-lg font-black text-blue-600 dark:text-blue-400">
-          {selectedDocType === 'floor_plan'
-            ? 'Upload Floor Plan'
-            : selectedDocType === 'tor'
-            ? 'Upload Terms of Reference'
-            : 'Upload Proposal'}
-        </h3>
-        <p className="text-xs text-slate-500 dark:text-slate-400 font-medium max-w-md">
-          {selectedDocType === 'floor_plan'
-            ? 'Upload a floor plan to identify rooms and installation sections.'
-            : selectedDocType === 'tor'
-            ? 'Upload a TOR document to extract specifications and hardware counts.'
-            : 'Upload a proposal to review proposed equipment and quantities.'}
-        </p>
-
-        {/* Active file or upload button */}
-        {currentFile ? (
-          <div className="mt-2 flex w-full max-w-2xl flex-wrap items-center justify-center gap-3 rounded-xl border border-blue-200 bg-white p-3 px-5 shadow-xs dark:border-blue-900 dark:bg-[#131B2E]">
-            <span className="min-w-0 break-all text-center text-xs font-bold text-slate-800 dark:text-white">{currentFile.parsed.fileName}</span>
-            <button
-              type="button"
-              onClick={() => {
-                if (selectedDocType === 'proposal') removeProposalFile();
-                else if (selectedDocType === 'floor_plan') removeFloorPlanFile();
-                else removeTorFile();
-              }}
-              className="text-slate-400 hover:text-red-500 text-xs font-bold cursor-pointer"
-            >
-              ✕ Remove
-            </button>
-          </div>
-        ) : (
-          <div className="flex flex-col items-center gap-2.5 mt-2">
-            <label className="px-6 py-3 rounded-full text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 transition-all shadow-md shadow-blue-500/20 cursor-pointer inline-flex items-center gap-2">
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+      <div className={`relative flex w-full flex-col items-center justify-center gap-3 rounded-xl px-4 text-center sm:px-8 ${
+        floorPlanLoading || analyzing
+          ? 'min-h-[420px] border border-blue-900/60 bg-[#131B2E] py-12'
+          : 'border-2 border-dashed border-blue-200 bg-blue-50/10 py-8 dark:border-blue-900/60 dark:bg-blue-950/10 sm:py-10'
+      }`}>
+        {floorPlanLoading || analyzing ? (
+          <>
+            <span className="mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-blue-950/50 text-blue-300">
+              <svg className="h-8 w-8 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-90" fill="currentColor" d="M4 12a8 8 0 0 1 8-8V0C5.37 0 0 5.37 0 12h4zm2 5.29A7.96 7.96 0 0 1 4 12H0c0 3.04 1.13 5.82 3 7.94l3-2.65z" />
               </svg>
-              <span>Open File / Select from Device</span>
-              <input
-                type="file"
-                accept={
-                  selectedDocType === 'floor_plan'
-                    ? '.pdf,.png,.jpg,.jpeg,.gif,.webp'
-                    : '.pdf,.xlsx,.xls,.docx,.doc,.png,.jpg,.jpeg'
-                }
-                className="hidden"
-                onChange={e => {
-                  if (e.target.files && e.target.files.length > 0) {
-                    if (selectedDocType === 'proposal') {
-                      handleProposalFiles(e.target.files);
-                    } else if (selectedDocType === 'floor_plan') {
-                      handleFloorPlanFiles(e.target.files);
-                    } else {
-                      handleTorFiles(e.target.files);
-                    }
-                  }
-                }}
-              />
-            </label>
+            </span>
+            <h3 className="text-xl font-black text-white">
+              Analyzing document
+            </h3>
+            <p className="max-w-md text-sm font-medium text-blue-200" aria-live="polite">
+              {floorPlanLoading
+                ? 'Reading the floor plan and identifying rooms and installation sections…'
+                : 'Extracting system requirements and reviewing the document…'}
+            </p>
             <button
               type="button"
-              onClick={() => {
-                if (selectedDocType === 'floor_plan') {
-                  setShowFloorPlanSelection(true);
-                } else {
-                  toast.info('Sample document loaded!');
-                }
-              }}
-              className="px-5 py-2 rounded-full text-xs font-bold bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/50 cursor-pointer"
+              onClick={cancelAnalysis}
+              className="mt-5 rounded-full border border-slate-700 px-7 py-2.5 text-sm font-bold text-slate-100 transition-colors hover:border-red-900 hover:bg-red-950/30 hover:text-red-300"
             >
-              Try Sample Floor Plan
+              Cancel
             </button>
-          </div>
-        )}
+          </>
+        ) : (
+          <>
+            <h3 className="text-lg font-black text-blue-600 dark:text-blue-400">
+              {selectedDocType === 'floor_plan'
+                ? 'Upload Floor Plan'
+                : selectedDocType === 'tor'
+                ? 'Upload Terms of Reference'
+                : 'Upload Proposal'}
+            </h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 font-medium max-w-md">
+              {selectedDocType === 'floor_plan'
+                ? 'Upload a floor plan to identify rooms and installation sections.'
+                : selectedDocType === 'tor'
+                ? 'Upload a TOR document to extract specifications and hardware counts.'
+                : 'Upload a proposal to review proposed equipment and quantities.'}
+            </p>
+            {/* Active file or upload button */}
+            {currentFile ? (
+              <div className="mt-2 flex w-full max-w-2xl items-center gap-3 rounded-xl border border-blue-200 bg-white p-3 px-4 shadow-xs dark:border-blue-900 dark:bg-[#131B2E]">
+                <span className="min-w-0 flex-1 break-all text-left text-xs font-bold text-slate-800 dark:text-white">{currentFile.parsed.fileName}</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (selectedDocType === 'proposal') removeProposalFile();
+                    else if (selectedDocType === 'floor_plan') removeFloorPlanFile();
+                    else removeTorFile();
+                  }}
+                  className="shrink-0 text-slate-400 hover:text-red-500 text-xs font-bold cursor-pointer"
+                >
+                  ✕ Remove
+                </button>
+                <FileTypeIcon fileName={currentFile.file.name} />
+              </div>
+            ) : (
+              <div className="flex flex-col items-center gap-2.5 mt-2">
+                <label className="px-6 py-3 rounded-full text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 transition-all shadow-md shadow-blue-500/20 cursor-pointer inline-flex items-center gap-2">
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+                  </svg>
+                  <span>Open File / Select from Device</span>
+                  <input
+                    type="file"
+                    accept={
+                      selectedDocType === 'floor_plan'
+                        ? FLOOR_PLAN_ACCEPT
+                        : REFERENCE_DOCUMENT_ACCEPT
+                    }
+                    className="hidden"
+                    onChange={e => {
+                      if (e.target.files && e.target.files.length > 0) {
+                        if (selectedDocType === 'proposal') {
+                          handleProposalFiles(e.target.files);
+                        } else if (selectedDocType === 'floor_plan') {
+                          handleFloorPlanFiles(e.target.files);
+                        } else {
+                          handleTorFiles(e.target.files);
+                        }
+                      }
+                      e.target.value = '';
+                    }}
+                  />
+                </label>
+              </div>
+            )}
 
-        <p className="text-[10px] font-medium text-slate-400 dark:text-slate-500 mt-2">
-          {selectedDocType === 'floor_plan'
-            ? 'PDF, PNG, JPG, GIF, WEBP • Sections extracted by /api/floorplan/analyze'
-            : 'PDF, DOCX, XLSX • Requirements extracted by /service/estimation/ai/analyze'}
-        </p>
+            <p className="text-[10px] font-medium text-slate-400 dark:text-slate-500 mt-2">
+              {selectedDocType === 'floor_plan'
+                ? 'Accepted floor plans: PDF, PNG, JPG'
+                : 'Accepted TOR / reference documents: PDF, DOCX'}
+            </p>
+          </>
+        )}
       </div>
 
       {/* System Types — selection happens in a modal, before the analysis */}
+      {!floorPlanLoading && !analyzing && (
       <button
         type="button"
         onClick={() => setShowSystemModal(true)}
@@ -551,8 +614,10 @@ export default function TORComparisonView({ onScanningChange, onSaveEstimation }
           Selected before analysis so the AI recommends requirements for this project's systems.
         </p>
       </button>
+      )}
 
       {/* Action Footer */}
+      {!floorPlanLoading && !analyzing && (
       <div className="flex flex-col gap-3 border-t border-slate-100 pt-4 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between">
         <span className="text-xs font-medium text-slate-400 dark:text-slate-500">
           {systemTypes.length === 0
@@ -592,6 +657,7 @@ export default function TORComparisonView({ onScanningChange, onSaveEstimation }
           </span>
         </button>
       </div>
+      )}
 
       {/* Requirements extraction error */}
       {estError && !analyzing && (

@@ -13,6 +13,14 @@ import type { SurveyFormData, SystemType } from './CreateSurveyForm';
 import { SYSTEM_OPTIONS } from './CreateSurveyForm';
 import { parseFile } from '../../services/fileParser';
 import LeafletMap from '../utils/LeafletMap';
+import FileTypeBadges from '../utils/FileTypeBadges';
+import { useToast } from '../utils/Toast';
+import {
+  FLOOR_PLAN_ACCEPT,
+  REFERENCE_DOCUMENT_ACCEPT,
+  isFloorPlanFile,
+  isReferenceDocument,
+} from '../../utils/uploadFileTypes';
 import {
   analyzeFloorPlan,
   analyzeEstimation,
@@ -68,12 +76,9 @@ const AI_STEPS = [
 
 const MAX_PLAN_FILES = 6;
 const MAX_FILE_BYTES = 12 * 1024 * 1024;
-const ACCEPTED_PLAN =
-  '.pdf,.png,.jpg,.jpeg,.gif,.webp,image/png,image/jpeg,image/gif,image/webp,application/pdf';
 
 // Optional TOR / Proposal documents: parsed to text in the wizard and sent to
 // every analysis endpoint as supplemental context for the AI.
-const SUPP_ACCEPTED = '.pdf,.docx,.doc,.xlsx,.xls,.csv,.txt';
 const MAX_SUPP_DOCS = 4;
 const MAX_SUPP_CHARS = 12000;
 
@@ -144,6 +149,7 @@ export default function CreateEstimationFlow({
   initialData,
   isDark,
 }: Props) {
+  const { toast } = useToast();
   const dark =
     isDark ??
     (typeof document !== 'undefined' &&
@@ -456,6 +462,10 @@ export default function CreateEstimationFlow({
     const next = [...planFiles];
     for (const file of Array.from(incoming)) {
       if (next.length >= MAX_PLAN_FILES) break;
+      if (!isFloorPlanFile(file)) {
+        toast.error(`"${file.name}" is not a supported floor plan. Upload a PDF, PNG, or JPG.`);
+        continue;
+      }
       if (file.size > MAX_FILE_BYTES) {
         setErrorMsg(`"${file.name}" exceeds the 12 MB file limit.`);
         continue;
@@ -498,6 +508,10 @@ export default function CreateEstimationFlow({
           break;
         }
         if (next.some(doc => doc.name === file.name)) continue;
+        if (!isReferenceDocument(file)) {
+          toast.error(`"${file.name}" is not a supported reference document. Upload a PDF or Word (.docx) file.`);
+          continue;
+        }
         try {
           const parsed = await parseFile(file);
           const content = (parsed.content || '').trim();
@@ -542,7 +556,7 @@ export default function CreateEstimationFlow({
           <p className="text-[11px] mt-1 leading-relaxed" style={{ color: dark ? '#64748B' : '#94A3B8' }}>
             Attach the client's Terms of Reference or your proposal — the AI uses it as
             supplemental context for its analysis (requirements, quantities, brands, constraints).
-            {' '}Attach before running the analysis · PDF, Word, Excel or text · up to {MAX_SUPP_DOCS} files.
+            {' '}Attach before running the analysis · PDF or Word (.docx) · up to {MAX_SUPP_DOCS} files.
             {suppParsing ? ' Reading file…' : ''}
           </p>
         </div>
@@ -556,6 +570,9 @@ export default function CreateEstimationFlow({
           <ArrowUpTray className="w-3.5 h-3.5 inline mr-1 -mt-0.5" />
           {suppDocs.length > 0 ? 'Add file' : 'Attach file'}
         </button>
+      </div>
+      <div className="mt-3 flex justify-start">
+        <FileTypeBadges types={['PDF', 'DOCX']} />
       </div>
 
       {suppDocs.length > 0 && (
@@ -588,7 +605,7 @@ export default function CreateEstimationFlow({
         ref={suppInputRef}
         type="file"
         multiple
-        accept={SUPP_ACCEPTED}
+        accept={REFERENCE_DOCUMENT_ACCEPT}
         className="hidden"
         onChange={e => {
           if (e.target.files?.length) void addSuppFiles(e.target.files);
@@ -1222,10 +1239,11 @@ export default function CreateEstimationFlow({
         <span className="text-xs font-bold" style={{ color: dark ? '#94A3B8' : '#64748B' }}>
           Click to attach floor plan files (PDF, PNG, JPG — max {MAX_PLAN_FILES}, 12 MB each)
         </span>
+        <FileTypeBadges types={['PDF', 'PNG', 'JPG']} />
         <input
           type="file"
           multiple
-          accept={ACCEPTED_PLAN}
+          accept={FLOOR_PLAN_ACCEPT}
           className="hidden"
           onChange={e => {
             addPlanFiles(e.target.files);

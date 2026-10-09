@@ -25,6 +25,7 @@ import type {
   SectionRequirementEntry,
   SectionRequirementsResult,
 } from '../../services/api/estimationFlow';
+import type { SystemType } from './CreateSurveyForm';
 import { computeEstimationStats } from '../../services/estimationStats';
 
 interface PanelProps {
@@ -125,19 +126,24 @@ function PanelHeading({
   icon,
   title,
   dark,
+  action,
 }: {
   icon: React.ReactNode;
   title: string;
   dark?: boolean;
+  action?: React.ReactNode;
 }) {
   return (
-    <p
-      className="text-[10px] font-bold uppercase tracking-wider mb-3 flex items-center gap-1.5"
-      style={{ color: accent(dark) }}
-    >
-      {icon}
-      {title}
-    </p>
+    <div className="mb-3 flex items-center justify-between gap-3">
+      <p
+        className="text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5"
+        style={{ color: accent(dark) }}
+      >
+        {icon}
+        {title}
+      </p>
+      {action}
+    </div>
   );
 }
 
@@ -153,6 +159,23 @@ const SYSTEM_KEY_LABELS: Record<string, string> = {
   burglarAlarm: 'Burglar Alarm',
   fireProtection: 'Fire Protection',
   other: 'Other',
+};
+
+const SYSTEM_TYPE_REQUIREMENT_KEYS: Record<SystemType, string> = {
+  CCTV: 'cctv',
+  FDAS: 'fdas',
+  ACCESS_CONTROL: 'accessControl',
+  BURGLAR_ALARM: 'burglarAlarm',
+  DOOR_LOCK: 'doorLock',
+  EAS_SYSTEM: 'easSystem',
+  FIRE_PROTECTION: 'fireProtection',
+  FIXED_ARM_ELEVATOR: 'fixedArmElevator',
+  INTERCOM_NURSE_CALL: 'intercomNurseCall',
+  PABX_PAGING: 'pabxPaging',
+  PARKING_BARRIER: 'parkingBarrier',
+  POS_SYSTEM: 'posSystem',
+  ROOM_ALERT: 'roomAlert',
+  XRAY_SECURITY: 'xraySecurity',
 };
 
 const PRIORITY_COLORS: Record<string, string> = {
@@ -841,14 +864,19 @@ export function SectionRequirementsPanel({
   isDark,
   editable = false,
   onChange,
+  onAddSystem,
+  selectedSystems = [],
 }: PanelProps & {
   result: SectionRequirementsResult;
   /** Adds an Edit/Done toggle so the SYSTEM REQUIREMENTS block becomes inputs. */
   editable?: boolean;
   /** Receives the updated result on every edit — the caller stores it. */
   onChange?: (next: SectionRequirementsResult) => void;
+  onAddSystem?: () => void;
+  selectedSystems?: SystemType[];
 }) {
   const [editing, setEditing] = useState(false);
+  const [requirementsPage, setRequirementsPage] = useState(0);
   const requirements = result.requirements || {};
   const canEdit = editable && typeof onChange === 'function';
   const updateEntry = (key: string, patch: Partial<SectionRequirementEntry>) => {
@@ -857,8 +885,33 @@ export function SectionRequirementsPanel({
       requirements: { ...requirements, [key]: { ...requirements[key], ...patch } },
     });
   };
-  const reqEntries = Object.entries(requirements).filter(
+  const rawReqEntries = Object.entries(requirements).filter(
     ([, value]) => value && typeof value === 'object'
+  );
+  const normalizedKeys = new Set(rawReqEntries.map(([key]) => key.replace(/[^a-z0-9]/gi, '').toLowerCase()));
+  const selectedRequirementEntries: [string, SectionRequirementEntry][] = [];
+  selectedSystems.forEach(type => {
+    const key = SYSTEM_TYPE_REQUIREMENT_KEYS[type];
+    const normalizedKey = key.replace(/[^a-z0-9]/gi, '').toLowerCase();
+    if (!normalizedKeys.has(normalizedKey)) {
+      selectedRequirementEntries.push([
+        key,
+        {
+          required: true,
+          coverage: 'Selected for this project. No system-specific AI details were returned.',
+        },
+      ]);
+    }
+  });
+  const reqEntries: [string, SectionRequirementEntry][] = [
+    ...rawReqEntries,
+    ...selectedRequirementEntries,
+  ];
+  const REQUIREMENTS_PER_PAGE = 2;
+  const requirementsPageCount = Math.max(1, Math.ceil(reqEntries.length / REQUIREMENTS_PER_PAGE));
+  const visibleRequirements = reqEntries.slice(
+    Math.min(requirementsPage, requirementsPageCount - 1) * REQUIREMENTS_PER_PAGE,
+    (Math.min(requirementsPage, requirementsPageCount - 1) + 1) * REQUIREMENTS_PER_PAGE
   );
   const labor = result.laborEstimates;
   const materials = result.materialSummary;
@@ -1077,9 +1130,22 @@ export function SectionRequirementsPanel({
 
       {reqEntries.length > 0 && (
         <div style={cardStyle(isDark)}>
-          <PanelHeading icon={<SysShield className="w-4 h-4 inline mr-1.5" />} title="SYSTEM REQUIREMENTS" dark={isDark} />
+          <PanelHeading
+            icon={<SysShield className="w-4 h-4 inline mr-1.5" />}
+            title="SYSTEM REQUIREMENTS"
+            dark={isDark}
+            action={onAddSystem ? (
+              <button
+                type="button"
+                onClick={onAddSystem}
+                className="rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-[10px] font-bold normal-case tracking-normal text-blue-700 transition-colors hover:bg-blue-100 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-300 dark:hover:bg-blue-950/70"
+              >
+                + Add more
+              </button>
+            ) : undefined}
+          />
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {reqEntries.map(([key, value]) => {
+            {visibleRequirements.map(([key, value]) => {
               const standards = Array.isArray(value.standards) ? value.standards : [];
               const codeRefs = Array.isArray(value.codeReferences) ? value.codeReferences : [];
               const specs =
@@ -1201,6 +1267,31 @@ export function SectionRequirementsPanel({
               );
             })}
           </div>
+          {requirementsPageCount > 1 && (
+            <div className="mt-4 flex items-center justify-between gap-3 border-t pt-3" style={{ borderColor: isDark ? '#1E293B' : '#E2E8F0' }}>
+              <button
+                type="button"
+                onClick={() => setRequirementsPage(page => Math.max(0, page - 1))}
+                disabled={requirementsPage === 0}
+                className="rounded-lg border px-3 py-1.5 text-[10px] font-bold disabled:cursor-not-allowed disabled:opacity-40"
+                style={{ borderColor: isDark ? '#334155' : '#CBD5E1', color: heading(isDark) }}
+              >
+                Previous
+              </button>
+              <span className="text-[10px] font-semibold" style={{ color: muted(isDark) }}>
+                Page {Math.min(requirementsPage, requirementsPageCount - 1) + 1} of {requirementsPageCount}
+              </span>
+              <button
+                type="button"
+                onClick={() => setRequirementsPage(page => Math.min(requirementsPageCount - 1, page + 1))}
+                disabled={requirementsPage >= requirementsPageCount - 1}
+                className="rounded-lg border px-3 py-1.5 text-[10px] font-bold disabled:cursor-not-allowed disabled:opacity-40"
+                style={{ borderColor: isDark ? '#334155' : '#CBD5E1', color: heading(isDark) }}
+              >
+                Next
+              </button>
+            </div>
+          )}
         </div>
       )}
 

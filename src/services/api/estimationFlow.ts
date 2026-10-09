@@ -18,8 +18,22 @@ function isLocalEstimationApiMockEnabled(): boolean {
   );
 }
 
-async function waitForMockResponse(delayMs: number): Promise<void> {
-  await new Promise(resolve => setTimeout(resolve, delayMs));
+async function waitForMockResponse(delayMs: number, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) {
+    throw new DOMException('Request cancelled', 'AbortError');
+  }
+  await new Promise<void>((resolve, reject) => {
+    const timeoutId = setTimeout(() => {
+      signal?.removeEventListener('abort', abort);
+      resolve();
+    }, delayMs);
+    const abort = () => {
+      clearTimeout(timeoutId);
+      signal?.removeEventListener('abort', abort);
+      reject(new DOMException('Request cancelled', 'AbortError'));
+    };
+    signal?.addEventListener('abort', abort, { once: true });
+  });
 }
 
 function logMockMode(): void {
@@ -52,12 +66,13 @@ export function fileTypeFromName(name: string): string | undefined {
 async function postJson<T>(
   url: string,
   payload: unknown,
-  fallbackError: string
+  fallbackError: string,
+  signal?: AbortSignal
 ): Promise<T> {
   const response = await apiClient.post<EstimationFlowBackendResponse<T>>(
     url,
     payload,
-    { timeoutMs: AI_REQUEST_TIMEOUT_MS }
+    { timeoutMs: AI_REQUEST_TIMEOUT_MS, signal }
   );
 
   if (!response.success || !response.data) {
@@ -168,7 +183,8 @@ export interface FloorPlanAnalyzeRequest {
 }
 
 export async function analyzeFloorPlan(
-  request: FloorPlanAnalyzeRequest
+  request: FloorPlanAnalyzeRequest,
+  signal?: AbortSignal
 ): Promise<FloorPlanAnalyzeResult> {
   const files = request.files.slice(0, MAX_FLOORPLAN_FILES);
   if (files.length === 0) {
@@ -182,7 +198,7 @@ export async function analyzeFloorPlan(
 
   if (isLocalEstimationApiMockEnabled()) {
     logMockMode();
-    await waitForMockResponse(1800);
+    await waitForMockResponse(1800, signal);
     return {
       requestId: 'local-mock-floorplan',
       analyzedAt: new Date().toISOString(),
@@ -293,7 +309,7 @@ export async function analyzeFloorPlan(
 
   const response = await apiClient.postForm<
     EstimationFlowBackendResponse<FloorPlanAnalyzeResult>
-  >(FLOORPLAN_ANALYZE_ENDPOINT, formData, { timeoutMs: AI_REQUEST_TIMEOUT_MS });
+  >(FLOORPLAN_ANALYZE_ENDPOINT, formData, { timeoutMs: AI_REQUEST_TIMEOUT_MS, signal });
 
   if (!response.success || !response.data) {
     throw new Error(response.error?.message || 'Floor plan analysis failed.');
@@ -668,11 +684,12 @@ export interface EstimationAnalyzeResult {
 }
 
 export async function analyzeEstimation(
-  request: EstimationAnalyzeRequest
+  request: EstimationAnalyzeRequest,
+  signal?: AbortSignal
 ): Promise<EstimationAnalyzeResult> {
   if (isLocalEstimationApiMockEnabled()) {
     logMockMode();
-    await waitForMockResponse(1600);
+    await waitForMockResponse(1600, signal);
     return {
       requestId: 'local-mock-estimation',
       analyzedAt: new Date().toISOString(),
@@ -803,6 +820,7 @@ export async function analyzeEstimation(
   return postJson<EstimationAnalyzeResult>(
     ESTIMATION_ANALYZE_ENDPOINT,
     request,
-    'Estimation analysis failed.'
+    'Estimation analysis failed.',
+    signal
   );
 }

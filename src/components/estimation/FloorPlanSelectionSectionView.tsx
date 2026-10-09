@@ -1,13 +1,15 @@
-import React, { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   extractSectionRequirements,
   type FloorPlanAnalyzeResult,
   type FloorPlanSection,
   type SectionRequirementsResult,
 } from '../../services/api/estimationFlow';
-import type { SystemType } from './CreateSurveyForm';
+import { SYSTEM_OPTIONS, type SystemType } from './CreateSurveyForm';
 import { SectionRequirementsPanel } from './EstimationAiPanels';
+import SystemSelectionModal from './SystemSelectionModal';
 import SaveEstimationModal from './SaveEstimationModal';
+import { useToast } from '../utils/Toast';
 import type {
   EstimationFlowAiContext,
   SaveEstimationFn,
@@ -25,11 +27,175 @@ interface PlanSection {
   raw?: FloorPlanSection;
 }
 
-interface ItemSuggestion {
-  id: string;
-  item: string;
-  area: string;
-  quantity: number;
+interface Html2PdfWorker {
+  set(options: {
+    margin: number;
+    image: { type: string; quality: number };
+    html2canvas: { scale: number; useCORS: boolean };
+    jsPDF: { unit: string; format: string; orientation: string };
+  }): Html2PdfWorker;
+  from(source: HTMLElement): Html2PdfWorker;
+  outputPdf(type: 'blob'): Promise<Blob>;
+}
+
+type Html2PdfFactory = () => Html2PdfWorker;
+
+function getEstimationPdfFilename(date = new Date()): string {
+  const dateStamp = [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0'),
+  ].join('-');
+  return `${dateStamp}_estimation.pdf`;
+}
+
+function escapeHtml(value: unknown): string {
+  return String(value ?? '').replace(/[&<>"']/g, char => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+  })[char] || char);
+}
+
+async function createRequirementsPdf(
+  requirements: SectionRequirementsResult | null,
+  sectionLabel: string,
+  selectedSystems: SystemType[]
+): Promise<Blob> {
+  const getPdfGenerator = () =>
+    (window as Window & { html2pdf?: Html2PdfFactory }).html2pdf;
+  if (!getPdfGenerator()) {
+    await new Promise<void>((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+      script.onload = () => resolve();
+      script.onerror = () => reject(new Error('Could not load the PDF generator. Check your connection and try again.'));
+      document.head.appendChild(script);
+    });
+  }
+  const pdfGenerator = getPdfGenerator();
+  if (!pdfGenerator) {
+    throw new Error('The PDF generator did not load. Check your connection and try again.');
+  }
+
+  const requirementEntries = Object.entries(requirements?.requirements || {});
+  const normalizedRequirementKeys = new Set(
+    requirementEntries.map(([system]) => system.replace(/[^a-z0-9]/gi, '').toLowerCase())
+  );
+  selectedSystems.forEach(type => {
+    const key = SYSTEM_OPTIONS.find(option => option.type === type)?.label || type;
+    const normalizedKey = key.replace(/[^a-z0-9]/gi, '').toLowerCase();
+    if (!normalizedRequirementKeys.has(normalizedKey)) {
+      requirementEntries.push([
+        key,
+        {
+          required: true,
+          coverage: 'Selected for this project. No system-specific AI details were returned.',
+        },
+      ]);
+    }
+  });
+  const requirementRows = requirementEntries.map(([system, details]) => {
+    const detailText = Object.entries(details)
+      .filter(([key, value]) => key !== 'required' && value !== undefined && value !== null)
+      .map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(', ') : typeof value === 'object' ? JSON.stringify(value) : value}`)
+      .join(' · ');
+    return `<tr><td>${escapeHtml(system)}</td><td>${details.required ? 'Required' : 'Optional'}</td><td>${escapeHtml(detailText)}</td></tr>`;
+  }).join('');
+  const materialRows = (requirements?.materials || []).map(material => `
+    <tr><td>${escapeHtml(material.name || material.description || 'Material')}</td><td>${escapeHtml(material.category || '')}</td><td>${escapeHtml(`${material.quantity ?? 0} ${material.unit || ''}`)}</td><td>${escapeHtml(material.unitPrice ?? material.srp ?? '')}</td><td>${escapeHtml(material.totalPrice ?? '')}</td></tr>
+  `).join('');
+  const manpowerRows = (requirements?.manpower || []).map(person => `
+    <tr><td>${escapeHtml(person.role || 'Role')}</td><td>${escapeHtml(person.headcount ?? '')}</td><td>${escapeHtml(person.hours ?? '')}</td><td>${escapeHtml(person.manDays ?? '')}</td><td>${escapeHtml(person.totalCost ?? '')}</td></tr>
+  `).join('');
+  const scopeRows = (requirements?.scopeOfWorks || []).map(item => `
+    <tr><td>${escapeHtml(item.itemNumber ?? '')}</td><td>${escapeHtml(item.description || '')}</td><td>${escapeHtml(item.unit || '')}</td><td>${escapeHtml(item.totalPrice ?? '')}</td></tr>
+  `).join('');
+  const constraints = requirements?.constraints;
+  const complianceRows = (requirements?.compliance?.gaps || []).map(gap => `
+    <tr><td>${escapeHtml(gap.system || '')}</td><td>${escapeHtml(gap.requirement || '')}</td><td>${escapeHtml(gap.status || '')}</td><td>${escapeHtml(gap.recommendation || '')}</td></tr>
+  `).join('');
+  const recommendationRows = (requirements?.recommendations || []).map(item => `
+    <tr><td>${escapeHtml(item.priority || '')}</td><td>${escapeHtml(item.system || '')}</td><td>${escapeHtml(item.action || '')}</td><td>${escapeHtml(item.estimatedCost ?? '')}</td></tr>
+  `).join('');
+  const html = `
+    <div style="width:794px;padding:42px;box-sizing:border-box;background:#fff;color:#172033;font:14px Arial,sans-serif">
+      <div style="padding:22px 26px;background:#1e3a8a;color:#fff">
+        <div style="font-size:12px;font-weight:bold;letter-spacing:2px">AA2000 ESTIMATION STUDIO</div>
+        <h1 style="margin:10px 0 4px;font-size:28px;font-weight:900">Estimation</h1>
+        <div style="font-size:13px;opacity:.88">System requirements for ${escapeHtml(sectionLabel)}</div>
+      </div>
+      <p style="margin:18px 0 6px"><b>Prepared:</b> ${escapeHtml(new Date().toLocaleDateString())}</p>
+      <p style="margin:0 0 18px"><b>Selected systems:</b> ${escapeHtml(selectedSystems.map(type => SYSTEM_OPTIONS.find(option => option.type === type)?.label || type).join(', ') || 'Not specified')}</p>
+      <div style="display:flex;gap:10px;margin:16px 0">
+        <div style="flex:1;padding:10px;border:1px solid #dbe2ea;background:#f8fafc"><b>Confidence</b><br>${escapeHtml(requirements?.confidenceScore === undefined ? '—' : `${requirements.confidenceScore}%`)}</div>
+        <div style="flex:1;padding:10px;border:1px solid #dbe2ea;background:#f8fafc"><b>Reviewed material estimate</b><br>${escapeHtml(`${requirements?.materialSummary?.currency || 'PHP'} ${Number(requirements?.materialSummary?.totalEstimatedCost || 0).toLocaleString()}`)}</div>
+        <div style="flex:1;padding:10px;border:1px solid #dbe2ea;background:#f8fafc"><b>Labor hours</b><br>${escapeHtml(requirements?.laborEstimates?.totalHours ?? '—')}</div>
+      </div>
+      <h2 style="margin:22px 0 8px;padding-bottom:6px;border-bottom:2px solid #2563eb;font-size:17px">System requirements</h2>
+      ${requirementRows ? `<table><thead><tr><th>System</th><th>Need</th><th>Reviewed requirements / coverage</th></tr></thead><tbody>${requirementRows}</tbody></table>` : '<p>No system requirements were included in the review.</p>'}
+      <h2 style="margin:22px 0 8px;padding-bottom:6px;border-bottom:2px solid #2563eb;font-size:17px">Materials</h2>
+      ${materialRows ? `<table><thead><tr><th>Item</th><th>Category</th><th>Quantity</th><th>Unit price</th><th>Reviewed total</th></tr></thead><tbody>${materialRows}</tbody></table>` : '<p>No materials were included in the review.</p>'}
+      <h2 style="margin:22px 0 8px;padding-bottom:6px;border-bottom:2px solid #2563eb;font-size:17px">Manpower</h2>
+      ${manpowerRows ? `<table><thead><tr><th>Role</th><th>Headcount</th><th>Hours</th><th>Man-days</th><th>Reviewed total</th></tr></thead><tbody>${manpowerRows}</tbody></table>` : '<p>No manpower rows were included in the review.</p>'}
+      <h2 style="margin:22px 0 8px;padding-bottom:6px;border-bottom:2px solid #2563eb;font-size:17px">Scope of works</h2>
+      ${scopeRows ? `<table><thead><tr><th>#</th><th>Description</th><th>Unit</th><th>Reviewed total</th></tr></thead><tbody>${scopeRows}</tbody></table>` : '<p>No scope items were included in the review.</p>'}
+      ${complianceRows ? `<h2 style="margin:22px 0 8px;padding-bottom:6px;border-bottom:2px solid #2563eb;font-size:17px">Compliance review</h2><table><thead><tr><th>System</th><th>Requirement</th><th>Status</th><th>Recommendation</th></tr></thead><tbody>${complianceRows}</tbody></table>` : ''}
+      <h2 style="margin:22px 0 8px;padding-bottom:6px;border-bottom:2px solid #2563eb;font-size:17px">AI suggestions</h2>
+      ${recommendationRows ? `<table><thead><tr><th>Priority</th><th>System</th><th>Action</th><th>Estimated cost</th></tr></thead><tbody>${recommendationRows}</tbody></table>` : '<p>No separate AI suggestions were returned.</p>'}
+      ${constraints ? `<h2 style="margin:22px 0 8px;padding-bottom:6px;border-bottom:2px solid #2563eb;font-size:17px">Constraints and notes</h2>
+        <p><b>Physical:</b> ${escapeHtml(constraints.physical || '—')}</p>
+        <p><b>Electrical:</b> ${escapeHtml(constraints.electrical || '—')}</p>
+        <p><b>Installation:</b> ${escapeHtml(constraints.installation || '—')}</p>` : ''}
+      <p style="margin-top:30px;padding-top:10px;border-top:1px solid #cbd5e1;color:#64748b;font-size:10px">Generated from the reviewed section requirements. Confirm site conditions and final quantities before installation.</p>
+      <style>
+        table{width:100%;border-collapse:collapse;font-size:11px}
+        th,td{padding:8px;border:1px solid #dbe2ea;vertical-align:top;text-align:left}
+        th{background:#eff6ff;font-weight:bold}
+      </style>
+    </div>`;
+  const outer = document.createElement('div');
+  Object.assign(outer.style, {
+    position: 'fixed',
+    top: '0',
+    left: '0',
+    width: '794px',
+    height: '1px',
+    overflow: 'hidden',
+    zIndex: '99999',
+    pointerEvents: 'none',
+  });
+  const container = document.createElement('div');
+  container.innerHTML = html;
+  Object.assign(container.style, {
+    width: '794px',
+    boxSizing: 'border-box',
+    background: '#fff',
+    fontFamily: 'Arial, sans-serif',
+    color: '#172033',
+  });
+  outer.appendChild(container);
+  document.body.appendChild(outer);
+  try {
+    const blob = await pdfGenerator()
+      .set({
+        margin: 0,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true },
+        jsPDF: { unit: 'pt', format: 'a4', orientation: 'portrait' },
+      })
+      .from(container)
+      .outputPdf('blob');
+    const signature = await blob.slice(0, 5).text();
+    if (blob.size === 0 || signature !== '%PDF-') {
+      throw new Error('The generated summary is not a valid PDF. Please try again.');
+    }
+    return blob;
+  } finally {
+    outer.remove();
+  }
 }
 
 interface Props {
@@ -37,6 +203,8 @@ interface Props {
   isDark?: boolean;
   /** Result of POST /api/floorplan/analyze — extracted sections drive the UI. */
   result?: FloorPlanAnalyzeResult | null;
+  /** Original uploaded floor plan, previewed alongside the extracted sections. */
+  uploadedFile?: File;
   /** Persists the floor-plan analysis to the database (wizard form in a modal). */
   onSaveEstimation?: SaveEstimationFn;
   /** Systems picked before the analysis — prefills the save form. */
@@ -92,9 +260,23 @@ export default function FloorPlanSelectionSectionView({
   onBackToDocument,
   isDark = false,
   result = null,
+  uploadedFile,
   onSaveEstimation,
   initialSystemTypes,
 }: Props) {
+  const { toast } = useToast();
+  const [uploadedFileUrl, setUploadedFileUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!uploadedFile) {
+      setUploadedFileUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(uploadedFile);
+    setUploadedFileUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [uploadedFile]);
+
   // Wizard steps: 2 = Select areas, 3 = Review, 4 = Summary
   const [step, setStep] = useState<2 | 3 | 4 | 5>(2);
 
@@ -104,12 +286,6 @@ export default function FloorPlanSelectionSectionView({
       ? buildSections(result)
       : SAMPLE_SECTIONS.map(s => ({ ...s }))
   );
-
-  // Step 3 State
-  const [suggestions, setSuggestions] = useState<ItemSuggestion[]>([
-    { id: 's1', item: 'CCTV camera', area: 'Office', quantity: 2 },
-    { id: 's2', item: 'CCTV camera', area: 'Meeting Room', quantity: 2 },
-  ]);
 
   // API #2 — POST /service/estimation/ai/section/requirements
   const [reqLoading, setReqLoading] = useState(false);
@@ -121,6 +297,16 @@ export default function FloorPlanSelectionSectionView({
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [dbSaved, setDbSaved] = useState(false);
   const [dbSaveMessage, setDbSaveMessage] = useState('');
+  const [activeSystemTypes, setActiveSystemTypes] = useState<SystemType[]>(initialSystemTypes || []);
+  const [showAddSystemsModal, setShowAddSystemsModal] = useState(false);
+  const [summaryPdfUrl, setSummaryPdfUrl] = useState<string | null>(null);
+  const [pdfGenerating, setPdfGenerating] = useState(false);
+  const [pdfError, setPdfError] = useState('');
+
+  useEffect(() => {
+    if (!summaryPdfUrl) return;
+    return () => URL.revokeObjectURL(summaryPdfUrl);
+  }, [summaryPdfUrl]);
 
   // Single-select: only one section may be analyzed at a time.
   const toggleSection = (id: string) => {
@@ -166,7 +352,7 @@ export default function FloorPlanSelectionSectionView({
         // Scopes the endpoint's recommendation: systemTypes is a strict scope
         // (prompt + result filter), floors/buildingType tailor quantities.
         projectContext: {
-          systemTypes: initialSystemTypes ?? [],
+          systemTypes: activeSystemTypes,
           ...(floors > 0 ? { floors } : {}),
         },
         analysisOptions: {
@@ -181,19 +367,6 @@ export default function FloorPlanSelectionSectionView({
       setReqResult(requirements);
       setAnalyzedSectionId(section.id);
 
-      // Seed the review table from the identified materials.
-      const seeded: ItemSuggestion[] = (requirements.materials || []).map((m, i) => ({
-        id: `m-${i}`,
-        item: m.name || m.description || 'Material',
-        area: section.name,
-        quantity: m.quantity ?? 1,
-      }));
-      setSuggestions(
-        seeded.length > 0
-          ? seeded
-          : [{ id: 's1', item: 'CCTV camera', area: section.name, quantity: 2 }]
-      );
-
       setStep(3);
     } catch (err) {
       setReqError(
@@ -202,6 +375,101 @@ export default function FloorPlanSelectionSectionView({
     } finally {
       setReqLoading(false);
     }
+  };
+
+  const addSystemsToRequirements = async (nextSystems: SystemType[]) => {
+    const addedSystems = nextSystems.filter(type => !activeSystemTypes.includes(type));
+    setShowAddSystemsModal(false);
+    if (addedSystems.length === 0) {
+      toast.info('Select at least one additional system.');
+      return;
+    }
+    const section = sections.find(item => item.id === analyzedSectionId);
+    if (!section || !reqResult) {
+      toast.error('Section requirements are not available. Analyze the section again.');
+      return;
+    }
+
+    setReqLoading(true);
+    setReqError('');
+    try {
+      const updatedRequirements = await extractSectionRequirements({
+        section: section.raw ?? {
+          sectionId: section.id,
+          type: 'room',
+          label: section.name,
+          area: section.area,
+          unit: section.unit,
+        },
+        projectContext: { systemTypes: nextSystems },
+        analysisOptions: {
+          includeCatalogMatches: true,
+          includeLaborEstimates: true,
+          includeMaterialAlternates: true,
+          includeCodeReferences: true,
+          market: 'philippines',
+          currency: 'PHP',
+        },
+      });
+      setActiveSystemTypes(nextSystems);
+      setReqResult({
+        ...reqResult,
+        ...updatedRequirements,
+        requirements: {
+          ...reqResult.requirements,
+          ...updatedRequirements.requirements,
+        },
+      });
+      setSummaryPdfUrl(null);
+      setReqError('');
+      toast.success('Additional system requirements loaded.');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not load additional system requirements.';
+      setReqError(message);
+      toast.error(message);
+    } finally {
+      setReqLoading(false);
+    }
+  };
+
+  const openSummaryPdf = async () => {
+    setPdfGenerating(true);
+    setPdfError('');
+    try {
+      const blob = await createRequirementsPdf(reqResult, analyzedLabel, activeSystemTypes);
+      setSummaryPdfUrl(URL.createObjectURL(blob));
+      setStep(4);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not generate the summary PDF.';
+      setPdfError(message);
+      toast.error(message);
+    } finally {
+      setPdfGenerating(false);
+    }
+  };
+
+  const shareSummaryPdf = async () => {
+    if (!summaryPdfUrl) return;
+    try {
+      const filename = getEstimationPdfFilename();
+      const file = new File(
+        [await (await fetch(summaryPdfUrl)).blob()],
+        filename,
+        { type: 'application/pdf' }
+      );
+      if (navigator.share && (!navigator.canShare || navigator.canShare({ files: [file] }))) {
+        await navigator.share({ files: [file], title: 'Estimation' });
+        return;
+      }
+      setPdfError('File sharing is not available in this browser; the PDF will download so you can share it manually.');
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') return;
+      setPdfError(error instanceof Error ? error.message : 'The PDF could not be shared.');
+    }
+    const link = document.createElement('a');
+    link.href = summaryPdfUrl;
+    link.download = getEstimationPdfFilename();
+    link.click();
   };
 
   // Section that produced the current requirements result (step 3+)
@@ -302,42 +570,72 @@ export default function FloorPlanSelectionSectionView({
                 </p>
               </div>
 
-              {/* Blueprint Frame with extracted section boxes */}
-              <div className="border-4 border-slate-400 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-900/60 rounded-2xl p-4 sm:p-6 select-none my-2 max-h-[420px] overflow-y-auto">
-                {sections.length === 0 ? (
-                  <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 text-center py-8">
-                    No sections were detected in this floor plan.
-                  </p>
-                ) : (
-                  <div className="grid grid-cols-2 gap-3">
-                    {sections.map(section => (
-                      <div
-                        key={section.id}
-                        onClick={() => toggleSection(section.id)}
-                        className={`min-h-20 sm:min-h-24 rounded-xl flex flex-col items-center justify-center text-center p-2 cursor-pointer transition-all duration-200 ${
-                          section.selected
-                            ? 'bg-blue-100 dark:bg-blue-950/80 border-2 border-blue-500 text-blue-600 dark:text-blue-400 font-bold shadow-xs'
-                            : 'bg-white dark:bg-[#131B2E] border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:border-blue-300'
-                        }`}
-                      >
-                        {section.selected && (
-                          <span className="text-xs font-black text-blue-600 dark:text-blue-400 mb-1">✓</span>
-                        )}
-                        <span className="text-xs font-bold leading-tight break-words">{section.name}</span>
-                        {(section.area !== undefined || section.confidence !== undefined) && (
-                          <span className="text-[10px] font-semibold opacity-70 mt-0.5">
-                            {section.area !== undefined
-                              ? `${Math.round(section.area * 10) / 10} ${section.unit || 'sqm'}`
-                              : ''}
-                            {section.area !== undefined && section.confidence !== undefined ? ' • ' : ''}
-                            {section.confidence !== undefined ? `${section.confidence}%` : ''}
-                          </span>
-                        )}
-                      </div>
-                    ))}
+              {uploadedFile && uploadedFileUrl ? (
+                <div className="my-2 overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 dark:border-slate-700 dark:bg-slate-900">
+                  {/\.(png|jpe?g)$/i.test(uploadedFile.name) ? (
+                    <img
+                      src={uploadedFileUrl}
+                      alt={`Preview of ${uploadedFile.name}`}
+                      className="max-h-[420px] min-h-64 w-full bg-slate-950 object-contain"
+                    />
+                  ) : (
+                    <iframe
+                      src={`${uploadedFileUrl}#toolbar=0&navpanes=0`}
+                      title={`Preview of ${uploadedFile.name}`}
+                      className="h-[420px] w-full bg-white"
+                    />
+                  )}
+                  <div className="flex items-center justify-between gap-3 border-t border-slate-200 px-3 py-2 dark:border-slate-700">
+                    <span className="truncate text-[10px] font-semibold text-slate-500 dark:text-slate-400">
+                      Uploaded document preview
+                    </span>
+                    <a
+                      href={uploadedFileUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="shrink-0 text-[10px] font-bold text-blue-600 hover:underline dark:text-blue-400"
+                    >
+                      Open file
+                    </a>
                   </div>
-                )}
-              </div>
+                </div>
+              ) : (
+                <div className="border-4 border-slate-400 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-900/60 rounded-2xl p-4 sm:p-6 select-none my-2 max-h-[420px] overflow-y-auto">
+                  {sections.length === 0 ? (
+                    <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 text-center py-8">
+                      No sections were detected in this floor plan.
+                    </p>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-3">
+                      {sections.map(section => (
+                        <div
+                          key={section.id}
+                          onClick={() => toggleSection(section.id)}
+                          className={`min-h-20 sm:min-h-24 rounded-xl flex flex-col items-center justify-center text-center p-2 cursor-pointer transition-all duration-200 ${
+                            section.selected
+                              ? 'bg-blue-100 dark:bg-blue-950/80 border-2 border-blue-500 text-blue-600 dark:text-blue-400 font-bold shadow-xs'
+                              : 'bg-white dark:bg-[#131B2E] border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:border-blue-300'
+                          }`}
+                        >
+                          {section.selected && (
+                            <span className="text-xs font-black text-blue-600 dark:text-blue-400 mb-1">✓</span>
+                          )}
+                          <span className="text-xs font-bold leading-tight break-words">{section.name}</span>
+                          {(section.area !== undefined || section.confidence !== undefined) && (
+                            <span className="text-[10px] font-semibold opacity-70 mt-0.5">
+                              {section.area !== undefined
+                                ? `${Math.round(section.area * 10) / 10} ${section.unit || 'sqm'}`
+                                : ''}
+                              {section.area !== undefined && section.confidence !== undefined ? ' • ' : ''}
+                              {section.confidence !== undefined ? `${section.confidence}%` : ''}
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Detected Sections Checkbox List Right */}
@@ -483,12 +781,22 @@ export default function FloorPlanSelectionSectionView({
               result={reqResult}
               isDark={isDark}
               editable
-              onChange={next => setReqResult(next)}
+              selectedSystems={activeSystemTypes}
+              onChange={next => {
+                setReqResult(next);
+                setSummaryPdfUrl(null);
+              }}
+              onAddSystem={() => setShowAddSystemsModal(true)}
             />
           ) : (
             <div className="p-3.5 px-4 bg-amber-50/80 dark:bg-amber-950/40 border border-amber-100 dark:border-amber-900/40 rounded-xl text-xs text-amber-700 dark:text-amber-300 font-semibold">
               No requirements were returned for this section. Go back and run the analysis again.
             </div>
+          )}
+          {reqLoading && (
+            <p className="text-xs font-semibold text-blue-600 dark:text-blue-400">
+              Updating the requirements for your selected systems…
+            </p>
           )}
 
           {/* Action Buttons Footer */}
@@ -503,12 +811,14 @@ export default function FloorPlanSelectionSectionView({
 
             <button
               type="button"
-              onClick={() => setStep(4)}
-              className="px-6 py-2.5 rounded-full text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-md shadow-blue-500/20 cursor-pointer transition-all"
+              onClick={() => void openSummaryPdf()}
+              disabled={pdfGenerating || reqLoading || !reqResult}
+              className="px-6 py-2.5 rounded-full text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-md shadow-blue-500/20 cursor-pointer transition-all disabled:cursor-wait disabled:opacity-60"
             >
-              Continue to Summary
+              {pdfGenerating ? 'Preparing PDF…' : 'Continue to PDF Summary'}
             </button>
           </div>
+          {pdfError && <p role="alert" className="text-xs font-semibold text-red-600 dark:text-red-400">{pdfError}</p>}
         </div>
       )}
 
@@ -535,45 +845,69 @@ export default function FloorPlanSelectionSectionView({
             </span>
           </div>
 
-          {/* Summary Card */}
-          <div className="bg-white dark:bg-[#131B2E] border border-slate-200 dark:border-slate-800 rounded-3xl p-6 sm:p-8 shadow-xs space-y-6">
-            <div>
-              <h2 className="text-xl font-black text-slate-900 dark:text-white">
-                Office Security Installation
-              </h2>
-              <p className="text-xs font-bold text-slate-400 dark:text-slate-500 mt-1">
-                Floor Plan • {result?.fileInfo?.fileName || 'Office-floor-plan.pdf'}
-              </p>
-              <p className="text-xs font-bold text-slate-500 dark:text-slate-400 mt-0.5">
-                Selected section: {analyzedLabel}
-              </p>
-            </div>
-
-            {/* Items Breakdown Table */}
-            <div className="border-t border-b border-slate-100 dark:border-slate-800 py-4 space-y-3">
-              <div className="grid grid-cols-12 text-xs font-bold text-slate-400 dark:text-slate-500 pb-1">
-                <span className="col-span-6">Item</span>
-                <span className="col-span-4">Area</span>
-                <span className="col-span-2 text-right">Qty</span>
+          <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-xs dark:border-slate-800 dark:bg-[#131B2E]">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-5 py-4 dark:border-slate-800">
+              <div>
+                <h2 className="text-sm font-black text-slate-900 dark:text-white">
+                  Estimation
+                </h2>
+                <p className="mt-1 text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                  Generated from the latest reviewed requirements for {analyzedLabel}.
+                </p>
+                {summaryPdfUrl && (
+                  <p className="mt-1 text-[10px] font-bold text-slate-400 dark:text-slate-500">
+                    {getEstimationPdfFilename()}
+                  </p>
+                )}
               </div>
-              {suggestions.map(s => (
-                <div key={s.id} className="grid grid-cols-12 text-xs font-semibold text-slate-800 dark:text-slate-200 py-1 border-t border-slate-50 dark:border-slate-800/50">
-                  <span className="col-span-6">{s.item}</span>
-                  <span className="col-span-4 text-slate-500">{s.area}</span>
-                  <span className="col-span-2 text-right font-bold">{s.quantity}</span>
+              {summaryPdfUrl && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => window.open(summaryPdfUrl, '_blank', 'noopener,noreferrer')}
+                    className="rounded-lg border border-slate-200 px-3 py-2 text-[11px] font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                  >
+                    Open / Print
+                  </button>
+                  <a
+                    href={summaryPdfUrl}
+                    download={getEstimationPdfFilename()}
+                    className="rounded-lg bg-blue-600 px-3 py-2 text-[11px] font-bold text-white hover:bg-blue-700"
+                  >
+                    Download PDF
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => void shareSummaryPdf()}
+                    className="rounded-lg border border-slate-200 px-3 py-2 text-[11px] font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                  >
+                    Share PDF
+                  </button>
+                  {pdfError && <span role="alert" className="text-[10px] font-semibold text-red-600">{pdfError}</span>}
                 </div>
-              ))}
+              )}
             </div>
-
-            {/* Pricing Pending Banner */}
-            <div className="space-y-1">
-              <h3 className="text-lg font-black text-blue-600 dark:text-blue-400">
-                Pricing pending
-              </h3>
-              <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-                Use the approved AA2000 catalog to finalize prices.
-              </p>
-            </div>
+            {summaryPdfUrl ? (
+              <iframe
+                src={summaryPdfUrl}
+                title="Printable system requirements summary PDF"
+                className="h-[min(78vh,900px)] min-h-[520px] w-full bg-slate-100"
+              />
+            ) : (
+              <div className="flex min-h-64 flex-col items-center justify-center gap-3 px-6 text-center">
+                <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                  The reviewed PDF summary is not available. Generate it again to continue.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => void openSummaryPdf()}
+                  disabled={pdfGenerating}
+                  className="rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-blue-700 disabled:opacity-60"
+                >
+                  {pdfGenerating ? 'Preparing PDF…' : 'Generate PDF'}
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Saved-to-database confirmation */}
@@ -610,11 +944,23 @@ export default function FloorPlanSelectionSectionView({
                 </span>
               )}
             </div>
+            {pdfError && !summaryPdfUrl && <p role="alert" className="text-xs font-semibold text-red-600 dark:text-red-400">{pdfError}</p>}
           </div>
         </div>
       )}
 
       {/* Save dialog (wizard client details) */}
+      <SystemSelectionModal
+        open={showAddSystemsModal}
+        onClose={() => setShowAddSystemsModal(false)}
+        onConfirm={selected => void addSystemsToRequirements(selected)}
+        selected={activeSystemTypes}
+        eyebrow="System Requirements"
+        title="Add more in system requirement"
+        description="Keep the current systems selected and choose additional systems. Requirements will be re-generated for the combined selection."
+        allowAddOnly
+      />
+
       {onSaveEstimation && (
         <SaveEstimationModal
           open={showSaveModal}
@@ -622,7 +968,7 @@ export default function FloorPlanSelectionSectionView({
           onSave={onSaveEstimation}
           ai={dbAiContext}
           fileName={dbFileName}
-          initialSystemTypes={initialSystemTypes}
+          initialSystemTypes={activeSystemTypes}
           onSaved={res => {
             setDbSaved(true);
             setDbSaveMessage(

@@ -131,10 +131,17 @@ export class ApiClient {
     options: RequestOptions = {}
   ): Promise<ApiResponse<T>> {
     const controller = new AbortController();
-    const timeoutId = setTimeout(
-      () => controller.abort(),
-      options.timeoutMs ?? 30000
-    );
+    let timedOut = false;
+    const timeoutId = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, options.timeoutMs ?? 30000);
+    const abortFromCaller = () => controller.abort();
+    if (options.signal?.aborted) {
+      controller.abort();
+    } else {
+      options.signal?.addEventListener('abort', abortFromCaller, { once: true });
+    }
 
     try {
       const response = await fetch(`${this.baseURL}${url}`, {
@@ -187,8 +194,8 @@ export class ApiClient {
         return {
           success: false,
           error: {
-            message: 'Request timeout',
-            code: 'TIMEOUT',
+            message: timedOut ? 'Request timeout' : 'Request cancelled',
+            code: timedOut ? 'TIMEOUT' : 'ABORTED',
           },
         };
       }
@@ -202,7 +209,10 @@ export class ApiClient {
               : 'Network error',
           code: 'NETWORK_ERROR',
         },
-      };
+      }
+    } finally {
+      clearTimeout(timeoutId);
+      options.signal?.removeEventListener('abort', abortFromCaller);
     }
   }
 

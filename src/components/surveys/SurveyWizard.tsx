@@ -3,6 +3,8 @@ import type { SurveyType } from '../../App';
 import { getDataService } from '../../services/factory';
 import { parseFile } from '../../services/fileParser';
 import { VideoCamera, Bell as SysBell, SysFire, SysLock, SysShield, SysGear, StatClipboard, StatBuilding, SysCamera, SysKey, SysPhone, SysSpeaker, SysCar, SysComputer, SysThermometer, SysMicroscope, SysDroplet, SysElevator, SysTag, Door, Desktop, Sensor, Satellite, Sliders, FireExtinguisher, Suppression, Plug, Map, Package as PackageIcon, MagnifyingGlass, systemBadgeIcons, systemOptionIcons } from '../../utils/Icons';
+import { useToast } from '../utils/Toast';
+import FileTypeBadges from '../utils/FileTypeBadges';
 
 interface Props {
   projectId: string;
@@ -1306,6 +1308,7 @@ function ModeSelector({ mode, onSelect }: { mode: string | null; onSelect: (m: '
 // ─── AI Upload Form ──────────────────────────────────────
 // ─── AI Upload Form ──────────────────────────────────────
 function AiUploadForm({ data, onChange }: { data: any; onChange: any }) {
+  const { toast } = useToast();
   const [files, setFiles] = useState<File[]>(data.floorPlanFiles || []);
   const [parsingId, setParsingId] = useState<string | null>(null);
   const inputRef = React.useRef<HTMLInputElement>(null);
@@ -1317,13 +1320,16 @@ function AiUploadForm({ data, onChange }: { data: any; onChange: any }) {
 
     for (const file of newFiles) {
       const ext = file.name.split('.').pop()?.toLowerCase();
-      const validExtensions = ['png', 'jpg', 'jpeg', 'webp', 'gif', 'pdf', 'xls', 'xlsx', 'docx', 'doc', 'txt', 'csv'];
-      if (!validExtensions.includes(ext || '')) continue;
+      const validExtensions = ['png', 'jpg', 'jpeg', 'pdf', 'docx'];
+      if (!validExtensions.includes(ext || '')) {
+        toast.error(`"${file.name}" is not supported. Upload floor plans as PDF/PNG/JPG or reference documents as PDF/DOCX.`);
+        continue;
+      }
 
       valid.push(file);
 
       // Parse document files immediately
-      if (!file.type.startsWith('image/')) {
+      if (!['png', 'jpg', 'jpeg'].includes(ext || '')) {
         setParsingId(file.name);
         try {
           const parsed = await parseFile(file);
@@ -1359,6 +1365,7 @@ function AiUploadForm({ data, onChange }: { data: any; onChange: any }) {
       const selected = Array.from(e.target.files);
       processFiles(selected);
     }
+    e.currentTarget.value = '';
   };
 
   const removeFile = (i: number) => {
@@ -1368,13 +1375,13 @@ function AiUploadForm({ data, onChange }: { data: any; onChange: any }) {
     onChange('floorPlanFiles', updated);
 
     // Clean up corresponding TOR content if it was a document
-    if (fileToRemove && !fileToRemove.type.startsWith('image/')) {
+    if (fileToRemove && !['png', 'jpg', 'jpeg'].includes(fileToRemove.name.split('.').pop()?.toLowerCase() || '')) {
       let newAccumulatedText = '';
       const docNames: string[] = [];
       
       const reCompile = async () => {
         for (const file of updated) {
-          if (!file.type.startsWith('image/')) {
+          if (!['png', 'jpg', 'jpeg'].includes(file.name.split('.').pop()?.toLowerCase() || '')) {
             try {
               const parsed = await parseFile(file);
               if (parsed && parsed.content) {
@@ -1395,8 +1402,8 @@ function AiUploadForm({ data, onChange }: { data: any; onChange: any }) {
     <div>
       <h2 style={{ fontSize: 20, fontWeight: 700, color: '#111827', marginBottom: 6 }}>Upload Site Survey / TOR Files</h2>
       <p style={{ fontSize: 13, color: '#6b7280', marginBottom: 24, lineHeight: 1.5 }}>
-        Upload floor plan images or PDFs, and Terms of Reference (TOR) specification documents (PDF, Excel, Word, Text).
-        The AI will automatically read your TOR spec files to extract hardware models, brands, and quantities for the BOQ.
+        Upload floor plans as PDF, PNG, or JPG, and TOR/reference documents as PDF or Word DOCX.
+        The AI reads your reference documents to extract hardware models, brands, and quantities for the BOQ.
       </p>
 
       <div
@@ -1411,12 +1418,15 @@ function AiUploadForm({ data, onChange }: { data: any; onChange: any }) {
         onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.borderColor = '#93c5fd'; (e.currentTarget as HTMLDivElement).style.background = '#f8fafc'; }}
         onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.borderColor = '#d1d5db'; (e.currentTarget as HTMLDivElement).style.background = '#fafafa'; }}
       >
-        <input ref={inputRef} type="file" multiple accept="image/*,application/pdf,.pdf,.xls,.xlsx,.doc,.docx,.txt,.csv" style={{ display: 'none' }} onChange={handleSelect} />
+        <input ref={inputRef} type="file" multiple accept=".pdf,.png,.jpg,.jpeg,.docx" style={{ display: 'none' }} onChange={handleSelect} />
         <svg width="40" height="40" fill="none" viewBox="0 0 24 24" stroke="#9ca3af" strokeWidth={1.5} style={{ marginBottom: 12 }}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" />
         </svg>
         <p style={{ fontSize: 14, fontWeight: 600, color: '#374151', marginBottom: 4 }}>Drop floor plans or TOR documents here or click to browse</p>
-        <p style={{ fontSize: 12, color: '#9ca3af' }}>Supports Images, PDFs, Excel sheets, Word files, and Text specifications</p>
+        <p style={{ fontSize: 12, color: '#9ca3af' }}>Floor plans: PDF, PNG, JPG · TOR/reference: PDF, DOCX</p>
+        <div style={{ display: 'flex', justifyContent: 'center', marginTop: 10 }}>
+          <FileTypeBadges types={['PDF', 'PNG', 'JPG', 'DOCX']} />
+        </div>
       </div>
 
       {parsingId && (

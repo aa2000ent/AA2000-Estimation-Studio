@@ -37,13 +37,11 @@ const MAX_PLAN_FILES = 6;
 const MAX_DOCUMENT_FILES = 6;
 
 export function isFloorPlanImage(file: File): boolean {
-  if (file.type.startsWith('image/')) return true;
-  return /\.(png|jpe?g|gif|webp)$/i.test(file.name);
+  return /\.(png|jpe?g)$/i.test(file.name);
 }
 
 export function isFloorPlanDocument(file: File): boolean {
-  if (isFloorPlanImage(file)) return false;
-  return file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
+  return /\.(pdf|docx)$/i.test(file.name);
 }
 
 export interface FloorPlanRequest {

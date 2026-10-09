@@ -10,6 +10,10 @@ interface Props {
   onConfirm: (selected: SystemType[]) => void;
   /** Current selection, reloaded into the draft every time the modal opens. */
   selected?: SystemType[];
+  eyebrow?: string;
+  title?: string;
+  description?: string;
+  allowAddOnly?: boolean;
 }
 
 /**
@@ -17,7 +21,16 @@ interface Props {
  * analysis endpoint (strict system scope) and prefill the save form, so the
  * selection is collected here before the analysis runs.
  */
-export default function SystemSelectionModal({ open, onClose, onConfirm, selected = [] }: Props) {
+export default function SystemSelectionModal({
+  open,
+  onClose,
+  onConfirm,
+  selected = [],
+  eyebrow = 'System Types *',
+  title = 'Systems for this project',
+  description = 'Selected before the analysis — the AI scopes its recommendations to these systems.',
+  allowAddOnly = false,
+}: Props) {
   const [draft, setDraft] = useState<SystemType[]>(selected);
   const [error, setError] = useState('');
 
@@ -32,7 +45,11 @@ export default function SystemSelectionModal({ open, onClose, onConfirm, selecte
 
   const toggle = (type: SystemType) =>
     setDraft(prev =>
-      prev.includes(type) ? prev.filter(t => t !== type) : [...prev, type]
+      prev.includes(type)
+        ? allowAddOnly
+          ? prev
+          : prev.filter(t => t !== type)
+        : [...prev, type]
     );
 
   const confirm = () => {
@@ -60,13 +77,13 @@ export default function SystemSelectionModal({ open, onClose, onConfirm, selecte
         <div className="flex items-start justify-between gap-4">
           <div>
             <p className="text-[10px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400">
-              System Types *
+              {eyebrow}
             </p>
             <h3 className="text-lg font-black text-slate-900 dark:text-white mt-1">
-              Systems for this project
+              {title}
             </h3>
             <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
-              Selected before the analysis — the AI scopes its recommendations to these systems.
+              {description}
             </p>
           </div>
           <button
@@ -88,6 +105,7 @@ export default function SystemSelectionModal({ open, onClose, onConfirm, selecte
                 key={opt.type}
                 type="button"
                 onClick={() => toggle(opt.type)}
+                aria-pressed={isSelected}
                 className={`flex items-center gap-2.5 rounded-xl border-2 p-2.5 text-left transition-all cursor-pointer ${
                   isSelected
                     ? 'border-blue-600 bg-blue-50 dark:border-blue-500 dark:bg-blue-950/60'

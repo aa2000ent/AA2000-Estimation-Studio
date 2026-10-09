@@ -5,11 +5,13 @@ import { exportBOQPdf } from '../../utils/pdfExporter';
 import type { Project } from '../../App';
 import { generateSystemScopeOfWorks } from '../estimation/QuotationModal';
 import { MarkdownMessage } from '../chatbot/MarkdownMessage';
+import FileTypeBadges from '../utils/FileTypeBadges';
+import { isFloorPlanFile, isReferenceDocument } from '../../utils/uploadFileTypes';
 
 interface FilePreview {
   name: string;
   url: string | null;
-  type: 'image' | 'pdf';
+  type: 'image' | 'pdf' | 'docx';
   isTor: boolean;
 }
 
@@ -214,14 +216,30 @@ export default function FloorPlanView({ projects, userRole, onAddToProjectEstima
     const valid: File[] = [];
     const validPreviews: FilePreview[] = [];
     Array.from(incoming).forEach(file => {
-      const isImage = file.type.startsWith('image/');
-      const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
-      if (!isImage && !isPdf) return;
+      const isImage = /\.(png|jpe?g)$/i.test(file.name);
+      const isPdf = /\.pdf$/i.test(file.name);
+      const isDocx = /\.docx$/i.test(file.name);
+      const accepted = forceIsTor
+        ? isReferenceDocument(file)
+        : isFloorPlanFile(file);
+      if (!accepted) {
+        toast.error(
+          forceIsTor
+            ? `"${file.name}" is not supported. Upload TOR/reference files as PDF or DOCX.`
+            : `"${file.name}" is not supported. Upload floor plans as PDF, PNG, or JPG.`
+        );
+        return;
+      }
       const nameLower = file.name.toLowerCase();
       const autoTor = nameLower.includes('tor') || nameLower.includes('terms') || nameLower.includes('reference') || nameLower.includes('spec');
       const isTor = forceIsTor !== undefined ? forceIsTor : autoTor;
       valid.push(file);
-      validPreviews.push({ name: file.name, url: isImage ? URL.createObjectURL(file) : null, type: isPdf ? 'pdf' : 'image', isTor });
+      validPreviews.push({
+        name: file.name,
+        url: isImage ? URL.createObjectURL(file) : null,
+        type: isPdf ? 'pdf' : isDocx ? 'docx' : 'image',
+        isTor,
+      });
     });
     if (!valid.length) return;
     setFiles(prev => [...prev, ...valid]);
@@ -491,7 +509,7 @@ export default function FloorPlanView({ projects, userRole, onAddToProjectEstima
                 ref={floorPlanInputRef}
                 type="file"
                 multiple
-                accept="image/*,application/pdf,.pdf"
+                accept=".pdf,.png,.jpg,.jpeg"
                 className="hidden"
                 onChange={e => {
                   if (e.target.files?.length) {
@@ -508,6 +526,9 @@ export default function FloorPlanView({ projects, userRole, onAddToProjectEstima
               </div>
               <h4 className="text-xs font-black text-slate-800 uppercase tracking-wide">Floor Plan Blueprints</h4>
               <p className="text-[11px] text-slate-500 mt-0.5">Drop floor plan images (JPG, PNG) or PDFs</p>
+              <div className="mt-3">
+                <FileTypeBadges types={['PDF', 'PNG', 'JPG']} />
+              </div>
               <div className="mt-3">
                 <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold text-blue-700 bg-blue-100/80 border border-blue-200">
                   🗺️ Blueprints / Layout Drawings
@@ -529,7 +550,7 @@ export default function FloorPlanView({ projects, userRole, onAddToProjectEstima
                 ref={torInputRef}
                 type="file"
                 multiple
-                accept="application/pdf,.pdf"
+                accept=".pdf,.docx"
                 className="hidden"
                 onChange={e => {
                   if (e.target.files?.length) {
@@ -545,7 +566,10 @@ export default function FloorPlanView({ projects, userRole, onAddToProjectEstima
                 </svg>
               </div>
               <h4 className="text-xs font-black text-slate-800 uppercase tracking-wide">TOR & Spec Documents</h4>
-              <p className="text-[11px] text-slate-500 mt-0.5">Drop TOR PDFs, scope of work, spec sheets</p>
+              <p className="text-[11px] text-slate-500 mt-0.5">Drop TOR / reference PDFs or Word DOCX files</p>
+              <div className="mt-3">
+                <FileTypeBadges types={['PDF', 'DOCX']} />
+              </div>
               <div className="mt-3">
                 <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold text-blue-700 bg-blue-100/80 border border-blue-200">
                   📄 Terms of Reference (TOR)
