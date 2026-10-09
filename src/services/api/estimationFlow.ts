@@ -10,6 +10,24 @@ const MAX_FLOORPLAN_FILES = 6;
 const MAX_FLOORPLAN_FILE_BYTES = 12 * 1024 * 1024;
 const SUPPORTED_EXTENSIONS = ['pdf', 'png', 'jpg', 'jpeg', 'gif', 'webp'];
 
+function isLocalEstimationApiMockEnabled(): boolean {
+  return (
+    import.meta.env.DEV &&
+    typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).get('mockEstimationApi') === '1'
+  );
+}
+
+async function waitForMockResponse(delayMs: number): Promise<void> {
+  await new Promise(resolve => setTimeout(resolve, delayMs));
+}
+
+function logMockMode(): void {
+  console.info(
+    '[Estimation flow] Local API mock is enabled. Remove ?mockEstimationApi=1 to use the backend.'
+  );
+}
+
 // Backend contract: success -> { success: true,  data: <payload> }
 //                 failure -> { success: false, data: '', error: '<reason>' }
 interface EstimationFlowBackendResponse<T> {
@@ -160,6 +178,98 @@ export async function analyzeFloorPlan(
   const oversized = files.find(f => f.size > MAX_FLOORPLAN_FILE_BYTES);
   if (oversized) {
     throw new Error(`"${oversized.name}" exceeds the 12 MB file limit.`);
+  }
+
+  if (isLocalEstimationApiMockEnabled()) {
+    logMockMode();
+    await waitForMockResponse(1800);
+    return {
+      requestId: 'local-mock-floorplan',
+      analyzedAt: new Date().toISOString(),
+      processingTimeMs: 1800,
+      fileInfo: {
+        fileName: files.map(file => file.name).join(', '),
+        pages: files.length,
+        scale: { value: 1, unit: 'cm', detected: true },
+        orientation: 'landscape',
+      },
+      confidenceScore: 92,
+      pages: [
+        {
+          pageNumber: 1,
+          floorNumber: 1,
+          dimensions: { width: 42, height: 28, unit: 'm' },
+          sections: [
+            {
+              sectionId: 'mock-lobby',
+              type: 'room',
+              subType: 'lobby',
+              label: 'Main Lobby',
+              confidence: 0.96,
+              area: 84,
+              unit: 'sqm',
+              dimensions: { width: 12, height: 7, unit: 'm' },
+              bbox: { x: 0.08, y: 0.1, width: 0.3, height: 0.25 },
+              annotations: ['Reception', 'Main entrance'],
+              systemsDetected: { CCTV: true, FDAS: true, ACCESS_CONTROL: true },
+            },
+            {
+              sectionId: 'mock-office',
+              type: 'room',
+              subType: 'office',
+              label: 'Open Office',
+              confidence: 0.93,
+              area: 168,
+              unit: 'sqm',
+              dimensions: { width: 21, height: 8, unit: 'm' },
+              bbox: { x: 0.4, y: 0.1, width: 0.48, height: 0.3 },
+              annotations: ['Workstations: 24'],
+              systemsDetected: { CCTV: true, FDAS: true },
+            },
+            {
+              sectionId: 'mock-server-room',
+              type: 'room',
+              subType: 'server_room',
+              label: 'Server Room',
+              confidence: 0.97,
+              area: 36,
+              unit: 'sqm',
+              dimensions: { width: 6, height: 6, unit: 'm' },
+              bbox: { x: 0.08, y: 0.48, width: 0.2, height: 0.22 },
+              annotations: ['Restricted access', 'Cooling required'],
+              systemsDetected: { CCTV: true, FDAS: true, ACCESS_CONTROL: true },
+            },
+          ],
+          corridors: [
+            {
+              sectionId: 'mock-corridor',
+              type: 'corridor',
+              label: 'Main Corridor',
+              confidence: 0.9,
+              area: 52,
+              unit: 'sqm',
+              bbox: { x: 0.3, y: 0.42, width: 0.55, height: 0.08 },
+            },
+          ],
+        },
+      ],
+      summary: {
+        totalRooms: 3,
+        totalCorridors: 1,
+        totalArea: 340,
+        unit: 'sqm',
+        roomTypes: { lobby: 1, office: 1, server_room: 1 },
+        systemsCoverage: {
+          CCTV: { roomsCovered: 3, cameraCount: 8 },
+          FDAS: { roomsCovered: 3 },
+          ACCESS_CONTROL: { roomsCovered: 2 },
+        },
+      },
+      recommendations: [
+        'Use controlled access for the server room.',
+        'Provide camera coverage at the lobby entrance and main corridor.',
+      ],
+    };
   }
 
   const formData = new FormData();
@@ -339,6 +449,122 @@ export async function extractSectionRequirements(
     throw new Error('Select a floor plan section first.');
   }
 
+  if (isLocalEstimationApiMockEnabled()) {
+    logMockMode();
+    await waitForMockResponse(1400);
+    return {
+      requestId: 'local-mock-section-requirements',
+      analyzedAt: new Date().toISOString(),
+      sectionId: request.section.sectionId,
+      sectionLabel: request.section.label,
+      sectionType: request.section.type,
+      area: request.section.area ?? 84,
+      unit: request.section.unit ?? 'sqm',
+      confidenceScore: 91,
+      requirements: {
+        CCTV: {
+          required: true,
+          coverage: 'Full coverage at entrances and public circulation areas',
+          cameraCount: 3,
+          cameraSpecs: ['4 MP IP dome camera', 'PoE', 'WDR'],
+          standards: ['ONVIF Profile S'],
+        },
+        FDAS: {
+          required: true,
+          coverage: 'Addressable smoke detection with audible/visual alarm',
+          standards: ['Philippine Fire Code'],
+        },
+        ACCESS_CONTROL: {
+          required: true,
+          coverage: 'Card reader at the controlled entry',
+        },
+      },
+      laborEstimates: {
+        totalHours: 40,
+        crewMix: { Technician: 2, Supervisor: 1 },
+      },
+      manpower: [
+        {
+          role: 'ELV Technician',
+          headcount: 2,
+          hours: 16,
+          manDays: 2,
+          dayRate: 1800,
+          totalCost: 7200,
+          responsibilities: 'Install devices, cabling, and terminations.',
+        },
+        {
+          role: 'Site Supervisor',
+          headcount: 1,
+          hours: 8,
+          manDays: 1,
+          dayRate: 2500,
+          totalCost: 2500,
+          responsibilities: 'Coordinate installation and testing.',
+        },
+      ],
+      materials: [
+        {
+          name: '4 MP IP Dome Camera',
+          category: 'CCTV',
+          brand: 'Generic',
+          quantity: 3,
+          unit: 'pcs',
+          srp: 8500,
+          unitPrice: 8500,
+          totalPrice: 25500,
+          source: 'local mock',
+        },
+        {
+          name: 'Cat6 UTP Cable',
+          category: 'Cabling',
+          quantity: 150,
+          unit: 'm',
+          srp: 32,
+          unitPrice: 32,
+          totalPrice: 4800,
+          source: 'local mock',
+        },
+      ],
+      scopeOfWorks: [
+        { itemNumber: 1, description: 'Supply and install CCTV devices.', unit: 'lot' },
+        { itemNumber: 2, description: 'Test, commission, and document the system.', unit: 'lot' },
+      ],
+      constraints: {
+        physical: 'Coordinate ceiling access with the building administrator.',
+        electrical: 'Confirm PoE switch capacity before installation.',
+        installation: 'Perform disruptive work outside business hours.',
+      },
+      materialSummary: {
+        categories: [
+          { category: 'CCTV', itemCount: 1, estimatedCost: 25500 },
+          { category: 'Cabling', itemCount: 1, estimatedCost: 4800 },
+        ],
+        totalEstimatedCost: 30300,
+        currency: 'PHP',
+      },
+      compliance: {
+        gaps: [
+          {
+            system: 'CCTV',
+            requirement: 'Confirm retention period with the client.',
+            status: 'To confirm',
+            recommendation: 'Document the approved retention period before commissioning.',
+          },
+        ],
+        overallCompliance: 88,
+      },
+      recommendations: [
+        {
+          priority: 'high',
+          system: 'CCTV',
+          action: 'Verify camera views on site before final mounting.',
+          estimatedCost: 0,
+        },
+      ],
+    };
+  }
+
   return postJson<SectionRequirementsResult>(
     SECTION_REQUIREMENTS_ENDPOINT,
     request,
@@ -444,6 +670,136 @@ export interface EstimationAnalyzeResult {
 export async function analyzeEstimation(
   request: EstimationAnalyzeRequest
 ): Promise<EstimationAnalyzeResult> {
+  if (isLocalEstimationApiMockEnabled()) {
+    logMockMode();
+    await waitForMockResponse(1600);
+    return {
+      requestId: 'local-mock-estimation',
+      analyzedAt: new Date().toISOString(),
+      confidenceScore: 89,
+      assumptions: [
+        'Existing containment pathways are reusable where they are in good condition.',
+        'Final device positions will be confirmed during the site walk.',
+      ],
+      summary: {
+        totalEstimatedCost: 74350,
+        currency: 'PHP',
+        breakdown: {
+          materials: 42300,
+          labor: 9700,
+          fees: 4000,
+          equipment: 6000,
+          consumables: 2100,
+          contingency: 0.16,
+        },
+        timeline: {
+          totalDays: 8,
+          phases: [
+            { phase: 'Site coordination and preparation', days: 1 },
+            { phase: 'Installation and cabling', days: 5 },
+            { phase: 'Testing, commissioning, and handover', days: 2 },
+          ],
+        },
+      },
+      manpower: [
+        {
+          role: 'ELV Technician',
+          headcount: 2,
+          hours: 40,
+          manDays: 5,
+          dayRate: 1800,
+          totalCost: 18000,
+          responsibilities: 'Install, terminate, and test field devices.',
+        },
+        {
+          role: 'Site Supervisor',
+          headcount: 1,
+          hours: 16,
+          manDays: 2,
+          dayRate: 2500,
+          totalCost: 5000,
+          responsibilities: 'Coordinate site work and acceptance testing.',
+        },
+      ],
+      labor: [
+        {
+          activity: 'Device installation and commissioning',
+          systemTypes: ['CCTV', 'FDAS', 'ACCESS_CONTROL'],
+          crewComposition: { Technician: 2, Supervisor: 1 },
+          estimatedHours: 56,
+          unit: 'hours',
+          ratePerHour: 500,
+          totalCost: 28000,
+          details: 'Includes installation, configuration, and testing.',
+        },
+      ],
+      materials: [
+        {
+          category: 'CCTV',
+          subtotal: 25500,
+          items: [
+            {
+              name: '4 MP IP Dome Camera',
+              description: 'Indoor PoE camera with WDR',
+              quantity: 3,
+              unit: 'pcs',
+              unitPrice: 8500,
+              totalPrice: 25500,
+            },
+          ],
+        },
+        {
+          category: 'Cabling',
+          subtotal: 16800,
+          items: [
+            {
+              name: 'Cat6 UTP Cable',
+              quantity: 150,
+              unit: 'm',
+              unitPrice: 32,
+              totalPrice: 4800,
+            },
+            {
+              name: 'Installation accessories and containment',
+              quantity: 1,
+              unit: 'lot',
+              unitPrice: 12000,
+              totalPrice: 12000,
+            },
+          ],
+        },
+      ],
+      fees: [
+        { type: 'Testing and commissioning', amount: 2500 },
+        { type: 'Documentation and handover', amount: 1500 },
+      ],
+      scopeOfWorks: [
+        { itemNumber: 1, description: 'Supply and install the proposed ELV systems.', unit: 'lot' },
+        { itemNumber: 2, description: 'Test, commission, and hand over the installed systems.', unit: 'lot' },
+      ],
+      constraints: {
+        physical: 'Coordinate ceiling access and work permits with the site representative.',
+        electrical: 'Verify spare PoE and circuit capacity before installation.',
+        installation: 'Schedule noisy work outside normal operating hours.',
+      },
+      equipment: [{ name: 'Network cable certifier', quantity: 1 }],
+      alternates: [{ item: 'IP dome camera', alternate: 'Equivalent ONVIF-compatible model' }],
+      phaseSchedule: [
+        { phase: 'Preparation', days: 1 },
+        { phase: 'Installation', days: 5 },
+        { phase: 'Testing and handover', days: 2 },
+      ],
+      risks: [
+        {
+          risk: 'Existing pathways may be congested.',
+          probability: 'medium',
+          impact: 'medium',
+          mitigation: 'Inspect routes before mobilization and agree on alternate pathways.',
+        },
+      ],
+    };
+  }
+
   return postJson<EstimationAnalyzeResult>(
     ESTIMATION_ANALYZE_ENDPOINT,
     request,
