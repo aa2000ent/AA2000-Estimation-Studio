@@ -11,7 +11,13 @@ import {
   PROJECT_SUBMITTED_EVENT,
   isSubmittedToDb,
   sweepSubmittedProjects,
+  submitEstimationToDB,
 } from './services/estimationSubmission';
+import {
+  buildWizardEstimationCache,
+  cacheWizardEstimation,
+} from './services/estimationWizardSnapshot';
+import type { EstimationFlowAiContext } from './services/estimationWizardSnapshot';
 
 import { useState, useCallback, useEffect, Component } from 'react';
 import { fetchAIScans, saveAIScan, updateAIScan, deleteAIScan } from './services/api/aiScans';
@@ -22,13 +28,15 @@ import ProjectDetail from './components/projects/ProjectDetail';
 import SurveyWizard from './components/surveys/SurveyWizard';
 import EstimationSummary from './components/estimation/EstimationSummary';
 import Settings from './components/settings/Settings';
-import CreateSurveyForm from './components/estimation/CreateSurveyForm';
+import CreateEstimationFlow from './components/estimation/CreateEstimationFlow';
 import SurveySummary from './components/reports/SurveySummary';
 import type { SurveyFormData } from './components/estimation/CreateSurveyForm';
 import type { Notification } from './components/notifications/NotificationBell';
 import { DEFAULT_TECHNICIANS } from './constants/roles';
+import { useToast } from './components/utils/Toast';
 import { ExclamationTriangle } from './utils/Icons';
 import InstructionScreen from './components/auth/InstructionScreen';
+import OfflineBanner from './components/utils/OfflineBanner';
 
 
 export type Screen = 'login' | 'dashboard' | 'create-survey' | 'project-detail' | 'survey' | 'estimation' | 'settings' | 'notifications' | 'survey-summary' | 'instruction';
@@ -195,15 +203,31 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boole
 }
 
 export default function App() {
-  const [screen, setScreen] = useState<Screen>('login');
+  const [screen, setScreen] = useState<Screen>(() => {
+    if (typeof window !== 'undefined') {
+      const hash = window.location.hash.replace('#', '') as Screen;
+      const validScreens: Screen[] = ['login', 'dashboard', 'create-survey', 'project-detail', 'survey', 'estimation', 'settings', 'notifications', 'survey-summary', 'instruction'];
+      if (validScreens.includes(hash)) {
+        return hash;
+      }
+    }
+    return 'dashboard';
+  });
   const [screenHistory, setScreenHistory] = useState<Screen[]>([]);
-  const [user, setUser] = useState<User | null>(null);
-  const [authHydrated, setAuthHydrated] = useState(false);
+  const [user, setUser] = useState<User | null>(() => {
+    try {
+      return loadFromStorage<User | null>(STORAGE_KEYS.user, null);
+    } catch {
+      return null;
+    }
+  });
+  const [authHydrated, setAuthHydrated] = useState(true);
   const [currentProject, setCurrentProject] = useState<Project | null>(null);
   const [currentSurveyType, setCurrentSurveyType] = useState<SurveyType | null>(null);
   const [projects, setProjects] = useState<Project[]>(() => loadFromStorage<Project[]>(STORAGE_KEYS.projects, []));
   const [notifications, setNotifications] = useState<Notification[]>(() => loadFromStorage<Notification[]>(STORAGE_KEYS.notifications, defaultNotifications));
   const [prefilledCompanyName, setPrefilledCompanyName] = useState<string>('');
+  const [prefilledSurveyData, setPrefilledSurveyData] = useState<SurveyFormData | null>(null);
   const [currentCompanyProject, setCurrentCompanyProject] = useState<Project | null>(null);
   // Saved audits live on the backend, per account. Loaded once the session has
   // hydrated, because the request needs the session token the account carries.
@@ -272,9 +296,16 @@ export default function App() {
       STORAGE_KEYS.instruction
     );
 
-    setScreen(
-      hasSeen ? 'dashboard' : 'instruction'
-    );
+    const hash = window.location.hash.replace('#', '') as Screen;
+    const validScreens: Screen[] = ['login', 'dashboard', 'create-survey', 'project-detail', 'survey', 'estimation', 'settings', 'notifications', 'survey-summary', 'instruction'];
+
+    if (validScreens.includes(hash) && hash !== 'login' && hash !== 'instruction') {
+      setScreen(hash);
+    } else {
+      setScreen(
+        hasSeen ? 'dashboard' : 'instruction'
+      );
+    }
   } else {
     setUser(null);
     localStorage.removeItem(STORAGE_KEYS.user);
@@ -361,7 +392,7 @@ export default function App() {
       .then(scans => { if (!cancelled) setAiScans(scans); })
       .catch(err => console.error('Failed to load saved AI scans:', err));
     return () => { cancelled = true; };
-  }, [user, authHydrated]);
+  }, [user?.id, authHydrated]);
 
   // Sync notifications from projects automatically
   useEffect(() => {
@@ -466,7 +497,32 @@ export default function App() {
       }
       return newScreen;
     });
+    try {
+      window.history.replaceState(null, '', `#${newScreen}`);
+    } catch {}
   }, []);
+
+  // Sync screen state with URL hash
+  useEffect(() => {
+    const handleHashChange = () => {
+      const hash = window.location.hash.replace('#', '') as Screen;
+      const validScreens: Screen[] = ['login', 'dashboard', 'create-survey', 'project-detail', 'survey', 'estimation', 'settings', 'notifications', 'survey-summary', 'instruction'];
+      if (validScreens.includes(hash)) {
+        setScreen(hash);
+      }
+    };
+
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
+
+  useEffect(() => {
+    if (screen && screen !== 'dashboard') {
+      if (window.location.hash !== `#${screen}`) {
+        window.history.replaceState(null, '', `#${screen}`);
+      }
+    }
+  }, [screen]);
 
   const handleGoBack = useCallback(() => {
     setScreenHistory(prev => {
@@ -620,86 +676,160 @@ export default function App() {
     handleGoBack();
   }, [handleGoBack]);
 
-  const handleNavigateToCreate = useCallback((companyName?: any) => {
-    const nameStr = typeof companyName === 'object' && companyName !== null
-      ? companyName.name || ''
-      : String(companyName || '');
+  const handleNavigateToCreate = useCallback((initial?: SurveyFormData | string | { name?: string }) => {
+    const initialData = typeof initial === 'object' && initial !== null && 'projectName' in initial
+      ? initial as SurveyFormData
+      : null;
+    const legacyCompanyName = typeof initial === 'string'
+      ? initial
+      : typeof initial === 'object' && initial !== null && 'name' in initial
+        ? initial.name || ''
+        : '';
+    const nameStr = initialData?.companyName || legacyCompanyName;
     setPrefilledCompanyName(nameStr);
+    setPrefilledSurveyData(initialData);
     navigateToScreen('create-survey');
   }, [navigateToScreen]);
 
-  const handleSaveSurvey = useCallback((data: SurveyFormData) => {
-    const now = new Date().toISOString();
-    const newProject: Project = {
-      id: `project-${Date.now()}`,
-      name: data.projectName,
-      clientName: data.companyName,
-      clientContactName: data.clientName,
-      clientEmail: data.clientEmail,
-      clientPhone: data.clientContactNumber,
-      location: data.locationName,
-      locationName: data.locationName,
-      latitude: data.latitude,
-      longitude: data.longitude,
-      buildingType: data.buildingType,
-      floors: data.floors || undefined,
-      buildingLength: data.buildingLength || undefined,
-      buildingWidth: data.buildingWidth || undefined,
-      floorHeight: data.floorHeight || undefined,
-      systemTypes: data.systemTypes,
-      surveyScope: data.surveyScope,
-      status: 'Pending',
-      startDate: data.startDate,
-      assignedTechnicians: DEFAULT_TECHNICIANS,
-      createdAt: now,
-    };
+  const { toast } = useToast();
+
+  const handleSaveSurvey = useCallback(
+    async (
+      data: SurveyFormData,
+      ai?: EstimationFlowAiContext
+    ): Promise<{ success: boolean; message?: string }> => {
+      const now = new Date().toISOString();
+      const newProject: Project = {
+        id: `project-${Date.now()}`,
+        name: data.projectName,
+        clientName: data.companyName,
+        clientContactName: data.clientName,
+        clientEmail: data.clientEmail,
+        clientPhone: data.clientContactNumber,
+        location: data.locationName,
+        locationName: data.locationName,
+        latitude: data.latitude,
+        longitude: data.longitude,
+        buildingType: data.buildingType,
+        floors: data.floors || undefined,
+        buildingLength: data.buildingLength || undefined,
+        buildingWidth: data.buildingWidth || undefined,
+        floorHeight: data.floorHeight || undefined,
+        systemTypes: data.systemTypes,
+        surveyScope: data.surveyScope,
+        status: 'Pending',
+        startDate: data.startDate,
+        assignedTechnicians: DEFAULT_TECHNICIANS,
+        createdAt: now,
+      };
 
     setPrefilledCompanyName('');
+    setPrefilledSurveyData(null);
 
-    setProjects(prev => {
-      const clean = (s?: string) => (s || '').trim().toLowerCase();
-      const hasCompanyFolder = prev.some(
-        p => p.buildingType === 'Other' && (clean(p.name) === clean(data.companyName) || clean(p.clientName) === clean(data.companyName))
+      setProjects(prev => {
+        const clean = (s?: string) => (s || '').trim().toLowerCase();
+        const hasCompanyFolder = prev.some(
+          p => p.buildingType === 'Other' && (clean(p.name) === clean(data.companyName) || clean(p.clientName) === clean(data.companyName))
+        );
+
+        const additionalProjects: Project[] = [];
+        if (!hasCompanyFolder && data.companyName) {
+          const newCompanyFolder: Project = {
+            id: `company-${Date.now()}`,
+            name: data.companyName,
+            clientName: data.clientName || data.companyName,
+            clientEmail: data.clientEmail,
+            clientPhone: data.clientContactNumber,
+            location: data.locationName,
+            buildingType: 'Other',
+            status: 'Pending',
+            systemTypes: data.systemTypes || [],
+            assignedTechnicians: DEFAULT_TECHNICIANS,
+            createdAt: now,
+          };
+          additionalProjects.push(newCompanyFolder);
+        }
+
+        return [...prev, ...additionalProjects, newProject];
+      });
+
+      setCurrentProject(newProject);
+      // Build + write the local Cost Estimation cache from the wizard rows and
+      // the AI context, so the next screen opens with everything applied.
+      const cache = buildWizardEstimationCache(data, ai);
+      cacheWizardEstimation(newProject.id, cache);
+      // Cost Estimation opens straight away with the AI results (if any) already
+      // applied as editable rows from the local cache written above. History is
+      // cleared so Back never reopens the completed wizard.
+      setScreenHistory([]);
+      setScreen('estimation');
+      toast.success(
+        cache.aiBaseline
+          ? 'Estimation saved — AI results applied in Cost Estimation. Review, edit, then Save.'
+          : 'Estimation saved. Opening Cost Estimation…'
       );
+      return { success: true };
+    },
+    [toast, user]
+  );
 
-      const additionalProjects: Project[] = [];
-      if (!hasCompanyFolder && data.companyName) {
-        const newCompanyFolder: Project = {
-          id: `company-${Date.now()}`,
-          name: data.companyName,
-          clientName: data.clientName || data.companyName,
-          clientEmail: data.clientEmail,
-          clientPhone: data.clientContactNumber,
-          location: data.locationName,
-          buildingType: 'Other',
-          status: 'Pending',
-          systemTypes: data.systemTypes || [],
-          assignedTechnicians: DEFAULT_TECHNICIANS,
-          createdAt: now,
-        };
-        additionalProjects.push(newCompanyFolder);
-      }
+  // AI Estimation (document analysis) -> save to the database. Collects the
+  // client details + system selection in the view, then maps the API #3
+  // analysis onto snapshot rows and POSTs the same save route the Cost
+  // Estimation screen uses (fresh project starts as PENDING).
+  const handleSaveAiEstimation = useCallback(
+    async (
+      data: SurveyFormData,
+      ai: EstimationFlowAiContext
+    ): Promise<{ success: boolean; message?: string; projId?: number }> => {
+      const now = new Date().toISOString();
+      const project: Project = {
+        id: `project-${Date.now()}`,
+        name: data.projectName,
+        clientName: data.companyName,
+        clientContactName: data.clientName,
+        clientEmail: data.clientEmail,
+        clientPhone: data.clientContactNumber,
+        location: data.locationName,
+        locationName: data.locationName,
+        latitude: data.latitude,
+        longitude: data.longitude,
+        buildingType: data.buildingType,
+        floors: data.floors || undefined,
+        buildingLength: data.buildingLength || undefined,
+        buildingWidth: data.buildingWidth || undefined,
+        floorHeight: data.floorHeight || undefined,
+        systemTypes: data.systemTypes,
+        surveyScope: data.surveyScope,
+        status: 'Pending',
+        startDate: data.startDate,
+        assignedTechnicians: DEFAULT_TECHNICIANS,
+        createdAt: now,
+      };
 
-      return [...prev, ...additionalProjects, newProject];
-    });
-
-    setCurrentProject(newProject);
-
-    const targetSurveyType = data.systemTypes && data.systemTypes.length > 0
-      ? mapSystemToSurveyType(data.systemTypes[0])
-      : null;
-
-    if (targetSurveyType) {
-      setCurrentSurveyType(targetSurveyType);
-      navigateToScreen('survey');
-    } else {
-      setCurrentSurveyType(null);
-      navigateToScreen('project-detail');
-    }
-  }, [navigateToScreen]);
+      const cache = buildWizardEstimationCache(data, ai);
+      const result = await submitEstimationToDB({
+        project: project as any,
+        user: user as any,
+        manpower: cache.manpower,
+        consumables: cache.consumables,
+        fees: cache.fees,
+        scopeOfWorks: cache.scopeOfWorks,
+        constraints: cache.constraints,
+        priceTier: cache.priceTier,
+        aiBaseline: cache.aiBaseline,
+        technicianNotes: cache.technicianNotes,
+        discrepancyJustifications: cache.discrepancyJustifications,
+        statusOverride: 'PENDING',
+      });
+      return { success: result.success, message: result.message, projId: result.projId };
+    },
+    [user]
+  );
 
   const handleExitCreateSurvey = useCallback(() => {
     setPrefilledCompanyName('');
+    setPrefilledSurveyData(null);
     handleGoBack();
   }, [handleGoBack]);
 
@@ -733,7 +863,7 @@ export default function App() {
             activeViewOverride="create-survey"
             onExitOverride={handleExitCreateSurvey}
             contentOverride={
-              <CreateSurveyForm
+              <CreateEstimationFlow
                 userRole={user.role}
                 onSave={handleSaveSurvey}
                 onExit={handleExitCreateSurvey}
@@ -745,6 +875,7 @@ export default function App() {
                 initialClientEmail={companyProject?.clientEmail}
                 initialClientContactNumber={companyProject?.clientPhone}
                 initialSystemTypes={companyProject?.systemTypes as any}
+                initialData={prefilledSurveyData ?? undefined}
                 isDark={isDark}
               />
             }
@@ -993,6 +1124,7 @@ export default function App() {
         onRenameAIScan={handleRenameAIScan}
         onDeleteAIScan={handleDeleteAIScan}
         onUpdateAIScan={handleUpdateAIScan}
+        onSaveAiEstimation={handleSaveAiEstimation}
         isDark={isDark}
         onToggleDark={toggleDark}
       />

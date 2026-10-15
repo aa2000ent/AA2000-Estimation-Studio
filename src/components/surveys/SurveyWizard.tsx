@@ -3,6 +3,8 @@ import type { SurveyType } from '../../App';
 import { getDataService } from '../../services/factory';
 import { parseFile } from '../../services/fileParser';
 import { VideoCamera, Bell as SysBell, SysFire, SysLock, SysShield, SysGear, StatClipboard, StatBuilding, SysCamera, SysKey, SysPhone, SysSpeaker, SysCar, SysComputer, SysThermometer, SysMicroscope, SysDroplet, SysElevator, SysTag, Door, Desktop, Sensor, Satellite, Sliders, FireExtinguisher, Suppression, Plug, Map, Package as PackageIcon, MagnifyingGlass, systemBadgeIcons, systemOptionIcons } from '../../utils/Icons';
+import { useToast } from '../utils/Toast';
+import FileTypeBadges from '../utils/FileTypeBadges';
 
 interface Props {
   projectId: string;
@@ -197,9 +199,66 @@ export default function SurveyWizard({ projectId, surveyType, onComplete, onBack
     return Object.keys(newErrors).length === 0;
   };
 
+  const validateSurveyStep = (): boolean => {
+    const requiredByStep: Record<string, { key: string; label: string }[]> = {
+      cameras: [
+        { key: 'cameraCount', label: 'Number of Cameras' }, { key: 'resolution', label: 'Resolution' },
+        { key: 'cameraTypes', label: 'Camera Types' }, { key: 'environment', label: 'Indoor/Outdoor' },
+        { key: 'preferredBrand', label: 'Preferred Brand' },
+      ],
+      infrastructure: [
+        { key: 'cableType', label: 'Cable Type' }, { key: 'preferredCableBrand', label: 'Preferred Cabling Brand' },
+        { key: 'cablePath', label: 'Cable Path' }, { key: 'wallType', label: 'Wall Type' },
+        { key: 'coreDrilling', label: 'Core Drilling Required' }, { key: 'cableLength', label: 'Estimated Cable Length' },
+      ],
+      detection: [
+        { key: 'systemType', label: 'System Type' }, { key: 'preferredBrand', label: 'Preferred Brand' },
+        { key: 'smokeDetectors', label: 'Smoke Detectors' }, { key: 'heatDetectors', label: 'Heat Detectors' },
+        { key: 'mcpCount', label: 'Manual Call Points' }, { key: 'sounders', label: 'Sounders' },
+      ],
+      doors: [
+        { key: 'doorCount', label: 'Number of Doors' }, { key: 'doorType', label: 'Door Type' },
+        { key: 'readerType', label: 'Reader Type' }, { key: 'lockType', label: 'Lock Type' },
+      ],
+      controller: [
+        { key: 'controllerLocation', label: 'Controller Location' }, { key: 'poeAvailable', label: 'POE Available' },
+        { key: 'upsRequired', label: 'UPS Required' }, { key: 'networkRequired', label: 'Network Required' },
+      ],
+      sensors: [
+        { key: 'pirSensors', label: 'PIR Sensors' }, { key: 'doorContacts', label: 'Door Contacts' },
+        { key: 'glassBreak', label: 'Glass Break Sensors' }, { key: 'outdoorSensors', label: 'Outdoor Sensors' },
+      ],
+      panel: [
+        { key: 'panelLocation', label: 'Panel Location' }, { key: 'rackAvailable', label: 'Rack Available' },
+        { key: 'powerAvailable', label: 'Power Available' }, { key: 'networkRequired', label: 'Network Required' },
+      ],
+      systems: [
+        { key: 'suppressionType', label: 'System Type' }, { key: 'zones', label: 'Number of Zones' },
+        { key: 'cylinders', label: 'Cylinders/Units' },
+      ],
+      specs: [
+        { key: 'otherSystemType', label: 'System Type' }, { key: 'description', label: 'Description' },
+        { key: 'quantity', label: 'Quantity' }, { key: 'powerRequired', label: 'Power Required' },
+      ],
+    };
+    const newErrors: Record<string, string> = {};
+    for (const field of requiredByStep[step.key] || []) {
+      const value = formData[field.key];
+      const isEmpty = value === undefined || value === null || value === '' ||
+        (Array.isArray(value) && value.length === 0) ||
+        (typeof value === 'number' && Number.isNaN(value));
+      if (isEmpty) newErrors[field.key] = `${field.label} is required`;
+    }
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
   const handleNext = async () => {
-    // Validate Building Info step before advancing
+    // Validate every survey step before advancing.
     if (step.key === 'building' && !validateBuildingStep()) {
+      return;
+    }
+    if (step.key !== 'building' && step.key !== 'review' && !validateSurveyStep()) {
       return;
     }
     if (isLast) {
@@ -227,6 +286,12 @@ export default function SurveyWizard({ projectId, surveyType, onComplete, onBack
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden" style={{ background: dark ? '#0B0F19' : '#f5f6fa' }}>
+      <style>{`
+        .survey-form label:not(.survey-auto):not([class*="items-center"])::after {
+          content: ' *';
+          color: #dc2626;
+        }
+      `}</style>
 
       {/* ── Top Header Bar ── */}
       <header style={{
@@ -282,7 +347,7 @@ export default function SurveyWizard({ projectId, surveyType, onComplete, onBack
       </header>
 
       {/* ── Body: Sidebar + Content ── */}
-      <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+    <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
 
         {/* ── Left Sidebar — Step Progress ── */}
         <aside style={{
@@ -300,7 +365,7 @@ export default function SurveyWizard({ projectId, surveyType, onComplete, onBack
             const isPast = i < currentStep;
             return (
               <div key={s.key} style={{ display: 'flex', flexDirection: 'column' }}>
-                <div style={{
+            <div style={{
                   display: 'flex', alignItems: 'center', gap: 12,
                   padding: '10px 12px', borderRadius: 10,
                   background: isActive ? (dark ? 'rgba(37,99,235,0.2)' : '#eff6ff') : 'transparent',
@@ -365,7 +430,7 @@ export default function SurveyWizard({ projectId, surveyType, onComplete, onBack
           )}
 
           {/* Form card */}
-          <div style={{
+          <div className="survey-form" style={{
             background: dark ? '#131B2E' : '#fff',
             border: dark ? '1px solid #1E293B' : '1px solid #e5e7eb',
             borderRadius: 12,
@@ -376,31 +441,31 @@ export default function SurveyWizard({ projectId, surveyType, onComplete, onBack
               <BuildingForm data={formData} onChange={updateField} errors={errors} isDark={dark} />
             )}
             {step.key === 'cameras' && (
-              <CameraForm data={formData} onChange={updateField} />
+              <CameraForm data={formData} onChange={updateField} errors={errors} />
             )}
             {step.key === 'detection' && (
-              <DetectionForm data={formData} onChange={updateField} />
+              <DetectionForm data={formData} onChange={updateField} errors={errors} />
             )}
             {step.key === 'doors' && (
-              <DoorForm data={formData} onChange={updateField} />
+              <DoorForm data={formData} onChange={updateField} errors={errors} />
             )}
             {step.key === 'sensors' && (
-              <SensorForm data={formData} onChange={updateField} />
+              <SensorForm data={formData} onChange={updateField} errors={errors} />
             )}
             {step.key === 'infrastructure' && surveyType === 'CCTV' && (
-              <CCTVInfraForm data={formData} onChange={updateField} />
+              <CCTVInfraForm data={formData} onChange={updateField} errors={errors} />
             )}
             {step.key === 'controller' && (
-              <ControllerForm data={formData} onChange={updateField} />
+              <ControllerForm data={formData} onChange={updateField} errors={errors} />
             )}
             {step.key === 'panel' && (
-              <PanelForm data={formData} onChange={updateField} />
+              <PanelForm data={formData} onChange={updateField} errors={errors} />
             )}
             {step.key === 'systems' && (
-              <SuppressionForm data={formData} onChange={updateField} />
+              <SuppressionForm data={formData} onChange={updateField} errors={errors} />
             )}
             {step.key === 'specs' && (
-              <SpecsForm data={formData} onChange={updateField} />
+              <SpecsForm data={formData} onChange={updateField} errors={errors} />
             )}
             {step.key === 'review' && (
               <ReviewForm data={formData} surveyType={surveyType} />
@@ -462,6 +527,19 @@ export default function SurveyWizard({ projectId, surveyType, onComplete, onBack
 }
 
 // ─── Sub-forms ─────────────────────────────────────────────
+
+type SurveyFormProps = { data: any; onChange: any; errors?: Record<string, string> };
+
+function StepErrors({ errors = {} }: { errors?: Record<string, string> }) {
+  const messages = Object.values(errors);
+  if (!messages.length) return null;
+  return (
+    <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-xs font-semibold text-red-600">
+      <p className="mb-1 font-bold">Please fill up the missing fields.</p>
+      {messages.map(message => <p key={message}>• {message}</p>)}
+    </div>
+  );
+}
 
 function BuildingForm({ data, onChange, errors = {}, isDark }: { data: any; onChange: any; errors?: Record<string, string>; isDark?: boolean }) {
   React.useEffect(() => {
@@ -553,12 +631,12 @@ function BuildingForm({ data, onChange, errors = {}, isDark }: { data: any; onCh
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px 20px' }}>
         <div>
-          <label style={labelStyle}>
+            <label className="survey-auto" style={labelStyle}>
             Is New Building? <span style={{ color: '#dc2626' }}>*</span>
           </label>
           <select
             value={data.isNew ?? ''}
-            onChange={e => onChange('isNew', e.target.value === 'true')}
+            onChange={e => onChange('isNew', e.target.value === '' ? '' : e.target.value === 'true')}
             style={inputStyle('isNew')}
           >
             <option value="">Select...</option>
@@ -568,7 +646,7 @@ function BuildingForm({ data, onChange, errors = {}, isDark }: { data: any; onCh
           <ErrorMsg fieldKey="isNew" />
         </div>
         <div>
-          <label style={labelStyle}>
+          <label className="survey-auto" style={labelStyle}>
             Building Type <span style={{ color: '#dc2626' }}>*</span>
           </label>
           <select
@@ -601,26 +679,26 @@ function BuildingForm({ data, onChange, errors = {}, isDark }: { data: any; onCh
         </div>
 
         <div>
-          <label style={labelStyle}>
+          <label className="survey-auto" style={labelStyle}>
             Building Length (m) <span style={{ color: '#dc2626' }}>*</span>
           </label>
           <input
             type="number" min={0} step="any"
             value={data.buildingLength || ''}
-            onChange={e => handleDimensionChange('buildingLength', Number(e.target.value))}
+             onChange={e => handleDimensionChange('buildingLength', e.target.value === '' ? '' as any : Number(e.target.value))}
             placeholder="e.g. 50"
             style={inputStyle('buildingLength')}
           />
           <ErrorMsg fieldKey="buildingLength" />
         </div>
         <div>
-          <label style={labelStyle}>
+          <label className="survey-auto" style={labelStyle}>
             Building Width (m) <span style={{ color: '#dc2626' }}>*</span>
           </label>
           <input
             type="number" min={0} step="any"
             value={data.buildingWidth || ''}
-            onChange={e => handleDimensionChange('buildingWidth', Number(e.target.value))}
+             onChange={e => handleDimensionChange('buildingWidth', e.target.value === '' ? '' as any : Number(e.target.value))}
             placeholder="e.g. 30"
             style={inputStyle('buildingWidth')}
           />
@@ -628,7 +706,7 @@ function BuildingForm({ data, onChange, errors = {}, isDark }: { data: any; onCh
         </div>
 
         <div>
-          <label style={labelStyle}>
+          <label className="survey-auto" style={labelStyle}>
             Total Floor Area (m²)
           </label>
           <input
@@ -649,13 +727,13 @@ function BuildingForm({ data, onChange, errors = {}, isDark }: { data: any; onCh
           />
         </div>
         <div>
-          <label style={labelStyle}>
+          <label className="survey-auto" style={labelStyle}>
             Floor Height (m) <span style={{ color: '#dc2626' }}>*</span>
           </label>
           <input
             type="number" min={0} step="any"
             value={data.floorHeight || ''}
-            onChange={e => onChange('floorHeight', Number(e.target.value))}
+             onChange={e => onChange('floorHeight', e.target.value === '' ? '' : Number(e.target.value))}
             placeholder="e.g. 3.5"
             style={inputStyle('floorHeight')}
           />
@@ -663,7 +741,7 @@ function BuildingForm({ data, onChange, errors = {}, isDark }: { data: any; onCh
         </div>
 
         <div>
-          <label style={labelStyle}>
+          <label className="survey-auto" style={labelStyle}>
             Number of Floors <span style={{ color: '#dc2626' }}>*</span>
           </label>
           <input
@@ -676,13 +754,13 @@ function BuildingForm({ data, onChange, errors = {}, isDark }: { data: any; onCh
           <ErrorMsg fieldKey="floors" />
         </div>
         <div>
-          <label style={labelStyle}>
+          <label className="survey-auto" style={labelStyle}>
             Number of Rooms <span style={{ color: '#dc2626' }}>*</span>
           </label>
           <input
             type="number" min={0}
             value={data.roomsCount || ''}
-            onChange={e => onChange('roomsCount', Number(e.target.value))}
+             onChange={e => onChange('roomsCount', e.target.value === '' ? '' : Number(e.target.value))}
             placeholder="e.g. 12"
             style={inputStyle('roomsCount')}
           />
@@ -693,14 +771,15 @@ function BuildingForm({ data, onChange, errors = {}, isDark }: { data: any; onCh
   );
 }
 
-function CameraForm({ data, onChange }: { data: any; onChange: any }) {
+function CameraForm({ data, onChange, errors = {} }: SurveyFormProps) {
   return (
     <div className="space-y-4">
+      <StepErrors errors={errors} />
       <h3 className="font-bold text-lg">Camera Configuration</h3>
       <div className="grid grid-cols-2 gap-4">
         <div>
           <label className="block text-xs font-bold text-slate-600 mb-1.5">Number of Cameras</label>
-          <input type="number" min={1} value={data.cameraCount ?? ''} onChange={e => onChange('cameraCount', Number(e.target.value))} className="w-full px-4 py-3 rounded-xl border border-slate-200/60 bg-white/50 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 focus:outline-none transition-all" />
+          <input type="number" min={1} value={data.cameraCount ?? ''} onChange={e => onChange('cameraCount', e.target.value === '' ? '' : Number(e.target.value))} className="w-full px-4 py-3 rounded-xl border border-slate-200/60 bg-white/50 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 focus:outline-none transition-all" />
         </div>
         <div>
           <label className="block text-xs font-bold text-slate-600 mb-1.5">Resolution</label>
@@ -753,9 +832,10 @@ function CameraForm({ data, onChange }: { data: any; onChange: any }) {
   );
 }
 
-function CCTVInfraForm({ data, onChange }: { data: any; onChange: any }) {
+function CCTVInfraForm({ data, onChange, errors = {} }: SurveyFormProps) {
   return (
     <div className="space-y-4">
+      <StepErrors errors={errors} />
       <h3 className="font-bold text-lg">Infrastructure & Cabling</h3>
       <div className="grid grid-cols-2 gap-4">
         <div>
@@ -803,7 +883,7 @@ function CCTVInfraForm({ data, onChange }: { data: any; onChange: any }) {
         </div>
         <div>
           <label className="block text-xs font-bold text-slate-600 mb-1.5">Core Drilling Required?</label>
-          <select value={data.coreDrilling ?? ''} onChange={e => onChange('coreDrilling', e.target.value === 'true')} className="w-full px-4 py-3 rounded-xl border border-slate-200/60 bg-white/50 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 focus:outline-none transition-all">
+          <select value={data.coreDrilling ?? ''} onChange={e => onChange('coreDrilling', e.target.value === '' ? '' : e.target.value === 'true')} className="w-full px-4 py-3 rounded-xl border border-slate-200/60 bg-white/50 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 focus:outline-none transition-all">
             <option value="">Select...</option>
             <option value="true">Yes</option>
             <option value="false">No</option>
@@ -811,16 +891,17 @@ function CCTVInfraForm({ data, onChange }: { data: any; onChange: any }) {
         </div>
         <div className="col-span-2">
           <label className="block text-xs font-bold text-slate-600 mb-1.5">Estimated Cable Length (meters)</label>
-          <input type="number" min={1} value={data.cableLength || ''} onChange={e => onChange('cableLength', Number(e.target.value))} className="w-full px-4 py-3 rounded-xl border border-slate-200/60 bg-white/50 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 focus:outline-none transition-all" />
+          <input type="number" min={1} value={data.cableLength || ''} onChange={e => onChange('cableLength', e.target.value === '' ? '' : Number(e.target.value))} className="w-full px-4 py-3 rounded-xl border border-slate-200/60 bg-white/50 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 focus:outline-none transition-all" />
         </div>
       </div>
     </div>
   );
 }
 
-function DetectionForm({ data, onChange }: { data: any; onChange: any }) {
+function DetectionForm({ data, onChange, errors = {} }: SurveyFormProps) {
   return (
     <div className="space-y-4">
+      <StepErrors errors={errors} />
       <h3 className="font-bold text-lg">Detection Areas</h3>
       <div className="grid grid-cols-2 gap-4">
         <div>
@@ -850,33 +931,34 @@ function DetectionForm({ data, onChange }: { data: any; onChange: any }) {
         </div>
         <div>
           <label className="block text-xs font-bold text-slate-600 mb-1.5">Smoke Detectors</label>
-          <input type="number" min={0} value={data.smokeDetectors ?? ''} onChange={e => onChange('smokeDetectors', Number(e.target.value))} className="w-full px-4 py-3 rounded-xl border border-slate-200/60 bg-white/50 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 focus:outline-none transition-all" />
+          <input type="number" min={0} value={data.smokeDetectors ?? ''} onChange={e => onChange('smokeDetectors', e.target.value === '' ? '' : Number(e.target.value))} className="w-full px-4 py-3 rounded-xl border border-slate-200/60 bg-white/50 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 focus:outline-none transition-all" />
         </div>
         <div>
           <label className="block text-xs font-bold text-slate-600 mb-1.5">Heat Detectors</label>
-          <input type="number" min={0} value={data.heatDetectors ?? ''} onChange={e => onChange('heatDetectors', Number(e.target.value))} className="w-full px-4 py-3 rounded-xl border border-slate-200/60 bg-white/50 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 focus:outline-none transition-all" />
+          <input type="number" min={0} value={data.heatDetectors ?? ''} onChange={e => onChange('heatDetectors', e.target.value === '' ? '' : Number(e.target.value))} className="w-full px-4 py-3 rounded-xl border border-slate-200/60 bg-white/50 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 focus:outline-none transition-all" />
         </div>
         <div>
           <label className="block text-xs font-bold text-slate-600 mb-1.5">Manual Call Points</label>
-          <input type="number" min={0} value={data.mcpCount ?? ''} onChange={e => onChange('mcpCount', Number(e.target.value))} className="w-full px-4 py-3 rounded-xl border border-slate-200/60 bg-white/50 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 focus:outline-none transition-all" />
+          <input type="number" min={0} value={data.mcpCount ?? ''} onChange={e => onChange('mcpCount', e.target.value === '' ? '' : Number(e.target.value))} className="w-full px-4 py-3 rounded-xl border border-slate-200/60 bg-white/50 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 focus:outline-none transition-all" />
         </div>
         <div>
           <label className="block text-xs font-bold text-slate-600 mb-1.5">Sounders</label>
-          <input type="number" min={0} value={data.sounders ?? ''} onChange={e => onChange('sounders', Number(e.target.value))} className="w-full px-4 py-3 rounded-xl border border-slate-200/60 bg-white/50 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 focus:outline-none transition-all" />
+          <input type="number" min={0} value={data.sounders ?? ''} onChange={e => onChange('sounders', e.target.value === '' ? '' : Number(e.target.value))} className="w-full px-4 py-3 rounded-xl border border-slate-200/60 bg-white/50 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 focus:outline-none transition-all" />
         </div>
       </div>
     </div>
   );
 }
 
-function DoorForm({ data, onChange }: { data: any; onChange: any }) {
+function DoorForm({ data, onChange, errors = {} }: SurveyFormProps) {
   return (
     <div className="space-y-4">
+      <StepErrors errors={errors} />
       <h3 className="font-bold text-lg">Doors & Readers</h3>
       <div className="grid grid-cols-2 gap-4">
         <div>
           <label className="block text-xs font-bold text-slate-600 mb-1.5">Number of Doors</label>
-          <input type="number" min={1} value={data.doorCount ?? ''} onChange={e => onChange('doorCount', Number(e.target.value))} className="w-full px-4 py-3 rounded-xl border border-slate-200/60 bg-white/50 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 focus:outline-none transition-all" />
+          <input type="number" min={1} value={data.doorCount ?? ''} onChange={e => onChange('doorCount', e.target.value === '' ? '' : Number(e.target.value))} className="w-full px-4 py-3 rounded-xl border border-slate-200/60 bg-white/50 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 focus:outline-none transition-all" />
         </div>
         <div>
           <label className="block text-xs font-bold text-slate-600 mb-1.5">Door Type</label>
@@ -912,9 +994,10 @@ function DoorForm({ data, onChange }: { data: any; onChange: any }) {
   );
 }
 
-function ControllerForm({ data, onChange }: { data: any; onChange: any }) {
+function ControllerForm({ data, onChange, errors = {} }: SurveyFormProps) {
   return (
     <div className="space-y-4">
+      <StepErrors errors={errors} />
       <h3 className="font-bold text-lg">Controller Configuration</h3>
       <div className="grid grid-cols-2 gap-4">
         <div>
@@ -923,7 +1006,7 @@ function ControllerForm({ data, onChange }: { data: any; onChange: any }) {
         </div>
         <div>
           <label className="block text-xs font-bold text-slate-600 mb-1.5">POE Available?</label>
-          <select value={data.poeAvailable ?? ''} onChange={e => onChange('poeAvailable', e.target.value === 'true')} className="w-full px-4 py-3 rounded-xl border border-slate-200/60 bg-white/50 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 focus:outline-none transition-all">
+          <select value={data.poeAvailable ?? ''} onChange={e => onChange('poeAvailable', e.target.value === '' ? '' : e.target.value === 'true')} className="w-full px-4 py-3 rounded-xl border border-slate-200/60 bg-white/50 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 focus:outline-none transition-all">
             <option value="">Select...</option>
             <option value="true">Yes</option>
             <option value="false">No</option>
@@ -931,7 +1014,7 @@ function ControllerForm({ data, onChange }: { data: any; onChange: any }) {
         </div>
         <div>
           <label className="block text-xs font-bold text-slate-600 mb-1.5">UPS Required?</label>
-          <select value={data.upsRequired ?? ''} onChange={e => onChange('upsRequired', e.target.value === 'true')} className="w-full px-4 py-3 rounded-xl border border-slate-200/60 bg-white/50 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 focus:outline-none transition-all">
+          <select value={data.upsRequired ?? ''} onChange={e => onChange('upsRequired', e.target.value === '' ? '' : e.target.value === 'true')} className="w-full px-4 py-3 rounded-xl border border-slate-200/60 bg-white/50 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 focus:outline-none transition-all">
             <option value="">Select...</option>
             <option value="true">Yes</option>
             <option value="false">No</option>
@@ -939,7 +1022,7 @@ function ControllerForm({ data, onChange }: { data: any; onChange: any }) {
         </div>
         <div>
           <label className="block text-xs font-bold text-slate-600 mb-1.5">Network Required?</label>
-          <select value={data.networkRequired ?? ''} onChange={e => onChange('networkRequired', e.target.value === 'true')} className="w-full px-4 py-3 rounded-xl border border-slate-200/60 bg-white/50 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 focus:outline-none transition-all">
+          <select value={data.networkRequired ?? ''} onChange={e => onChange('networkRequired', e.target.value === '' ? '' : e.target.value === 'true')} className="w-full px-4 py-3 rounded-xl border border-slate-200/60 bg-white/50 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 focus:outline-none transition-all">
             <option value="">Select...</option>
             <option value="true">Yes</option>
             <option value="false">No</option>
@@ -950,35 +1033,37 @@ function ControllerForm({ data, onChange }: { data: any; onChange: any }) {
   );
 }
 
-function SensorForm({ data, onChange }: { data: any; onChange: any }) {
+function SensorForm({ data, onChange, errors = {} }: SurveyFormProps) {
   return (
     <div className="space-y-4">
+      <StepErrors errors={errors} />
       <h3 className="font-bold text-lg">Burglar Alarm Sensors</h3>
       <div className="grid grid-cols-2 gap-4">
         <div>
           <label className="block text-xs font-bold text-slate-600 mb-1.5">PIR Sensors</label>
-          <input type="number" min={0} value={data.pirSensors ?? ''} onChange={e => onChange('pirSensors', Number(e.target.value))} className="w-full px-4 py-3 rounded-xl border border-slate-200/60 bg-white/50 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 focus:outline-none transition-all" />
+          <input type="number" min={0} value={data.pirSensors ?? ''} onChange={e => onChange('pirSensors', e.target.value === '' ? '' : Number(e.target.value))} className="w-full px-4 py-3 rounded-xl border border-slate-200/60 bg-white/50 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 focus:outline-none transition-all" />
         </div>
         <div>
           <label className="block text-xs font-bold text-slate-600 mb-1.5">Door Contacts</label>
-          <input type="number" min={0} value={data.doorContacts ?? ''} onChange={e => onChange('doorContacts', Number(e.target.value))} className="w-full px-4 py-3 rounded-xl border border-slate-200/60 bg-white/50 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 focus:outline-none transition-all" />
+          <input type="number" min={0} value={data.doorContacts ?? ''} onChange={e => onChange('doorContacts', e.target.value === '' ? '' : Number(e.target.value))} className="w-full px-4 py-3 rounded-xl border border-slate-200/60 bg-white/50 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 focus:outline-none transition-all" />
         </div>
         <div>
           <label className="block text-xs font-bold text-slate-600 mb-1.5">Glass Break Sensors</label>
-          <input type="number" min={0} value={data.glassBreak ?? ''} onChange={e => onChange('glassBreak', Number(e.target.value))} className="w-full px-4 py-3 rounded-xl border border-slate-200/60 bg-white/50 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 focus:outline-none transition-all" />
+          <input type="number" min={0} value={data.glassBreak ?? ''} onChange={e => onChange('glassBreak', e.target.value === '' ? '' : Number(e.target.value))} className="w-full px-4 py-3 rounded-xl border border-slate-200/60 bg-white/50 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 focus:outline-none transition-all" />
         </div>
         <div>
           <label className="block text-xs font-bold text-slate-600 mb-1.5">Outdoor Sensors</label>
-          <input type="number" min={0} value={data.outdoorSensors ?? ''} onChange={e => onChange('outdoorSensors', Number(e.target.value))} className="w-full px-4 py-3 rounded-xl border border-slate-200/60 bg-white/50 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 focus:outline-none transition-all" />
+          <input type="number" min={0} value={data.outdoorSensors ?? ''} onChange={e => onChange('outdoorSensors', e.target.value === '' ? '' : Number(e.target.value))} className="w-full px-4 py-3 rounded-xl border border-slate-200/60 bg-white/50 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 focus:outline-none transition-all" />
         </div>
       </div>
     </div>
   );
 }
 
-function PanelForm({ data, onChange }: { data: any; onChange: any }) {
+function PanelForm({ data, onChange, errors = {} }: SurveyFormProps) {
   return (
     <div className="space-y-4">
+      <StepErrors errors={errors} />
       <h3 className="font-bold text-lg">Control Panel</h3>
       <div className="grid grid-cols-2 gap-4">
         <div>
@@ -987,7 +1072,7 @@ function PanelForm({ data, onChange }: { data: any; onChange: any }) {
         </div>
         <div>
           <label className="block text-xs font-bold text-slate-600 mb-1.5">Rack Available?</label>
-          <select value={data.rackAvailable ?? ''} onChange={e => onChange('rackAvailable', e.target.value === 'true')} className="w-full px-4 py-3 rounded-xl border border-slate-200/60 bg-white/50 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 focus:outline-none transition-all">
+          <select value={data.rackAvailable ?? ''} onChange={e => onChange('rackAvailable', e.target.value === '' ? '' : e.target.value === 'true')} className="w-full px-4 py-3 rounded-xl border border-slate-200/60 bg-white/50 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 focus:outline-none transition-all">
             <option value="">Select...</option>
             <option value="true">Yes</option>
             <option value="false">No</option>
@@ -995,7 +1080,7 @@ function PanelForm({ data, onChange }: { data: any; onChange: any }) {
         </div>
         <div>
           <label className="block text-xs font-bold text-slate-600 mb-1.5">Power Available?</label>
-          <select value={data.powerAvailable ?? ''} onChange={e => onChange('powerAvailable', e.target.value === 'true')} className="w-full px-4 py-3 rounded-xl border border-slate-200/60 bg-white/50 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 focus:outline-none transition-all">
+          <select value={data.powerAvailable ?? ''} onChange={e => onChange('powerAvailable', e.target.value === '' ? '' : e.target.value === 'true')} className="w-full px-4 py-3 rounded-xl border border-slate-200/60 bg-white/50 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 focus:outline-none transition-all">
             <option value="">Select...</option>
             <option value="true">Yes</option>
             <option value="false">No</option>
@@ -1003,7 +1088,7 @@ function PanelForm({ data, onChange }: { data: any; onChange: any }) {
         </div>
         <div>
           <label className="block text-xs font-bold text-slate-600 mb-1.5">Network Required?</label>
-          <select value={data.networkRequired ?? ''} onChange={e => onChange('networkRequired', e.target.value === 'true')} className="w-full px-4 py-3 rounded-xl border border-slate-200/60 bg-white/50 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 focus:outline-none transition-all">
+          <select value={data.networkRequired ?? ''} onChange={e => onChange('networkRequired', e.target.value === '' ? '' : e.target.value === 'true')} className="w-full px-4 py-3 rounded-xl border border-slate-200/60 bg-white/50 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 focus:outline-none transition-all">
             <option value="">Select...</option>
             <option value="true">Yes</option>
             <option value="false">No</option>
@@ -1014,9 +1099,10 @@ function PanelForm({ data, onChange }: { data: any; onChange: any }) {
   );
 }
 
-function SuppressionForm({ data, onChange }: { data: any; onChange: any }) {
+function SuppressionForm({ data, onChange, errors = {} }: SurveyFormProps) {
   return (
     <div className="space-y-4">
+      <StepErrors errors={errors} />
       <h3 className="font-bold text-lg">Suppression Systems</h3>
       <div className="grid grid-cols-2 gap-4">
         <div className="col-span-2">
@@ -1032,20 +1118,21 @@ function SuppressionForm({ data, onChange }: { data: any; onChange: any }) {
         </div>
         <div>
           <label className="block text-xs font-bold text-slate-600 mb-1.5">Number of Zones</label>
-          <input type="number" min={1} value={data.zones ?? ''} onChange={e => onChange('zones', Number(e.target.value))} className="w-full px-4 py-3 rounded-xl border border-slate-200/60 bg-white/50 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 focus:outline-none transition-all" />
+          <input type="number" min={1} value={data.zones ?? ''} onChange={e => onChange('zones', e.target.value === '' ? '' : Number(e.target.value))} className="w-full px-4 py-3 rounded-xl border border-slate-200/60 bg-white/50 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 focus:outline-none transition-all" />
         </div>
         <div>
           <label className="block text-xs font-bold text-slate-600 mb-1.5">Cylinders/Units</label>
-          <input type="number" min={1} value={data.cylinders ?? ''} onChange={e => onChange('cylinders', Number(e.target.value))} className="w-full px-4 py-3 rounded-xl border border-slate-200/60 bg-white/50 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 focus:outline-none transition-all" />
+          <input type="number" min={1} value={data.cylinders ?? ''} onChange={e => onChange('cylinders', e.target.value === '' ? '' : Number(e.target.value))} className="w-full px-4 py-3 rounded-xl border border-slate-200/60 bg-white/50 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 focus:outline-none transition-all" />
         </div>
       </div>
     </div>
   );
 }
 
-function SpecsForm({ data, onChange }: { data: any; onChange: any }) {
+function SpecsForm({ data, onChange, errors = {} }: SurveyFormProps) {
   return (
     <div className="space-y-4">
+      <StepErrors errors={errors} />
       <h3 className="font-bold text-lg">System Specifications</h3>
       <div className="grid grid-cols-2 gap-4">
         <div className="col-span-2">
@@ -1065,11 +1152,11 @@ function SpecsForm({ data, onChange }: { data: any; onChange: any }) {
         </div>
         <div>
           <label className="block text-xs font-bold text-slate-600 mb-1.5">Quantity</label>
-          <input type="number" min={1} value={data.quantity ?? ''} onChange={e => onChange('quantity', Number(e.target.value))} className="w-full px-4 py-3 rounded-xl border border-slate-200/60 bg-white/50 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 focus:outline-none transition-all" />
+          <input type="number" min={1} value={data.quantity ?? ''} onChange={e => onChange('quantity', e.target.value === '' ? '' : Number(e.target.value))} className="w-full px-4 py-3 rounded-xl border border-slate-200/60 bg-white/50 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 focus:outline-none transition-all" />
         </div>
         <div>
           <label className="block text-xs font-bold text-slate-600 mb-1.5">Power Required?</label>
-          <select value={data.powerRequired ?? ''} onChange={e => onChange('powerRequired', e.target.value === 'true')} className="w-full px-4 py-3 rounded-xl border border-slate-200/60 bg-white/50 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 focus:outline-none transition-all">
+          <select value={data.powerRequired ?? ''} onChange={e => onChange('powerRequired', e.target.value === '' ? '' : e.target.value === 'true')} className="w-full px-4 py-3 rounded-xl border border-slate-200/60 bg-white/50 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 focus:outline-none transition-all">
             <option value="">Select...</option>
             <option value="true">Yes</option>
             <option value="false">No</option>
@@ -1306,6 +1393,7 @@ function ModeSelector({ mode, onSelect }: { mode: string | null; onSelect: (m: '
 // ─── AI Upload Form ──────────────────────────────────────
 // ─── AI Upload Form ──────────────────────────────────────
 function AiUploadForm({ data, onChange }: { data: any; onChange: any }) {
+  const { toast } = useToast();
   const [files, setFiles] = useState<File[]>(data.floorPlanFiles || []);
   const [parsingId, setParsingId] = useState<string | null>(null);
   const inputRef = React.useRef<HTMLInputElement>(null);
@@ -1317,13 +1405,16 @@ function AiUploadForm({ data, onChange }: { data: any; onChange: any }) {
 
     for (const file of newFiles) {
       const ext = file.name.split('.').pop()?.toLowerCase();
-      const validExtensions = ['png', 'jpg', 'jpeg', 'webp', 'gif', 'pdf', 'xls', 'xlsx', 'docx', 'doc', 'txt', 'csv'];
-      if (!validExtensions.includes(ext || '')) continue;
+      const validExtensions = ['png', 'jpg', 'jpeg', 'pdf', 'docx'];
+      if (!validExtensions.includes(ext || '')) {
+        toast.error(`"${file.name}" is not supported. Upload floor plans as PDF/PNG/JPG or reference documents as PDF/DOCX.`);
+        continue;
+      }
 
       valid.push(file);
 
       // Parse document files immediately
-      if (!file.type.startsWith('image/')) {
+      if (!['png', 'jpg', 'jpeg'].includes(ext || '')) {
         setParsingId(file.name);
         try {
           const parsed = await parseFile(file);
@@ -1359,6 +1450,7 @@ function AiUploadForm({ data, onChange }: { data: any; onChange: any }) {
       const selected = Array.from(e.target.files);
       processFiles(selected);
     }
+    e.currentTarget.value = '';
   };
 
   const removeFile = (i: number) => {
@@ -1368,13 +1460,13 @@ function AiUploadForm({ data, onChange }: { data: any; onChange: any }) {
     onChange('floorPlanFiles', updated);
 
     // Clean up corresponding TOR content if it was a document
-    if (fileToRemove && !fileToRemove.type.startsWith('image/')) {
+    if (fileToRemove && !['png', 'jpg', 'jpeg'].includes(fileToRemove.name.split('.').pop()?.toLowerCase() || '')) {
       let newAccumulatedText = '';
       const docNames: string[] = [];
       
       const reCompile = async () => {
         for (const file of updated) {
-          if (!file.type.startsWith('image/')) {
+          if (!['png', 'jpg', 'jpeg'].includes(file.name.split('.').pop()?.toLowerCase() || '')) {
             try {
               const parsed = await parseFile(file);
               if (parsed && parsed.content) {
@@ -1395,8 +1487,8 @@ function AiUploadForm({ data, onChange }: { data: any; onChange: any }) {
     <div>
       <h2 style={{ fontSize: 20, fontWeight: 700, color: '#111827', marginBottom: 6 }}>Upload Site Survey / TOR Files</h2>
       <p style={{ fontSize: 13, color: '#6b7280', marginBottom: 24, lineHeight: 1.5 }}>
-        Upload floor plan images or PDFs, and Terms of Reference (TOR) specification documents (PDF, Excel, Word, Text).
-        The AI will automatically read your TOR spec files to extract hardware models, brands, and quantities for the BOQ.
+        Upload floor plans as PDF, PNG, or JPG, and TOR/reference documents as PDF or Word DOCX.
+        The AI reads your reference documents to extract hardware models, brands, and quantities for the BOQ.
       </p>
 
       <div
@@ -1411,12 +1503,15 @@ function AiUploadForm({ data, onChange }: { data: any; onChange: any }) {
         onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.borderColor = '#93c5fd'; (e.currentTarget as HTMLDivElement).style.background = '#f8fafc'; }}
         onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.borderColor = '#d1d5db'; (e.currentTarget as HTMLDivElement).style.background = '#fafafa'; }}
       >
-        <input ref={inputRef} type="file" multiple accept="image/*,application/pdf,.pdf,.xls,.xlsx,.doc,.docx,.txt,.csv" style={{ display: 'none' }} onChange={handleSelect} />
+        <input ref={inputRef} type="file" multiple accept=".pdf,.png,.jpg,.jpeg,.docx" style={{ display: 'none' }} onChange={handleSelect} />
         <svg width="40" height="40" fill="none" viewBox="0 0 24 24" stroke="#9ca3af" strokeWidth={1.5} style={{ marginBottom: 12 }}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" />
         </svg>
         <p style={{ fontSize: 14, fontWeight: 600, color: '#374151', marginBottom: 4 }}>Drop floor plans or TOR documents here or click to browse</p>
-        <p style={{ fontSize: 12, color: '#9ca3af' }}>Supports Images, PDFs, Excel sheets, Word files, and Text specifications</p>
+        <p style={{ fontSize: 12, color: '#9ca3af' }}>Floor plans: PDF, PNG, JPG · TOR/reference: PDF, DOCX</p>
+        <div style={{ display: 'flex', justifyContent: 'center', marginTop: 10 }}>
+          <FileTypeBadges types={['PDF', 'PNG', 'JPG', 'DOCX']} />
+        </div>
       </div>
 
       {parsingId && (

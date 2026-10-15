@@ -13,6 +13,7 @@ interface Props {
   initialClientEmail?: string;
   initialClientContactNumber?: string;
   initialSystemTypes?: SystemType[];
+  initialData?: Partial<SurveyFormData>;
   isDark?: boolean;
 }
 
@@ -51,7 +52,7 @@ export interface SurveyFormData {
   startDate: string;
 }
 
-const SYSTEM_OPTIONS: { type: SystemType; label: string; icon: string; color: string; bg: string }[] = [
+export const SYSTEM_OPTIONS: { type: SystemType; label: string; icon: string; color: string; bg: string }[] = [
   { type: 'CCTV',                label: 'CCTV System',                        icon: '', color: '#1D4ED8', bg: '#EFF6FF' },
   { type: 'FDAS',                label: 'FDAS / Fire Alarm System',           icon: '', color: '#1D4ED8', bg: '#EFF6FF' },
   { type: 'ACCESS_CONTROL',      label: 'Access Control System',              icon: '', color: '#1D4ED8', bg: '#EFF6FF' },
@@ -85,6 +86,7 @@ export default function CreateSurveyForm({
   initialClientEmail = '',
   initialClientContactNumber = '',
   initialSystemTypes = [],
+  initialData,
   isDark,
 }: Props) {
   const dark = isDark ?? (typeof document !== 'undefined' && document.documentElement.classList.contains('dark'));
@@ -93,22 +95,22 @@ export default function CreateSurveyForm({
     : String(initialCompanyName || '');
 
   const [form, setForm] = useState<SurveyFormData>({
-    companyName: parsedCompanyName,
-    projectName: '',
-    clientEmail: initialClientEmail,
-    clientName: initialClientName,
-    clientContactNumber: initialClientContactNumber,
-    locationName: initialLocationName,
-    latitude: initialLatitude !== undefined ? initialLatitude : 14.5995,
-    longitude: initialLongitude !== undefined ? initialLongitude : 120.9842,
-    surveyScope: '',
-    systemTypes: initialSystemTypes && initialSystemTypes.length > 0 ? initialSystemTypes : [],
-    buildingType: '',
-    floors: '',
-    buildingLength: '',
-    buildingWidth: '',
-    floorHeight: '',
-    startDate: new Date().toISOString().split('T')[0],
+    companyName: initialData?.companyName ?? parsedCompanyName,
+    projectName: initialData?.projectName ?? '',
+    clientEmail: initialData?.clientEmail ?? initialClientEmail,
+    clientName: initialData?.clientName ?? initialClientName,
+    clientContactNumber: initialData?.clientContactNumber ?? initialClientContactNumber,
+    locationName: initialData?.locationName ?? initialLocationName,
+    latitude: initialData?.latitude ?? (initialLatitude !== undefined ? initialLatitude : 14.5995),
+    longitude: initialData?.longitude ?? (initialLongitude !== undefined ? initialLongitude : 120.9842),
+    surveyScope: initialData?.surveyScope ?? '',
+    systemTypes: initialData?.systemTypes ?? (initialSystemTypes && initialSystemTypes.length > 0 ? initialSystemTypes : []),
+    buildingType: initialData?.buildingType ?? '',
+    floors: initialData?.floors ?? '',
+    buildingLength: initialData?.buildingLength ?? '',
+    buildingWidth: initialData?.buildingWidth ?? '',
+    floorHeight: initialData?.floorHeight ?? '',
+    startDate: initialData?.startDate ?? new Date().toISOString().split('T')[0],
   });
 
   const toggleSystemType = (type: SystemType) => {
@@ -121,6 +123,10 @@ export default function CreateSurveyForm({
   };
   const [step, setStep] = useState(0);
   const [errorMsg, setErrorMsg] = useState('');
+
+  const isStep0Valid = form.companyName.trim() !== '' && form.projectName.trim() !== '' && form.locationName.trim() !== '' && Boolean(form.startDate);
+  const isStep1Valid = form.systemTypes.length > 0;
+  const isCurrentStepValid = step === 0 ? isStep0Valid : isStep1Valid;
 
   useEffect(() => {
     setErrorMsg('');
@@ -430,42 +436,28 @@ export default function CreateSurveyForm({
             {step < STEPS.length - 1 ? (
               <button
                 type="button"
+                disabled={!isCurrentStepValid}
                 onClick={() => {
-                  if (step === 0) {
-                    if (!form.companyName.trim()) {
-                      setErrorMsg('Please enter the Company Name.');
-                      return;
-                    }
-                    if (!form.projectName.trim()) {
-                      setErrorMsg('Please enter the Project Name.');
-                      return;
-                    }
-                    if (!form.locationName.trim()) {
-                      setErrorMsg('Please enter the Location Name.');
-                      return;
-                    }
-                    if (!form.startDate) {
-                      setErrorMsg('Please select the Survey Schedule Date.');
-                      return;
-                    }
-                  }
-                  if (step === 1) {
-                    if (form.systemTypes.length === 0) {
-                      setErrorMsg('Please select at least one system type.');
-                      return;
-                    }
-                  }
+                  if (!isCurrentStepValid) return;
                   setStep(step + 1);
                 }}
-                className="px-8 py-3 rounded-xl text-xs font-bold text-white transition-all shadow-sm"
-                style={{ background: '#1E3A8A' }}
+                className={`px-8 py-3 rounded-xl text-xs font-bold text-white transition-all shadow-sm ${
+                  !isCurrentStepValid
+                    ? 'bg-slate-300 dark:bg-slate-800 text-slate-400 cursor-not-allowed shadow-none'
+                    : 'bg-[#1E3A8A] hover:opacity-95 cursor-pointer'
+                }`}
               >
                 Next Step →
               </button>
             ) : (
               <button
                 type="submit"
-                className="px-8 py-3 rounded-xl text-xs font-bold text-white transition-all shadow-sm bg-emerald-600 hover:bg-emerald-700 inline-flex items-center gap-1.5"
+                disabled={!isCurrentStepValid}
+                className={`px-8 py-3 rounded-xl text-xs font-bold text-white transition-all shadow-sm inline-flex items-center gap-1.5 ${
+                  !isCurrentStepValid
+                    ? 'bg-slate-300 dark:bg-slate-800 text-slate-400 cursor-not-allowed shadow-none'
+                    : 'bg-emerald-600 hover:bg-emerald-700 cursor-pointer shadow-emerald-600/20'
+                }`}
               >
                 Save Survey Details <Check className="w-3.5 h-3.5" />
               </button>

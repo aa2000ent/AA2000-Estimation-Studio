@@ -64,6 +64,13 @@ export default function CreateProjectModal({ userRole, onClose, onCreate, isComp
   const [step, setStep] = useState(0);
   const [systemTypes, setSystemTypes] = useState<string[]>([]);
   const [errorMsg, setErrorMsg] = useState('');
+  const [showRequiredErrors, setShowRequiredErrors] = useState(false);
+
+  const toggleSystemType = (type: string) => {
+    setSystemTypes(previous => previous.includes(type)
+      ? previous.filter(existingType => existingType !== type)
+      : [...previous, type]);
+  };
 
   useEffect(() => {
     setErrorMsg('');
@@ -110,35 +117,36 @@ export default function CreateProjectModal({ userRole, onClose, onCreate, isComp
     }
   };
 
-  const toggleSystemType = (type: string) => {
-    setSystemTypes(prev =>
-      prev.includes(type) ? prev.filter(t => t !== type) : [...prev, type]
-    );
-  };
+  const isStep0Valid = name.trim() !== '' && client.trim() !== '' && location.trim() !== '';
+  const isStep1Valid = buildingType.trim() !== '';
+  const isStep2Valid = !isCompanyMode || systemTypes.length > 0;
+  const isCurrentStepValid = step === 0 ? isStep0Valid : step === 1 ? isStep1Valid : isStep2Valid;
 
   const validateStep = (currentStep: number): boolean => {
-    if (currentStep === 0) {
-      if (!name.trim()) {
-        setErrorMsg('Please enter the Company Name.');
-        return false;
-      }
-      if (!client.trim()) {
-        setErrorMsg('Please enter the Client Name.');
-        return false;
-      }
-      if (email.trim() && !email.includes('@')) {
-        setErrorMsg('Please enter a valid email address.');
-        return false;
-      }
-      if (phone.trim() && phone.length < 11) {
-        setErrorMsg('Please enter a valid 11-digit contact number.');
-        return false;
-      }
-      if (!location.trim()) {
-        setErrorMsg('Please enter the location address.');
-        return false;
-      }
+    if (currentStep !== 0) return true;
+
+    setShowRequiredErrors(true);
+
+    const validationError = [
+      {
+        invalid: [name, client, location].some(value => !value.trim()),
+        message: 'Please fill up the missing fields.',
+      },
+      {
+        invalid: Boolean(email.trim()) && !email.includes('@'),
+        message: 'Please enter a valid email address.',
+      },
+      {
+        invalid: Boolean(phone.trim()) && phone.length < 11,
+        message: 'Please enter a valid 11-digit contact number.',
+      },
+    ].find(rule => rule.invalid)?.message;
+
+    if (validationError) {
+      setErrorMsg(validationError);
+      return false;
     }
+
     return true;
   };
 
@@ -211,6 +219,11 @@ export default function CreateProjectModal({ userRole, onClose, onCreate, isComp
     marginBottom: '6px',
   };
 
+  const requiredInputStyle = (value: string): React.CSSProperties => ({
+    ...inputStyle,
+    border: `1px solid ${showRequiredErrors && !value.trim() ? '#DC2626' : '#E2E8F0'}`,
+  });
+
   const activeSteps = isCompanyMode ? STEPS : [STEPS[0], STEPS[1]];
 
   return (
@@ -275,12 +288,14 @@ export default function CreateProjectModal({ userRole, onClose, onCreate, isComp
             <>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label style={labelStyle}>{isCompanyMode ? 'Company Name' : 'Project Name'}</label>
-                  <input value={name} onChange={e => setName(e.target.value)} style={inputStyle} placeholder={isCompanyMode ? "e.g. MegaCorp Philippines" : "e.g. BGC CCTV Site Survey"} required />
+                  <label style={labelStyle}>
+                    {isCompanyMode ? 'Company Name' : 'Project Name'} <span style={{ color: '#DC2626' }}>*</span>
+                  </label>
+                  <input value={name} onChange={e => setName(e.target.value)} style={requiredInputStyle(name)} placeholder={isCompanyMode ? "e.g. MegaCorp Philippines" : "e.g. BGC CCTV Site Survey"} required />
                 </div>
                 <div>
-                  <label style={labelStyle}>Client Name</label>
-                  <input value={client} onChange={e => setClient(e.target.value)} style={inputStyle} placeholder="e.g. Juan Dela Cruz" required />
+                  <label style={labelStyle}>Client Name <span style={{ color: '#DC2626' }}>*</span></label>
+                  <input value={client} onChange={e => setClient(e.target.value)} style={requiredInputStyle(client)} placeholder="e.g. Juan Dela Cruz" required />
                 </div>
               </div>
 
@@ -313,9 +328,11 @@ export default function CreateProjectModal({ userRole, onClose, onCreate, isComp
                 </div>
 
               <div>
-                <label style={labelStyle}>{isCompanyMode ? 'Project/Survey Location Address' : 'Project Location Address'}</label>
+                <label style={labelStyle}>
+                  {isCompanyMode ? 'Project/Survey Location Address' : 'Project Location Address'} <span style={{ color: '#DC2626' }}>*</span>
+                </label>
                 <div className="relative">
-                  <input value={location} onChange={e => setLocation(e.target.value)} onBlur={handleLocationBlur} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); (e.target as HTMLInputElement).blur(); } }} style={inputStyle} placeholder="e.g. 5th Ave, Taguig, Metro Manila" required />
+                  <input value={location} onChange={e => setLocation(e.target.value)} onBlur={handleLocationBlur} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); (e.target as HTMLInputElement).blur(); } }} style={requiredInputStyle(location)} placeholder="e.g. 5th Ave, Taguig, Metro Manila" required />
                   {locating && (
                     <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[9px] font-bold text-blue-500 flex items-center gap-1">
                       <span className="w-2.5 h-2.5 border border-blue-500 border-t-transparent rounded-full animate-spin" />
@@ -477,20 +494,28 @@ export default function CreateProjectModal({ userRole, onClose, onCreate, isComp
             {step < activeSteps.length - 1 ? (
               <button
                 type="button"
+                disabled={!isCurrentStepValid}
                 onClick={() => {
                   if (!validateStep(step)) return;
                   setStep(step + 1);
                 }}
-                className="flex-1 py-2.5 rounded-xl text-xs font-bold text-white transition-all shadow-sm hover:opacity-95"
-                style={{ background: '#1E3A8A' }}
+                className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all shadow-sm ${
+                  !isCurrentStepValid
+                    ? 'bg-slate-300 dark:bg-slate-800 text-slate-400 cursor-not-allowed shadow-none'
+                    : 'bg-[#1E3A8A] text-white hover:opacity-95 cursor-pointer'
+                }`}
               >
                 Next Step →
               </button>
             ) : (
               <button
                 type="submit"
-                className="flex-1 py-2.5 rounded-xl text-xs font-bold text-white transition-all shadow-sm hover:opacity-95"
-                style={{ background: isCompanyMode ? '#059669' : '#1E3A8A' }}
+                disabled={!isCurrentStepValid}
+                className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all shadow-sm ${
+                  !isCurrentStepValid
+                    ? 'bg-slate-300 dark:bg-slate-800 text-slate-400 cursor-not-allowed shadow-none'
+                    : isCompanyMode ? 'bg-emerald-600 text-white hover:bg-emerald-700 cursor-pointer' : 'bg-[#1E3A8A] text-white hover:opacity-95 cursor-pointer'
+                }`}
               >
                 {isCompanyMode ? 'Create Company' : 'Create Project'}
               </button>

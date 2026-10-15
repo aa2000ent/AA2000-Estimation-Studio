@@ -17,10 +17,13 @@ import { StatBuilding, StatClipboard, StatBolt, StatCalendar, StatCheckCircle, C
 import AISidebar from '../ai-sidebar/AISidebar';
 import FloorPlanView from '../floor-plan/FloorPlanView';
 import EstimationHub from '../estimation/EstimationHub';
+import { AIChatbotFloating } from '../chatbot/AIChatbotFloating';
 import SavedBOQsView from '../floor-plan/SavedBOQsView';
 import SavedEstimationsView from '../estimation/SavedEstimationsView';
+import type { SurveyFormData } from '../estimation/CreateSurveyForm';
+import type { SaveEstimationFn } from '../../services/estimationWizardSnapshot';
 import SavedFoldersView from '../ai-sidebar/SavedFoldersView';
-import { AIChatbotFloating } from '../chatbot/AIChatbotFloating';
+import OfflineBanner from '../utils/OfflineBanner';
 import SparklineCard from './cards/SparklineCard';
 
 interface Props {
@@ -31,7 +34,7 @@ interface Props {
   onSelectProject: (project: Project) => void;
   onCreateProject: (project: Project, keepOnHome?: boolean) => void;
   onSettings: () => void;
-  onNavigateToCreate: () => void;
+  onNavigateToCreate: (data?: SurveyFormData) => void;
   selectedCompanyProject: Project | null;
   setSelectedCompanyProject: (project: Project | null) => void;
   onMarkNotificationsAsRead?: (type: string) => void;
@@ -39,6 +42,8 @@ interface Props {
   onUpdateProject?: (project: Project) => void;
   aiScans?: AIScanGroup[];
   onSaveAIScan?: (scan: AIScanGroup) => Promise<void>;
+  /** AI Estimation: saves the analysis to the database (client details + systems collected in the view). */
+  onSaveAiEstimation?: SaveEstimationFn;
   onRenameAIScan?: (id: string, name: string) => Promise<void>;
   onDeleteAIScan?: (id: string) => Promise<void>;
   onUpdateAIScan?: (scan: AIScanGroup) => Promise<void>;
@@ -71,6 +76,8 @@ const viewTitles: Record<string, string> = {
   notifications: 'All Notifications',
   'ai-reader': 'AI Document Reader',
   'estimation-hub': 'Estimation Hub',
+  'manual-estimation': 'Manual Estimation',
+  'ai-estimation': 'AI Estimation',
   'floor-plan': 'Floor Plan AI',
   'saved-folders': 'AI Scan Folders',
   'saved-boqs': 'Saved Floor Plan BOQs',
@@ -223,7 +230,7 @@ function StatusOverviewBanner({
     },
     {
       key: 'active',
-      label: 'Active',
+      label: 'In Progress',
       count: activeCount,
       stroke: '#2563EB',
       dot: 'bg-blue-600',
@@ -318,7 +325,7 @@ function StatusOverviewBanner({
           STATUS OVERVIEW
         </span>
 
-        {arcs.map((arc) => (
+        {arcs.filter(arc => arc.key !== 'rejected' || arc.count > 0).map((arc) => (
           <div
             key={arc.key}
             onMouseEnter={() => setHoveredStatus(arc.key)}
@@ -344,6 +351,58 @@ function StatusOverviewBanner({
 
 
 
+function MiniSparkCard({
+  label,
+  value,
+  caption,
+  pill,
+  color,
+  shape,
+  icon,
+}: {
+  label: string;
+  value: number;
+  caption: string;
+  pill: string;
+  color: string;
+  shape: number[];
+  icon: React.ReactNode;
+}) {
+  const w = 110;
+  const h = 34;
+  const pts = shape.map((v, i) => [(i / (shape.length - 1)) * (w - 8) + 4, h - 4 - v * (h - 8)] as const);
+  const path = pts.map(([x, y], i) => `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
+  const last = pts[pts.length - 1];
+  const prev = pts[pts.length - 2];
+  return (
+    <div className="bg-white dark:bg-[#131B2E] rounded-3xl p-5 border border-slate-100 dark:border-slate-800 shadow-sm hover:shadow-md transition-all duration-300 animate-fade-in-up">
+      <div className="flex items-center justify-between">
+        <span className="text-[11px] font-black uppercase tracking-wider text-slate-800 dark:text-white">{label}</span>
+        <span style={{ color }} className="opacity-90">{icon}</span>
+      </div>
+      <div className="flex items-end justify-between mt-3 gap-2">
+        <div className="min-w-0">
+          <div className="text-4xl font-black leading-none" style={{ color }}>{value}</div>
+          <div className="text-[11px] font-medium text-slate-400 dark:text-slate-500 mt-2 truncate">{caption}</div>
+        </div>
+        <div className="flex flex-col items-end gap-1 shrink-0">
+          <span
+            className="text-[9px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wide border"
+            style={{ color, background: `${color}1A`, borderColor: `${color}33` }}
+          >
+            {pill}
+          </span>
+          <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} aria-hidden="true">
+            <path d={path} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            <circle cx={prev[0]} cy={prev[1]} r="2.5" fill={color} />
+            <circle cx={last[0]} cy={last[1]} r="3" fill={color} />
+          </svg>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Dashboard({
   user,
   onLogout,
@@ -360,6 +419,7 @@ export default function Dashboard({
   onUpdateProject,
   aiScans = [],
   onSaveAIScan,
+  onSaveAiEstimation,
   onRenameAIScan,
   onDeleteAIScan,
   onUpdateAIScan,
@@ -369,9 +429,34 @@ export default function Dashboard({
   isDark: propIsDark,
   onToggleDark,
 }: Props) {
-  const [view, setView] = useState<View>('dashboard');
+  const [view, setView] = useState<View>(() => {
+    if (typeof window !== 'undefined') {
+      const hash = window.location.hash.replace('#', '') as View;
+      const validViews: View[] = [
+        'home', 'dashboard', 'workspace', 'create-survey',
+        'todo', 'assignment', 'missing', 'done', 'history',
+        'approval', 'finalize', 'ongoing', 'upcoming',
+        'missing-notif', 'approval-notif', 'finalize-notif',
+        'notifications', 'calendar', 'floor-plan',
+        'cctv', 'fire_alarm', 'fire_protection', 'access_control', 'burglar_alarm', 'other',
+        'ai-reader', 'ai-chat', 'estimation-hub', 'manual-estimation', 'ai-estimation',
+        'saved-folders', 'saved-boqs', 'saved-estimations'
+      ];
+      if (validViews.includes(hash)) return hash;
+
+      try {
+        const saved = localStorage.getItem('aa2000_last_view') as View;
+        if (validViews.includes(saved)) return saved;
+      } catch {}
+    }
+    return 'dashboard';
+  });
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 1024);
+  const [isAiChatOpen, setIsAiChatOpen] = useState(false);
+  const [isAiChatDocked, setIsAiChatDocked] = useState(true);
+  const [aiChatWidth, setAiChatWidth] = useState(400);
+  const resizeStartRef = useRef<{ pointerId: number; x: number; width: number } | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [isCompanyMode, setIsCompanyMode] = useState(false);
   const [activeNotifTab, setActiveNotifTab] = useState<'ongoing' | 'upcoming' | 'missing' | 'approval' | 'finalize'>('ongoing');
@@ -387,6 +472,29 @@ export default function Dashboard({
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
+
+  // Sync view state with URL hash
+  useEffect(() => {
+    const handleHash = () => {
+      const h = window.location.hash.replace('#', '') as View;
+      if (h && h !== view) {
+        setView(h);
+      }
+    };
+    window.addEventListener('hashchange', handleHash);
+    return () => window.removeEventListener('hashchange', handleHash);
+  }, [view]);
+
+  useEffect(() => {
+    if (view) {
+      try {
+        localStorage.setItem('aa2000_last_view', view);
+        if (window.location.hash !== `#${view}`) {
+          window.history.replaceState(null, '', `#${view}`);
+        }
+      } catch {}
+    }
+  }, [view]);
 
   const [menuOpen, setMenuOpen] = useState<string | null>(null);
   const [pinned, setPinned] = useState<Set<string>>(() => {
@@ -578,12 +686,16 @@ export default function Dashboard({
   const navigate = (v: View) => {
     setMobileMenuOpen(false);
     setSelectedCompanyProject(null);
+    setIsAiChatOpen(false);
     if (v === 'create-survey') { onNavigateToCreate(); return; }
     // estimation-hub is rendered inside dashboard with sidebar — no full-screen override needed
     if (contentOverride && onExitOverride) {
       onExitOverride();
     }
     setView(v);
+    try {
+      window.history.replaceState(null, '', `#${v}`);
+    } catch {}
   };
 
   const navigateNotif = (type: string) => {
@@ -594,6 +706,9 @@ export default function Dashboard({
     };
     const targetView = m[type] || 'dashboard';
     setView(targetView as View);
+    try {
+      window.history.replaceState(null, '', `#${targetView}`);
+    } catch {}
     if (type === 'notifications' && onMarkNotificationsAsRead) onMarkNotificationsAsRead('all');
   };
 
@@ -609,13 +724,15 @@ export default function Dashboard({
 
   return (
     <div
-      className={`flex h-screen overflow-hidden w-full transition-colors duration-300 ${isDark ? 'bg-[#0B0F19]' : 'bg-[#F8FAFC]'}`}
+      className={`flex flex-col h-screen overflow-hidden w-full transition-colors duration-300 ${isDark ? 'bg-[#0B0F19]' : 'bg-[#F8FAFC]'}`}
       style={{
         background: isDark
           ? 'radial-gradient(ellipse at 20% 20%, rgba(37,99,235,0.06) 0%, transparent 60%), #0B0F19'
           : 'radial-gradient(ellipse at 20% 20%, rgba(191,219,254,0.2) 0%, transparent 55%), #F8FAFC',
       }}
     >
+      <OfflineBanner />
+      <div className="flex flex-1 overflow-hidden min-h-0">
       {/* Desktop Sidebar (Only rendered when not mobile) */}
       {!isMobile && (
         <div className="h-screen sticky top-0 z-40 shrink-0">
@@ -628,7 +745,10 @@ export default function Dashboard({
             projects={projects}
             aiScans={aiScans}
             isDark={isDark}
+            isAiChatOpen={isAiChatOpen}
+            onOpenAiChat={() => setIsAiChatOpen(true)}
             onNewSurvey={() => {
+              setIsAiChatOpen(false);
               setIsCompanyMode(false);
               setShowCreate(true);
             }}
@@ -661,12 +781,21 @@ export default function Dashboard({
                 isMobile={true}
                 user={user}
                 currentView={activeViewOverride || view}
-                onNavigate={navigate}
+                onNavigate={(v) => {
+                  setMobileMenuOpen(false);
+                  navigate(v);
+                }}
                 notifications={notifications}
                 projects={projects}
                 aiScans={aiScans}
                 isDark={isDark}
+                isAiChatOpen={isAiChatOpen}
+                onOpenAiChat={() => {
+                  setIsAiChatOpen(true);
+                  setMobileMenuOpen(false);
+                }}
                 onNewSurvey={() => {
+                  setIsAiChatOpen(false);
                   setMobileMenuOpen(false);
                   setIsCompanyMode(false);
                   setShowCreate(true);
@@ -679,13 +808,12 @@ export default function Dashboard({
 
       <main className="flex-1 flex flex-col min-w-0 relative overflow-hidden">
 
-        {/*TOP NAVIGATION BAR (Glassmorphism)*/}
-        {!contentOverride && (
-          <div
-            className={`sticky top-0 z-40 px-4 sm:px-6 h-16 flex items-center gap-4 shrink-0 border-b backdrop-blur-md transition-colors ${
-              isDark ? 'bg-[#0D1527]/95 border-slate-800' : 'bg-white/95 border-slate-200'
-            }`}
-          >
+        {/* TOP NAVIGATION BAR (Glassmorphism) */}
+        <div
+          className={`sticky top-0 z-40 px-4 sm:px-6 h-16 flex items-center gap-4 shrink-0 border-b backdrop-blur-md transition-colors ${
+            isDark ? 'bg-[#0D1527]/95 border-slate-800' : 'bg-white/95 border-slate-200'
+          }`}
+        >
           {/* Left: Mobile navigation and global search */}
           <div className="flex flex-1 min-w-0 items-center gap-2 sm:gap-3">
             <button
@@ -697,7 +825,7 @@ export default function Dashboard({
                 <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
               </svg>
             </button>
-            {/* <div className="relative block flex-1 min-w-0 max-w-lg">
+            <div className="relative block flex-1 min-w-0 max-w-lg">
               <svg
                 className="absolute left-3.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400"
                 fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}
@@ -711,7 +839,7 @@ export default function Dashboard({
                 onChange={e => setSearch(e.target.value)}
                 className="search-input w-full h-9 pl-10 pr-4 rounded-xl text-[11px] font-medium bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 outline-none text-slate-700 dark:text-slate-200 focus:bg-white dark:focus:bg-slate-800 focus:border-blue-400 transition-all"
               />
-            </div> */}
+            </div>
           </div>
 
           {/* Right: Time, appearance, notifications, and account */}
@@ -770,10 +898,9 @@ export default function Dashboard({
             <NotificationBell notifications={notifications} onViewAll={navigateNotif} />
 
             {/* Account dropdown */}
-            <AccountDropdown user={user} onLogout={onLogout} onSettings={onSettings} />
+            <AccountDropdown user={user} onLogout={onLogout} onSettings={() => { if (onSettings) onSettings(); }} />
           </div>
         </div>
-      )}
 
         {/* ══════════════════════════════════════════
             PAGE CONTENT
@@ -781,41 +908,521 @@ export default function Dashboard({
         <div className="flex-1 overflow-y-auto">
           {contentOverride ? (
             contentOverride
-          ) : (
-            <>
-              {/* Always mounted (hidden when inactive) so AI analysis continues in background */}
-              <div style={{ display: view === 'ai-reader' ? undefined : 'none' }}>
-                <AISidebar
-                  onCreateProject={onCreateProject}
-                  onSelectProject={onSelectProject}
-                  onSaveAIScan={onSaveAIScan}
-                />
-              </div>
-              <div style={{ display: view === 'floor-plan' ? undefined : 'none' }}>
-                <FloorPlanView userRole={user.role} />
-              </div>
-              <div style={{ display: view === 'estimation-hub' ? undefined : 'none', height: view === 'estimation-hub' ? '100%' : undefined }}>
-                <EstimationHub
-                  user={user}
-                  projects={projects}
-                  onCreateProject={onCreateProject}
-                  onSelectProject={onSelectProject}
-                  onSaveAIScan={onSaveAIScan}
-                  onNavigateToCreate={onNavigateToCreate}
-                  isDark={isDark}
-                />
-              </div>
-              {selectedCompanyProject ? (
+          ) : selectedCompanyProject ? (
             <CompanyDetail
               user={user}
               companyProject={selectedCompanyProject}
               projects={projectList}
               onBack={() => setSelectedCompanyProject(null)}
               onSelectProject={onSelectProject}
-              onNewSurvey={onNavigateToCreate}
+              onNewSurvey={() => onNavigateToCreate()}
               onDeleteProject={handleDelete}
             />
-          ) : view === 'home' || view === 'ai-reader' || view === 'floor-plan' || isCategoryView ? (
+          ) : view === 'ai-reader' ? (
+            <AISidebar
+              onCreateProject={onCreateProject}
+              onSelectProject={onSelectProject}
+              onSaveAIScan={onSaveAIScan}
+            />
+          ) : view === 'floor-plan' ? (
+            <FloorPlanView userRole={user.role} />
+          ) : ['estimation-hub', 'manual-estimation', 'ai-estimation'].includes(view) ? (
+            <EstimationHub
+              key={view}
+              user={user}
+              projects={projects}
+              onCreateProject={onCreateProject}
+              onSelectProject={onSelectProject}
+              onSaveAIScan={onSaveAIScan}
+              onSaveEstimation={onSaveAiEstimation}
+              onNavigateToCreate={onNavigateToCreate}
+              isDark={isDark}
+              initialMode={view === 'manual-estimation' ? 'manual' : view === 'ai-estimation' ? 'ai' : undefined}
+            />
+          ) : view === 'approval' ? (
+            <ApprovalPipeline
+              user={user}
+              projects={projectList}
+              onSelectProject={onSelectProject}
+              onNavigateToCreate={onNavigateToCreate}
+            />
+          ) : view === 'calendar' ? (
+            <CalendarView
+              projects={projectList}
+              onSelectProject={onSelectProject}
+              userRole={user.role || 'ACCOUNTING'}
+              isDark={isDark}
+            />
+          ) : view === 'saved-folders' ? (
+            <SavedFoldersView
+              aiScans={aiScans}
+              onRenameAIScan={onRenameAIScan}
+              onDeleteAIScan={onDeleteAIScan}
+              onUpdateAIScan={onUpdateAIScan}
+            />
+          ) : view === 'saved-boqs' ? (
+            <SavedBOQsView userRole={user.role} />
+          ) : view === 'history' || view === 'saved-estimations' ? (
+            <SavedEstimationsView
+              projects={projectList}
+              onDeleteProject={handleDelete}
+            />
+          ) : view === 'dashboard' ? (
+            <div className="px-6 pt-8 pb-10 flex flex-col gap-8">
+              {/* Greeting */}
+              <div>
+                <h2 className="text-4xl sm:text-5xl font-black tracking-tight text-slate-900 dark:text-white leading-tight">
+                  {timeGreeting},{' '}
+                  <span className="text-blue-500 dark:text-blue-400">{userGreetingName}!</span>
+                </h2>
+                <p className="mt-2 max-w-2xl text-sm sm:text-base font-medium text-slate-500 dark:text-slate-400">
+                  Welcome to the system control center. Create estimation projects, assign technical teams, review surveys, and approve final equipment pricing estimates.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 items-start">
+                {/* Left column: status overview + KPI cards */}
+                <div className="lg:col-span-2 flex flex-col gap-6 min-w-0">
+                  <StatusOverviewBanner
+                    totalProjects={totalProjects}
+                    rejectedCount={rejectedCount}
+                    pendingCount={pendingCount}
+                    activeCount={activeCount}
+                    completedCount={completedCount}
+                  />
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <MiniSparkCard
+                      label="Overall Projects"
+                      value={totalProjects}
+                      caption="Total surveys"
+                      pill={`${totalProjects > 0 ? Math.round(((totalProjects - completedCount) / totalProjects) * 100) : 0}% ACTIVE`}
+                      color="#2563EB"
+                      shape={[0.2, 0.3, 0.4, 0.5, 0.65, 0.8, 1]}
+                      icon={<StatBuilding className="w-5 h-5" />}
+                    />
+                    <MiniSparkCard
+                      label="In Progress"
+                      value={activeCount}
+                      caption="Active surveys"
+                      pill={`${totalProjects > 0 ? Math.round((activeCount / totalProjects) * 100) : 0}% ACTIVE`}
+                      color="#2563EB"
+                      shape={[0.3, 0.35, 0.5, 0.55, 0.6, 0.7, 0.68]}
+                      icon={<StatBolt className="w-5 h-5" />}
+                    />
+                    <MiniSparkCard
+                      label="Pending"
+                      value={pendingCount}
+                      caption="Awaiting survey"
+                      pill={`${totalProjects > 0 ? Math.round((pendingCount / totalProjects) * 100) : 0}% QUEUE`}
+                      color="#D97706"
+                      shape={[0.8, 0.7, 0.75, 0.6, 0.65, 0.5, 0.55]}
+                      icon={<StatCalendar className="w-5 h-5" />}
+                    />
+                    <MiniSparkCard
+                      label="Completed"
+                      value={completedCount}
+                      caption="Approved"
+                      pill={`${totalProjects > 0 ? Math.round((completedCount / totalProjects) * 100) : 0}% DONE`}
+                      color="#10B981"
+                      shape={[0.1, 0.1, 0.15, 0.12, 0.18, 0.2, 0.25]}
+                      icon={<StatCheckCircle className="w-5 h-5" />}
+                    />
+                  </div>
+                </div>
+
+                {/* Right column: pending surveys & active projects */}
+                <div className="lg:col-span-3 min-w-0 bg-white dark:bg-[#131B2E] rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm p-6 sm:p-7 animate-fade-in-up">
+                  <div className="flex flex-wrap items-start justify-between gap-3 pb-4 mb-5 border-b border-slate-100 dark:border-slate-800">
+                    <div>
+                      <div className="flex items-center gap-3">
+                        <h3 className="text-base sm:text-lg font-black uppercase tracking-tight text-slate-900 dark:text-white">
+                          Pending Surveys &amp; Active Projects
+                        </h3>
+                        <span className="text-[10px] font-black px-2.5 py-1 rounded-full bg-amber-500 text-white uppercase tracking-wide whitespace-nowrap">
+                          {pendingCount} Pending
+                        </span>
+                      </div>
+                      <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mt-1">
+                        Click any project below to open site survey, upload floor plan, or build BOQ
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setView('workspace')}
+                      className="text-xs font-black text-blue-600 dark:text-blue-400 hover:underline cursor-pointer whitespace-nowrap"
+                    >
+                      View All Workspace →
+                    </button>
+                  </div>
+
+                  {(() => {
+                    const dashboardCards = actualProjects
+                      .filter(p => p.status === 'Pending' || p.status === 'In Progress')
+                      .slice(0, 8);
+                    if (dashboardCards.length === 0) {
+                      return (
+                        <div className="py-16 text-center flex flex-col items-center justify-center">
+                          <div className="w-12 h-12 rounded-2xl bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 flex items-center justify-center mb-3">
+                            <StatClipboard className="w-6 h-6" />
+                          </div>
+                          <h4 className="text-sm font-black text-slate-800 dark:text-white mb-1">No site surveys created yet</h4>
+                          <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm">
+                            No active site surveys have been assigned or submitted yet.
+                          </p>
+                        </div>
+                      );
+                    }
+                    return (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        {dashboardCards.map((p, index) => {
+                          const isPending = p.status === 'Pending';
+                          return (
+                            <div
+                              key={p.id}
+                              onClick={() => onSelectProject(p)}
+                              className={`p-4 rounded-2xl border transition-all duration-300 cursor-pointer flex flex-col justify-between group/card relative overflow-hidden animate-fade-in-up hover:-translate-y-1.5 hover:shadow-xl ${
+                                isPending
+                                  ? 'bg-amber-50/20 dark:bg-amber-950/20 border-amber-200/90 dark:border-amber-900/50 hover:border-amber-400'
+                                  : 'bg-white dark:bg-[#131B2E] border-slate-200 dark:border-slate-800 hover:border-blue-400 dark:hover:border-blue-500'
+                              }`}
+                              style={{ animationDelay: `${index * 60}ms` }}
+                            >
+                              <div
+                                className={`absolute top-0 left-0 right-0 h-1 transition-opacity duration-300 opacity-0 group-hover/card:opacity-100 ${
+                                  isPending
+                                    ? 'bg-gradient-to-r from-amber-400 to-amber-600'
+                                    : 'bg-gradient-to-r from-blue-500 to-indigo-600'
+                                }`}
+                              />
+                              <div>
+                                <div className="flex items-center justify-between gap-2 mb-2.5">
+                                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 truncate">
+                                    {p.clientName}
+                                  </span>
+                                  <span
+                                    className={`text-[9px] font-extrabold px-2.5 py-0.5 rounded-full uppercase tracking-wider whitespace-nowrap ${
+                                      isPending
+                                        ? 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300'
+                                        : 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300'
+                                    }`}
+                                  >
+                                    {p.status}
+                                  </span>
+                                </div>
+                                <h4 className="text-xs font-black text-slate-800 dark:text-white mb-1 leading-snug group-hover/card:text-blue-600 dark:group-hover/card:text-blue-400">{p.name}</h4>
+                                <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium truncate mb-3 flex items-center gap-1">
+                                  <span>📍</span>
+                                  <span>{p.location || 'Location not set'}</span>
+                                </p>
+                              </div>
+
+                              <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
+                                <span className="text-[10px] font-bold text-slate-400 truncate">
+                                  {p.systemTypes?.slice(0, 2).join(', ') || 'General System'}
+                                </span>
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); onSelectProject(p); }}
+                                  className="px-3.5 py-1.5 rounded-xl text-xs font-black text-white shadow-sm flex items-center gap-1 shrink-0"
+                                  style={{
+                                    background: isPending ? 'linear-gradient(135deg, #D97706 0%, #B45309 100%)' : 'linear-gradient(135deg, #1D4ED8 0%, #1E40AF 100%)',
+                                  }}
+                                >
+                                  <span>Open Survey</span>
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
+                </div>
+              </div>
+            </div>
+          ) : view === 'notifications' ? (
+            /* Notification View */
+            <div className="px-6 pt-6 pb-6 flex-1 flex flex-col min-h-0">
+              <div className="bg-white dark:bg-[#131B2E] rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden animate-fade-in-up flex-1 flex flex-col min-h-[calc(100vh-120px)]">
+                {/* Tabs */}
+                <div className="px-6 pt-4 pb-0 border-b border-slate-100">
+                  <div className="flex flex-wrap gap-1">
+                    {[
+                      { key: 'ongoing', label: 'Ongoing', count: countOngoing, color: '#2563EB' },
+                      { key: 'upcoming', label: 'Upcoming', count: countUpcoming, color: '#059669' },
+                      { key: 'missing', label: 'Missing', count: countMissing, color: '#D97706' },
+                      ...(user.role === 'ADMIN' || user.role === 'ACCOUNTING'
+                        ? [
+                          { key: 'approval', label: 'Approval', count: countApproval, color: '#7C3AED' },
+                          { key: 'finalize', label: 'Finalize', count: countFinalize, color: '#059669' },
+                        ]
+                        : []),
+                    ].map(tab => (
+                      <button
+                        key={tab.key}
+                        onClick={() => setActiveNotifTab(tab.key as any)}
+                        className="flex items-center gap-1.5 px-3 py-2 text-[11px] font-bold uppercase tracking-wider border-b-2 transition-all mb-[-1px]"
+                        style={
+                          activeNotifTab === tab.key
+                            ? { borderColor: tab.color, color: tab.color }
+                            : { borderColor: 'transparent', color: '#94A3B8' }
+                        }
+                      >
+                        {tab.label}
+                        <span
+                          className="text-[9px] font-extrabold px-1.5 py-0.5 rounded-full"
+                          style={
+                            activeNotifTab === tab.key
+                              ? { background: `${tab.color}15`, color: tab.color }
+                              : { background: '#F1F5F9', color: '#94A3B8' }
+                          }
+                        >
+                          {tab.count}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="divide-y divide-slate-50">
+                  {notifications.filter(n => n.type === activeNotifTab).length === 0 ? (
+                    <div className="py-12 text-center">
+                      <div className="w-12 h-12 rounded-2xl bg-slate-50 flex items-center justify-center mx-auto mb-3">
+                        <Bell className="w-5 h-5 text-slate-300" />
+                      </div>
+                      <p className="text-xs font-bold text-slate-400">No alerts in this category</p>
+                    </div>
+                  ) : (
+                    notifications
+                      .filter(n => n.type === activeNotifTab)
+                      .map(n => {
+                        const cfg = typeConfig[n.type] || typeConfig.ongoing;
+                        return (
+                          <div
+                            key={n.id}
+                            onClick={() => navigateNotif(n.type)}
+                            className="px-6 py-4 flex items-start gap-4 cursor-pointer hover:bg-slate-50/50 transition-colors group"
+                          >
+                            <div
+                              className="w-2.5 h-2.5 rounded-full mt-1.5 shrink-0"
+                              style={{ background: !n.read ? cfg.dot : '#CBD5E1' }}
+                            />
+                            <div className="min-w-0 flex-1">
+                              <p className={`text-sm ${!n.read ? 'font-bold text-slate-800' : 'font-medium text-slate-500'}`}>
+                                {n.title}
+                              </p>
+                              <div className="flex items-center gap-3 mt-1.5">
+                                <span className="text-xs text-slate-400 font-medium">
+                                  {n.companyName} · {n.date}
+                                </span>
+                                <span
+                                  className="text-[8px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wide"
+                                  style={{ background: cfg.bg, color: cfg.color }}
+                                >
+                                  {cfg.label}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : view !== 'home' && !isCategoryView ? (
+            /* Project Table (non-home, non-notifications, non-category views) */
+            <div className="px-6 pt-6 pb-6 flex-1 flex flex-col min-h-0">
+              <div className="bg-white dark:bg-[#131B2E] rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm animate-fade-in-up flex-1 flex flex-col min-h-[calc(100vh-120px)]">
+                {/* Table header */}
+                <div
+                  className="flex flex-col sm:flex-row items-center justify-between gap-3 px-6 py-4 border-b border-slate-100 dark:border-slate-800"
+                >
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg font-black text-slate-800 dark:text-white uppercase tracking-tight">
+                        {viewTitles[view] || 'Projects'}
+                      </span>
+                    </div>
+                    <p className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mt-0.5">
+                      AA2000 Security · Estimation Platform
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2 w-full sm:w-auto">
+                    <div className="relative flex-1 sm:max-w-xs">
+                      <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                      </svg>
+                      <input
+                        type="text"
+                        value={search}
+                        onChange={e => setSearch(e.target.value)}
+                        placeholder="Search projects..."
+                        className="search-input w-full pl-9 pr-4 py-2 rounded-xl text-xs font-medium bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 outline-none focus:bg-white dark:focus:bg-slate-800 transition-all"
+                      />
+                    </div>
+                    <select
+                      value={sort}
+                      onChange={e => setSort(e.target.value as SortMode)}
+                      className="px-3 py-2 rounded-xl text-xs font-medium bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-200 outline-none cursor-pointer"
+                    >
+                      <option value="newest">Newest</option>
+                      <option value="oldest">Oldest</option>
+                      <option value="name-asc">Name A–Z</option>
+                      <option value="name-desc">Name Z–A</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Table body */}
+                <div className="overflow-x-auto flex-1 pb-16">
+                  {ordered.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-16 gap-3 flex-1">
+                      <div
+                        className="w-14 h-14 rounded-2xl flex items-center justify-center text-2xl animate-float-a"
+                        style={{ background: theme.primaryAlpha08 }}
+                      >
+                        <StatClipboard className="w-6 h-6" />
+                      </div>
+                      <div className="text-center">
+                        <p className="text-xs font-bold text-slate-600 dark:text-slate-300">No projects found</p>
+                        <p className="text-[11px] text-slate-400 mt-0.5">
+                          {user.role === 'ADMIN' ? 'Create a new project to get started' : 'No assignments in this view yet'}
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="text-[9px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100 dark:border-slate-800">
+                          <th className="py-3 pl-6">Project / Client</th>
+                          <th className="py-3 text-center">Status</th>
+                          <th className="py-3 text-center">Date & Time</th>
+                          <th className="py-3 pr-6 text-right" />
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {ordered.map((project, i) => {
+                          const isPinned = pinned.has(project.id);
+                          const isOpen = menuOpen === project.id;
+                          const isNearBottom = ordered.length > 2 && i >= ordered.length - 2;
+                          const statusBar =
+                            Object.entries(statusConfig).find(([key]) => project.status?.includes(key))?.[1]?.bar || '#64748B';
+
+                          const formattedTime = (() => {
+                            if (!project.createdAt) return '';
+                            try {
+                              const d = new Date(project.createdAt);
+                              if (!isNaN(d.getTime())) {
+                                return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+                              }
+                            } catch {}
+                            return '';
+                          })();
+
+                          return (
+                            <tr
+                              key={project.id}
+                              onClick={() => onSelectProject(project)}
+                              className={`hover:bg-slate-50/80 dark:hover:bg-slate-800/50 cursor-pointer border-b border-slate-50 dark:border-slate-800/50 transition-colors group animate-fade-in-up ${
+                                isOpen ? 'relative z-50' : ''
+                              }`}
+                              style={{ animationDelay: `${i * 30}ms` }}
+                            >
+                              <td className="py-3.5 pl-6">
+                                <div className="flex items-center gap-3">
+                                  <div className="w-1 h-8 rounded-full shrink-0" style={{ background: statusBar }} />
+                                  <div>
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-xs font-bold text-slate-800 dark:text-white">{project.name}</span>
+                                      {isPinned && (
+                                        <span
+                                          className="text-[8px] font-extrabold px-1.5 py-0.5 rounded uppercase tracking-wide"
+                                          style={{ background: theme.primaryAlpha08, color: theme.primary }}
+                                        >
+                                          Pinned
+                                        </span>
+                                      )}
+                                    </div>
+                                    <p className="text-[10px] text-slate-400 mt-0.5">
+                                      {project.clientName} · {project.location}
+                                    </p>
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="py-3.5 text-center">
+                                <StatusBadge status={project.status} />
+                              </td>
+                              <td className="py-3.5 text-center text-[11px] font-medium text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                                <div className="flex items-center justify-center gap-1.5">
+                                  <span>{project.startDate || (project.createdAt ? project.createdAt.split('T')[0] : '—')}</span>
+                                  {formattedTime && (
+                                    <span className="text-[10px] text-slate-400 dark:text-slate-500 font-semibold">
+                                      · {formattedTime}
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+                              <td className={`py-3.5 pr-6 text-right relative ${isOpen ? 'z-50' : ''}`} onClick={e => e.stopPropagation()}>
+                                <button
+                                  onClick={() => setMenuOpen(isOpen ? null : project.id)}
+                                  className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-all opacity-0 group-hover:opacity-100 cursor-pointer"
+                                >
+                                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h.01M12 12h.01M19 12h.01" />
+                                  </svg>
+                                </button>
+                                {isOpen && (
+                                  <>
+                                    <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(null)} />
+                                    <div
+                                      className={`absolute right-4 z-50 w-48 rounded-xl bg-white dark:bg-[#162032] border border-slate-200 dark:border-slate-700 py-1.5 shadow-2xl text-left animate-scale-in ${
+                                        isNearBottom ? 'bottom-8' : 'top-10'
+                                      }`}
+                                    >
+                                      <button
+                                        onClick={() => { setEditProject(project); setMenuOpen(null); }}
+                                        className="w-full px-3.5 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-800 dark:hover:text-white flex items-center gap-2 cursor-pointer transition-colors"
+                                      >
+                                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                                        Edit Project
+                                      </button>
+                                      <button
+                                        onClick={() => handlePin(project.id)}
+                                        className="w-full px-3.5 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-800 dark:hover:text-white flex items-center gap-2 cursor-pointer transition-colors"
+                                      >
+                                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" /></svg>
+                                        {isPinned ? 'Unpin' : 'Pin Project'}
+                                      </button>
+                                      <button
+                                        onClick={() => onSelectProject(project)}
+                                        className="w-full px-3.5 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 hover:text-slate-800 flex items-center gap-2 cursor-pointer transition-colors"
+                                      >
+                                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                                        View Details
+                                      </button>
+                                      <div className="border-t border-slate-100 my-1" />
+                                      <button
+                                        onClick={() => { setDeleteConfirm(project.id); setMenuOpen(null); }}
+                                        className="w-full px-3.5 py-2 text-xs font-bold text-red-600 hover:bg-red-50 hover:text-red-700 flex items-center gap-2 cursor-pointer transition-colors"
+                                      >
+                                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                        Delete Project
+                                      </button>
+                                    </div>
+                                  </>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : (
             <Home
               user={user}
               projects={projectList}
@@ -851,579 +1458,127 @@ export default function Dashboard({
               onUpdateAIScan={onUpdateAIScan}
               isDark={isDark}
             />
-          ) : view === 'estimation-hub' ? null
-          : view === 'approval' ? (
-            <ApprovalPipeline
-              user={user}
-              projects={projectList}
-              onSelectProject={onSelectProject}
-              onNavigateToCreate={onNavigateToCreate}
-            />
-          ) : view === 'calendar' ? (
-            <CalendarView
-              projects={projectList}
-              onSelectProject={onSelectProject}
-              userRole={user.role || 'ACCOUNTING'}
-              isDark={isDark}
-            />
-          ) : view === 'saved-folders' ? (
-            <SavedFoldersView
-              aiScans={aiScans}
-              onRenameAIScan={onRenameAIScan}
-              onDeleteAIScan={onDeleteAIScan}
-              onUpdateAIScan={onUpdateAIScan}
-            />
-          ) : view === 'saved-boqs' ? (
-            <SavedBOQsView userRole={user.role} />
-          ) : view === 'history' ? (
-            <SavedEstimationsView
-              projects={projectList}
-              statusFilter={['Completed', 'Finalized - Approved', 'Finalized - Rejected', 'Unknown']}
-              onDeleteProject={handleDelete}
-            />
-          ) : view === 'saved-estimations' ? (
-            <SavedEstimationsView
-              projects={projectList}
-              onDeleteProject={handleDelete}
-            />
-          ) : (
-            <div className="pb-10">
-              {/* Dashboard view: title + stats */}
-              {view === 'dashboard' && (
-                <>
-                  {/* Clean Header with Enriched Large Dynamic Time-Based Greeting */}
-                  <div className="px-6 pt-6 animate-fade-in-up">
-                    <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
-                      <div className="max-w-3xl">
-                        <h1
-                          className="text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight flex items-center gap-2.5 flex-wrap"
-                          style={{ fontFamily: 'Manrope, Inter, sans-serif' }}
-                        >
-                          <span className="text-slate-900 dark:text-white">{timeGreeting},</span>
-                          <span className="text-blue-600 dark:text-blue-400">{userGreetingName}!</span>
-                        </h1>
-                        <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 font-medium leading-relaxed mt-2 max-w-2xl">
-                          Welcome to the system control center. Create estimation projects, assign technical teams, review surveys, and approve final equipment pricing estimates.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* 2-Column Dashboard Layout: Right = Pending Surveys & Active Projects, left = Status Banner + Stat Cards */}
-                  <div className="px-6 pt-6">
-                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-                      {/* Left Column: Screenshot Group (Status Overview Banner + 4 Stat Cards in 2x2) */}
-                      <div className="lg:col-span-5 flex flex-col gap-6">
-                        {/* Status Overview Banner */}
-                        <StatusOverviewBanner
-                          totalProjects={totalProjects}
-                          rejectedCount={rejectedCount}
-                          pendingCount={pendingCount}
-                          activeCount={activeCount}
-                          completedCount={completedCount}
-                        />
-
-                        {/* 4 Stat Cards in 2x2 Grid */}
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                          <SparklineCard
-                            label="OVERALL PROJECTS"
-                            value={totalProjects}
-                            totalProjects={totalProjects}
-                            sub="Total surveys"
-                            icon={<StatBuilding className="w-5 h-5" />}
-                            valueColor="#2563EB"
-                            onClick={() => navigate('assignment')}
-                            delay={0}
-                          />
-                          <SparklineCard
-                            label="ACTIVE"
-                            value={activeCount}
-                            totalProjects={totalProjects}
-                            sub="Approved, scheduled or under way"
-                            icon={<StatBolt className="w-5 h-5" />}
-                            valueColor="#2563EB"
-                            onClick={() => navigate('workspace')}
-                            delay={50}
-                          />
-                          <SparklineCard
-                            label="PENDING"
-                            value={pendingCount}
-                            totalProjects={totalProjects}
-                            sub="Awaiting kickoff"
-                            icon={<StatCalendar className="w-5 h-5" />}
-                            valueColor="#F59E0B"
-                            onClick={() => navigate('workspace')}
-                            delay={100}
-                          />
-                          <SparklineCard
-                            label="COMPLETED"
-                            value={completedCount}
-                            totalProjects={totalProjects}
-                            sub="Finalized surveys"
-                            icon={<StatCheckCircle className="w-5 h-5" />}
-                            valueColor="#16A34A"
-                            onClick={() => navigate('done')}
-                            delay={150}
-                          />
-                        </div>
-                      </div>
-
-                      {/* Right Column: Pending Surveys & Active Projects */}
-                      <div className="lg:col-span-7 flex flex-col">
-                        <div className="bg-white dark:bg-[#131B2E] rounded-3xl p-6 border border-slate-200/80 dark:border-slate-800 shadow-sm animate-fade-in-up flex-1 flex flex-col relative min-h-[380px]">
-                          <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100 dark:border-slate-800">
-                            <div>
-                              <h3 className="text-sm font-black tracking-wider text-slate-800 dark:text-white uppercase flex items-center gap-2">
-                                <span>Pending Surveys &amp; Active Projects</span>
-                                {pendingCount > 0 && (
-                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500 text-white">
-                                    {pendingCount} Pending
-                                  </span>
-                                )}
-                              </h3>
-                              <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mt-0.5">
-                                Click any project below to open site survey, upload floor plan, or build BOQ
-                              </p>
-                            </div>
-                            <button
-                              onClick={() => navigate('workspace')}
-                              className="text-xs font-bold text-blue-700 dark:text-blue-400 hover:text-blue-900 dark:hover:text-blue-300 transition-colors shrink-0"
-                            >
-                              View All Workspace →
-                            </button>
-                          </div>
-
-                          {/* Project Cards Grid or Empty State */}
-                          {actualProjects.length > 0 ? (
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-16">
-                              {actualProjects.slice(0, 6).map((p, index) => {
-                                const isPending = p.status === 'Pending';
-                                const isAwaitingApproval = p.status === 'Finalized';
-                                const isRejected = p.status === 'Finalized - Rejected';
-                                const isCompleted = p.status === 'Completed' || p.status === 'Finalized - Approved';
-                                return (
-                                  <div
-                                    key={p.id}
-                                    onClick={() => onSelectProject(p)}
-                                    className={`p-4 rounded-2xl border transition-all duration-300 cursor-pointer flex flex-col justify-between group/card relative overflow-hidden animate-fade-in-up hover:-translate-y-1.5 hover:shadow-xl ${
-                                      isPending
-                                        ? 'bg-amber-50/20 dark:bg-amber-950/20 border-amber-200/90 dark:border-amber-900/50 hover:border-amber-400'
-                                        : isAwaitingApproval
-                                        ? 'bg-blue-50/20 dark:bg-blue-950/20 border-blue-200/90 dark:border-blue-900/50 hover:border-blue-400'
-                                        : 'bg-white dark:bg-[#131B2E] border-slate-200 dark:border-slate-800 hover:border-blue-400 dark:hover:border-blue-500'
-                                    }`}
-                                    style={{ animationDelay: `${index * 60}ms` }}
-                                  >
-                                    <div
-                                      className={`absolute top-0 left-0 right-0 h-1 transition-opacity duration-300 opacity-0 group-hover/card:opacity-100 ${
-                                        isPending
-                                          ? 'bg-gradient-to-r from-amber-400 to-amber-600'
-                                          : isAwaitingApproval
-                                          ? 'bg-gradient-to-r from-blue-500 to-indigo-600'
-                                          : isRejected
-                                          ? 'bg-gradient-to-r from-rose-400 to-rose-600'
-                                          : 'bg-gradient-to-r from-emerald-400 to-teal-500'
-                                      }`}
-                                    />
-                                    <div>
-                                      <div className="flex items-center justify-between gap-2 mb-2.5">
-                                        <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 truncate">
-                                          {p.clientName}
-                                        </span>
-                                        <span
-                                          className={`text-[9px] font-extrabold px-2.5 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1.5 ${
-                                            isPending
-                                              ? 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300'
-                                              : isAwaitingApproval
-                                              ? 'bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300'
-                                              : isRejected
-                                              ? 'bg-rose-100 dark:bg-rose-950 text-rose-800 dark:text-rose-300'
-                                              : 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300'
-                                          }`}
-                                        >
-                                          {p.status}
-                                        </span>
-                                      </div>
-                                      <h4 className="text-xs font-black text-slate-800 dark:text-white mb-1 leading-snug group-hover/card:text-blue-600 dark:group-hover/card:text-blue-400">{p.name}</h4>
-                                      <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium truncate mb-3 flex items-center gap-1">
-                                        <span>📍</span>
-                                        <span>{p.location || 'Location not set'}</span>
-                                      </p>
-                                    </div>
-
-                                    <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
-                                      <span className="text-[10px] font-bold text-slate-400 truncate">
-                                        {p.systemTypes?.slice(0, 2).join(', ') || 'General System'}
-                                      </span>
-                                      <button
-                                        onClick={(e) => { e.stopPropagation(); onSelectProject(p); }}
-                                        className="px-3.5 py-1.5 rounded-xl text-xs font-black text-white shadow-sm flex items-center gap-1 shrink-0"
-                                        style={{
-                                          background: isPending ? 'linear-gradient(135deg, #D97706 0%, #B45309 100%)' : 'linear-gradient(135deg, #1D4ED8 0%, #1E40AF 100%)',
-                                        }}
-                                      >
-                                        <span>Open Survey</span>
-                                      </button>
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          ) : (
-                            <div className="py-16 text-center flex flex-col items-center justify-center my-auto">
-                              <div className="w-12 h-12 rounded-2xl bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 flex items-center justify-center mb-3">
-                                <StatClipboard className="w-6 h-6" />
-                              </div>
-                              <h4 className="text-sm font-black text-slate-800 dark:text-white mb-1">No site surveys created yet</h4>
-                              <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mb-4">
-                                No active site surveys have been assigned or submitted yet.
-                              </p>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                    </div>
-                  </div>
-                </>
-              )}
-
-              {/* Project Table (non-dashboard, non-notifications, non-category views) */}
-              {view !== 'dashboard' && view !== 'notifications' && !isCategoryView && (
-                <div className="px-6 pt-6 pb-6 flex-1 flex flex-col min-h-0">
-                  <div className="bg-white dark:bg-[#131B2E] rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm animate-fade-in-up flex-1 flex flex-col min-h-[calc(100vh-120px)]">
-                    {/* Table header */}
-                    <div
-                      className="flex flex-col sm:flex-row items-center justify-between gap-3 px-6 py-4 border-b border-slate-100 dark:border-slate-800"
-                    >
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-lg font-black text-slate-800 dark:text-white uppercase tracking-tight">
-                            {viewTitles[view] || 'Projects'}
-                          </span>
-
-                        </div>
-                        <p className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mt-0.5">
-                          AA2000 Security · Estimation Platform
-                        </p>
-                      </div>
-
-                      <div className="flex items-center gap-2 w-full sm:w-auto">
-                        <div className="relative flex-1 sm:max-w-xs">
-                          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                          </svg>
-                          <input
-                            type="text"
-                            value={search}
-                            onChange={e => setSearch(e.target.value)}
-                            placeholder="Search projects..."
-                            className="search-input w-full pl-9 pr-4 py-2 rounded-xl text-xs font-medium bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 outline-none focus:bg-white dark:focus:bg-slate-800 transition-all"
-                          />
-                        </div>
-                        <select
-                          value={sort}
-                          onChange={e => setSort(e.target.value as SortMode)}
-                          className="px-3 py-2 rounded-xl text-xs font-medium bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-200 outline-none cursor-pointer"
-                        >
-                          <option value="newest">Newest</option>
-                          <option value="oldest">Oldest</option>
-                          <option value="name-asc">Name A–Z</option>
-                          <option value="name-desc">Name Z–A</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    {/* Table body */}
-                    <div className="overflow-x-auto flex-1 pb-16">
-                      {ordered.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center py-16 gap-3 flex-1">
-                          <div
-                            className="w-14 h-14 rounded-2xl flex items-center justify-center text-2xl animate-float-a"
-                            style={{ background: theme.primaryAlpha08 }}
-                          >
-                            <StatClipboard className="w-6 h-6" />
-                          </div>
-                          <div className="text-center">
-                            <p className="text-xs font-bold text-slate-600 dark:text-slate-300">No projects found</p>
-                            <p className="text-[11px] text-slate-400 mt-0.5">
-                              {user.role === 'ADMIN' ? 'Create a new project to get started' : 'No assignments in this view yet'}
-                            </p>
-                          </div>
-                        </div>
-                      ) : (
-                        <table className="w-full text-left border-collapse">
-                          <thead>
-                            <tr className="text-[9px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100 dark:border-slate-800">
-                              <th className="py-3 pl-6">Project / Client</th>
-                              <th className="py-3 text-center">Status</th>
-                              <th className="py-3 text-center">Date & Time</th>
-                              <th className="py-3 pr-6 text-right" />
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {ordered.map((project, i) => {
-                              const isPinned = pinned.has(project.id);
-                              const isOpen = menuOpen === project.id;
-                              const isNearBottom = ordered.length > 2 && i >= ordered.length - 2;
-                              const statusBar =
-                                Object.entries(statusConfig).find(([key]) => project.status?.includes(key))?.[1]?.bar || '#64748B';
-
-                              const formattedTime = (() => {
-                                if (!project.createdAt) return '';
-                                try {
-                                  const d = new Date(project.createdAt);
-                                  if (!isNaN(d.getTime())) {
-                                    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
-                                  }
-                                } catch {}
-                                return '';
-                              })();
-
-                              return (
-                                <tr
-                                  key={project.id}
-                                  onClick={() => onSelectProject(project)}
-                                  className={`hover:bg-slate-50/80 dark:hover:bg-slate-800/50 cursor-pointer border-b border-slate-50 dark:border-slate-800/50 transition-colors group animate-fade-in-up ${
-                                    isOpen ? 'relative z-50' : ''
-                                  }`}
-                                  style={{ animationDelay: `${i * 30}ms` }}
-                                >
-                                  <td className="py-3.5 pl-6">
-                                    <div className="flex items-center gap-3">
-                                      <div className="w-1 h-8 rounded-full shrink-0" style={{ background: statusBar }} />
-                                      <div>
-                                        <div className="flex items-center gap-2">
-                                          <span className="text-xs font-bold text-slate-800 dark:text-white">{project.name}</span>
-                                          {isPinned && (
-                                            <span
-                                              className="text-[8px] font-extrabold px-1.5 py-0.5 rounded uppercase tracking-wide"
-                                              style={{ background: theme.primaryAlpha08, color: theme.primary }}
-                                            >
-                                              Pinned
-                                            </span>
-                                          )}
-                                        </div>
-                                        <p className="text-[10px] text-slate-400 mt-0.5">
-                                          {project.clientName} · {project.location}
-                                        </p>
-                                      </div>
-                                    </div>
-                                  </td>
-                                  <td className="py-3.5 text-center">
-                                    <StatusBadge status={project.status} />
-                                  </td>
-                                  <td className="py-3.5 text-center text-[11px] font-medium text-slate-500 dark:text-slate-400 whitespace-nowrap">
-                                    <div className="flex items-center justify-center gap-1.5">
-                                      <span>{project.startDate || (project.createdAt ? project.createdAt.split('T')[0] : '—')}</span>
-                                      {formattedTime && (
-                                        <span className="text-[10px] text-slate-400 dark:text-slate-500 font-semibold">
-                                          · {formattedTime}
-                                        </span>
-                                      )}
-                                    </div>
-                                  </td>
-                                  <td className={`py-3.5 pr-6 text-right relative ${isOpen ? 'z-50' : ''}`} onClick={e => e.stopPropagation()}>
-                                    <button
-                                      onClick={() => setMenuOpen(isOpen ? null : project.id)}
-                                      className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-all opacity-0 group-hover:opacity-100 cursor-pointer"
-                                    >
-                                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h.01M12 12h.01M19 12h.01" />
-                                      </svg>
-                                    </button>
-                                    {isOpen && (
-                                      <>
-                                        <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(null)} />
-                                        <div
-                                          className={`absolute right-4 z-50 w-48 rounded-xl bg-white dark:bg-[#162032] border border-slate-200 dark:border-slate-700 py-1.5 shadow-2xl text-left animate-scale-in ${
-                                            isNearBottom ? 'bottom-8' : 'top-10'
-                                          }`}
-                                        >
-                                          <button
-                                            onClick={() => { setEditProject(project); setMenuOpen(null); }}
-                                            className="w-full px-3.5 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-800 dark:hover:text-white flex items-center gap-2 cursor-pointer transition-colors"
-                                          >
-                                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
-                                            Edit Project
-                                          </button>
-                                          <button
-                                            onClick={() => handlePin(project.id)}
-                                            className="w-full px-3.5 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-800 dark:hover:text-white flex items-center gap-2 cursor-pointer transition-colors"
-                                          >
-                                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" /></svg>
-                                            {isPinned ? 'Unpin' : 'Pin Project'}
-                                          </button>
-                                          <button
-                                            onClick={() => onSelectProject(project)}
-                                            className="w-full px-3.5 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 hover:text-slate-800 flex items-center gap-2 cursor-pointer transition-colors"
-                                          >
-                                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
-                                            View Details
-                                          </button>
-                                          <div className="border-t border-slate-100 my-1" />
-                                          <button
-                                            onClick={() => { setDeleteConfirm(project.id); setMenuOpen(null); }}
-                                            className="w-full px-3.5 py-2 text-xs font-bold text-red-600 hover:bg-red-50 hover:text-red-700 flex items-center gap-2 cursor-pointer transition-colors"
-                                          >
-                                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                                            Delete Project
-                                          </button>
-                                        </div>
-                                      </>
-                                    )}
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Notification View */}
-              {view === 'notifications' && (
-                <div className="px-6 pt-6 pb-6 flex-1 flex flex-col min-h-0">
-                  <div className="bg-white dark:bg-[#131B2E] rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden animate-fade-in-up flex-1 flex flex-col min-h-[calc(100vh-120px)]">
-                    {/* Tabs */}
-                    <div className="px-6 pt-4 pb-0 border-b border-slate-100">
-                      <div className="flex flex-wrap gap-1">
-                        {[
-                          { key: 'ongoing', label: 'Ongoing', count: countOngoing, color: '#2563EB' },
-                          { key: 'upcoming', label: 'Upcoming', count: countUpcoming, color: '#059669' },
-                          { key: 'missing', label: 'Missing', count: countMissing, color: '#D97706' },
-                          ...(user.role === 'ADMIN' || user.role === 'ACCOUNTING'
-                            ? [
-                              { key: 'approval', label: 'Approval', count: countApproval, color: '#7C3AED' },
-                              { key: 'finalize', label: 'Finalize', count: countFinalize, color: '#059669' },
-                            ]
-                            : []),
-                        ].map(tab => (
-                          <button
-                            key={tab.key}
-                            onClick={() => setActiveNotifTab(tab.key as any)}
-                            className="flex items-center gap-1.5 px-3 py-2 text-[11px] font-bold uppercase tracking-wider border-b-2 transition-all mb-[-1px]"
-                            style={
-                              activeNotifTab === tab.key
-                                ? { borderColor: tab.color, color: tab.color }
-                                : { borderColor: 'transparent', color: '#94A3B8' }
-                            }
-                          >
-                            {tab.label}
-                            <span
-                              className="text-[9px] font-extrabold px-1.5 py-0.5 rounded-full"
-                              style={
-                                activeNotifTab === tab.key
-                                  ? { background: `${tab.color}15`, color: tab.color }
-                                  : { background: '#F1F5F9', color: '#94A3B8' }
-                              }
-                            >
-                              {tab.count}
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="divide-y divide-slate-50">
-                      {notifications.filter(n => n.type === activeNotifTab).length === 0 ? (
-                        <div className="py-12 text-center">
-                          <div className="w-12 h-12 rounded-2xl bg-slate-50 flex items-center justify-center mx-auto mb-3">
-                            <Bell className="w-5 h-5 text-slate-300" />
-                          </div>
-                          <p className="text-xs font-bold text-slate-400">No alerts in this category</p>
-                        </div>
-                      ) : (
-                        notifications
-                          .filter(n => n.type === activeNotifTab)
-                          .map(n => {
-                            const cfg = typeConfig[n.type] || typeConfig.ongoing;
-                            return (
-                              <div
-                                key={n.id}
-                                onClick={() => navigateNotif(n.type)}
-                                className="px-6 py-4 flex items-start gap-4 cursor-pointer hover:bg-slate-50/50 transition-colors group"
-                              >
-                                <div
-                                  className="w-2.5 h-2.5 rounded-full mt-1.5 shrink-0"
-                                  style={{ background: !n.read ? cfg.dot : '#CBD5E1' }}
-                                />
-                                <div className="min-w-0 flex-1">
-                                  <p className={`text-sm ${!n.read ? 'font-bold text-slate-800' : 'font-medium text-slate-500'}`}>
-                                    {n.title}
-                                  </p>
-                                  <div className="flex items-center gap-3 mt-1.5">
-                                    <span className="text-xs text-slate-400 font-medium">
-                                      {n.companyName} · {n.date}
-                                    </span>
-                                    <span
-                                      className="text-[8px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wide"
-                                      style={{ background: cfg.bg, color: cfg.color }}
-                                    >
-                                      {cfg.label}
-                                    </span>
-                                  </div>
-                                </div>
-                              </div>
-                            );
-                          })
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
           )}
-        </>
+        </div>
+      </main>
+
+      {/* ── Modals ── */}
+      {showCreate && (
+        <CreateProjectModal
+          userRole={user.role}
+          onClose={() => setShowCreate(false)}
+          onCreate={p => { onCreateProject(p); setProjectList(prev => [...prev, p]); }}
+          isCompanyMode={isCompanyMode}
+        />
       )}
-    </div>
 
-        {/* ── Modals ── */}
-        {showCreate && (
-          <CreateProjectModal
-            userRole={user.role}
-            onClose={() => setShowCreate(false)}
-            onCreate={p => { onCreateProject(p); setProjectList(prev => [...prev, p]); }}
-            isCompanyMode={isCompanyMode}
-          />
-        )}
+      {editProject && (
+        <EditProjectModal project={editProject} onClose={() => setEditProject(null)} onSave={handleSaveEdit} />
+      )}
 
-        {editProject && (
-          <EditProjectModal project={editProject} onClose={() => setEditProject(null)} onSave={handleSaveEdit} />
-        )}
-
-        {deleteConfirm && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop">
-            <div className="w-full max-w-sm p-6 rounded-3xl bg-white shadow-2xl border border-slate-100 text-center animate-scale-in">
-              <div className="w-12 h-12 rounded-2xl flex items-center justify-center mx-auto mb-4 bg-red-50">
-                <svg className="w-6 h-6 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                </svg>
-              </div>
-              <h3 className="font-black text-slate-800 text-base mb-1">Delete Project?</h3>
-              <p className="text-xs text-slate-400 mb-5">This action cannot be undone.</p>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setDeleteConfirm(null)}
-                  className="flex-1 py-2.5 rounded-xl text-xs font-bold bg-slate-50 text-slate-600 border border-slate-200 btn-press"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={() => handleDelete(deleteConfirm)}
-                  className="flex-1 py-2.5 rounded-xl text-xs font-bold text-white bg-red-500 shadow-md shadow-red-100 btn-press"
-                >
-                  Delete
-                </button>
-              </div>
+      {deleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop">
+          <div className="w-full max-w-sm p-6 rounded-3xl bg-white shadow-2xl border border-slate-100 text-center animate-scale-in">
+            <div className="w-12 h-12 rounded-2xl flex items-center justify-center mx-auto mb-4 bg-red-50">
+              <svg className="w-6 h-6 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+            </div>
+            <h3 className="font-black text-slate-800 text-base mb-1">Delete Project?</h3>
+            <p className="text-xs text-slate-400 mb-5">This action cannot be undone.</p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setDeleteConfirm(null)}
+                className="flex-1 py-2.5 rounded-xl text-xs font-bold bg-slate-50 text-slate-600 border border-slate-200 btn-press"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleDelete(deleteConfirm)}
+                className="flex-1 py-2.5 rounded-xl text-xs font-bold text-white bg-red-500 shadow-md shadow-red-100 btn-press"
+              >
+                Delete
+              </button>
             </div>
           </div>
+        </div>
+      )}
+
+      <div
+        aria-hidden={!isAiChatOpen}
+        className={isAiChatDocked && !isMobile
+          ? `relative h-full shrink-0 overflow-hidden transition-[width] duration-200 ${isAiChatOpen ? 'border-l border-slate-700' : 'border-l-0'}`
+          : `fixed inset-y-0 right-0 z-[60] ${isAiChatOpen ? '' : 'invisible pointer-events-none'}`}
+        style={isAiChatDocked && !isMobile
+          ? { width: isAiChatOpen ? `min(${aiChatWidth}px, calc(100vw - 38rem))` : 0 }
+          : undefined}
+      >
+        {isAiChatOpen && (
+          <div
+            role="separator"
+            aria-label="Resize AI Assistant panel"
+            aria-orientation="vertical"
+            aria-valuemin={320}
+            aria-valuemax={Math.max(320, window.innerWidth - (isAiChatDocked ? 608 : 320))}
+            aria-valuenow={aiChatWidth}
+            tabIndex={0}
+            onKeyDown={event => {
+              if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+              event.preventDefault();
+              const direction = event.key === 'ArrowLeft' ? 1 : -1;
+              const maxWidth = Math.max(320, window.innerWidth - (isAiChatDocked ? 608 : 320));
+              setAiChatWidth(width => Math.max(320, Math.min(maxWidth, width + direction * 20)));
+            }}
+            onPointerDown={event => {
+              event.preventDefault();
+              event.currentTarget.setPointerCapture(event.pointerId);
+              resizeStartRef.current = {
+                pointerId: event.pointerId,
+                x: event.clientX,
+                width: aiChatWidth,
+              };
+            }}
+            onPointerMove={event => {
+              const start = resizeStartRef.current;
+              if (!start || start.pointerId !== event.pointerId) return;
+              const maxWidth = Math.max(320, window.innerWidth - (isAiChatDocked ? 608 : 320));
+              setAiChatWidth(Math.max(320, Math.min(maxWidth, start.width + start.x - event.clientX)));
+            }}
+            onPointerUp={event => {
+              if (resizeStartRef.current?.pointerId === event.pointerId) {
+                resizeStartRef.current = null;
+                event.currentTarget.releasePointerCapture(event.pointerId);
+              }
+            }}
+            onPointerCancel={() => { resizeStartRef.current = null; }}
+            className="absolute inset-y-0 left-0 z-10 flex w-3 -translate-x-1/2 cursor-col-resize touch-none items-center justify-center outline-none"
+          >
+            <span className="h-12 w-1 rounded-full bg-slate-500/40 transition-colors hover:bg-blue-400" />
+          </div>
         )}
-        <AIChatbotFloating userRole={user?.role} activeProjectName={selectedCompanyProject?.name} />
-      </main>
+        <div
+          className="h-full max-w-[100vw] shadow-2xl"
+          style={{
+            width: isAiChatDocked && !isMobile
+              ? '100%'
+              : isMobile
+                ? '100vw'
+                : `min(${aiChatWidth}px, 100vw)`,
+          }}
+        >
+          <AIChatbotFloating
+            presentation="sidebar"
+            isOpen={isAiChatOpen}
+            isDocked={isAiChatDocked && !isMobile}
+            showDockToggle={!isMobile}
+            onToggleDock={() => setIsAiChatDocked(docked => !docked)}
+            onClose={() => setIsAiChatOpen(false)}
+            userRole={user.role}
+            activeProjectName={selectedCompanyProject?.name}
+          />
+        </div>
+      </div>
+      </div>
 
     </div>
   );

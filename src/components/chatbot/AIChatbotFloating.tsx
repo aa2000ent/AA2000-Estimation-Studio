@@ -36,13 +36,26 @@ export interface ChatMessage {
 export interface AIChatbotFloatingProps {
   userRole?: string;
   activeProjectName?: string;
+  presentation?: 'floating' | 'sidebar';
+  isOpen?: boolean;
+  isDocked?: boolean;
+  showDockToggle?: boolean;
+  onToggleDock?: () => void;
+  onClose?: () => void;
 }
 
 export const AIChatbotFloating: React.FC<AIChatbotFloatingProps> = ({
   userRole = 'ESTIMATOR',
   activeProjectName,
+  presentation = 'floating',
+  isOpen: sidebarOpen = false,
+  isDocked = false,
+  showDockToggle = false,
+  onToggleDock,
+  onClose,
 }) => {
-  const [isOpen, setIsOpen] = useState<boolean>(false);
+  const [floatingOpen, setFloatingOpen] = useState<boolean>(false);
+  const isOpen = presentation === 'sidebar' ? sidebarOpen : floatingOpen;
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: 'init-1',
@@ -76,6 +89,15 @@ export const AIChatbotFloating: React.FC<AIChatbotFloatingProps> = ({
       setHasUnread(false);
     }
   }, [messages, isOpen]);
+
+  useEffect(() => {
+    const handleOpenAiChat = () => {
+      if (presentation === 'floating') setFloatingOpen(true);
+      setHasUnread(false);
+    };
+    window.addEventListener('open-ai-chat', handleOpenAiChat);
+    return () => window.removeEventListener('open-ai-chat', handleOpenAiChat);
+  }, [presentation]);
 
   const handlePaste = async (e: React.ClipboardEvent) => {
     const items = e.clipboardData?.items;
@@ -491,7 +513,7 @@ CONVERSATION & RESPONSE RULES:
 
   return (
     <>
-      {/* Floating Action Button */}
+      {presentation === 'floating' && (
       <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end">
         {!isOpen && hasUnread && (
           <div className="mb-2 px-3 py-1 bg-amber-500 text-white text-xs font-semibold rounded-full shadow-lg animate-bounce flex items-center gap-1.5">
@@ -502,7 +524,7 @@ CONVERSATION & RESPONSE RULES:
 
         <button
           onClick={() => {
-            setIsOpen(!isOpen);
+            setFloatingOpen(!isOpen);
             setHasUnread(false);
           }}
           className={`group relative flex items-center justify-center p-4 rounded-full shadow-2xl transition-all duration-300 transform hover:scale-105 ${
@@ -551,10 +573,13 @@ CONVERSATION & RESPONSE RULES:
           )}
         </button>
       </div>
+      )}
 
-      {/* Floating Chat Modal Panel */}
       {isOpen && (
-        <div className="fixed bottom-24 right-4 md:right-6 z-50 w-[calc(100vw-2rem)] md:w-[460px] h-[640px] max-h-[85vh] bg-slate-900/95 backdrop-blur-xl border border-slate-700/60 rounded-2xl shadow-2xl flex flex-col overflow-hidden text-slate-100 animate-in fade-in slide-in-from-bottom-5 duration-200">
+        <div className={presentation === 'sidebar'
+          ? 'relative w-full h-full min-h-0 bg-slate-900 flex flex-col overflow-hidden text-slate-100'
+          : 'fixed bottom-24 right-4 md:right-6 z-50 w-[calc(100vw-2rem)] md:w-[460px] h-[640px] max-h-[85vh] bg-slate-900/95 backdrop-blur-xl border border-slate-700/60 rounded-2xl shadow-2xl flex flex-col overflow-hidden text-slate-100 animate-in fade-in slide-in-from-bottom-5 duration-200'
+        }>
           {/* Header */}
           <div className="px-5 py-4 bg-gradient-to-r from-slate-900 via-blue-950 to-slate-900 border-b border-slate-800 flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -593,24 +618,38 @@ CONVERSATION & RESPONSE RULES:
               </div>
             </div>
 
-            <button
-              onClick={() => setIsOpen(false)}
-              className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors"
-            >
-              <svg
-                className="w-5 h-5"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
+            <div className="flex items-center gap-1">
+              {presentation === 'sidebar' && showDockToggle && (
+                <button
+                  type="button"
+                  onClick={onToggleDock}
+                  aria-label={isDocked ? 'Undock AI Assistant' : 'Dock AI Assistant'}
+                  title={isDocked ? 'Undock panel' : 'Dock panel'}
+                  className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-800 hover:text-white"
+                >
+                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    {isDocked ? (
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M8 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-3M8 3v5h5M8 3l8 8m5-8v5h-5m5-5-8 8" />
+                    ) : (
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Zm10 0v7h6" />
+                    )}
+                  </svg>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  if (presentation === 'sidebar') onClose?.();
+                  else setFloatingOpen(false);
+                }}
+                aria-label="Close AI Assistant"
+                className="rounded-lg p-1.5 text-slate-400 transition-colors hover:bg-slate-800 hover:text-white"
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M6 18L18 6M6 6l12 12"
-                />
-              </svg>
-            </button>
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18 18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
           </div>
 
           {/* Pricing Tier Selector Bar */}

@@ -1,8 +1,7 @@
-import { useState } from 'react';
-import type { User } from '../../App';
-import logo from '../../images/aa2000 logo.png';
-import { getRoleTheme } from '../../utils/RoleTheme';
-import { loginWithPin } from '../../services/authService';
+import { useState } from "react";
+import type { User } from "../../App";
+import logo from "../../images/aa2000 logo.png";
+import { loginWithPin } from "../../services/authService";
 
 interface Props {
   onLogin: (user: User) => void;
@@ -73,130 +72,66 @@ const features = [
   },
 ];
 
-/**
- * Temporary compatibility mapping.
- *
- * The backend has more roles than the current Estimation frontend.
- * This keeps the existing frontend RBAC working until the frontend
- * team's unified RBAC implementation is merged.
- */
-function mapBackendRole(
-  backendRole?: string
-): User['role'] {
-  const role = String(backendRole || '')
-    .trim()
-    .toUpperCase();
-
-  switch (role) {
-    case 'ADMIN':
-    case 'SUPER ADMIN':
-    case 'GENERAL MANAGER':
-      return 'ADMIN';
-
-    case 'TECHNICAL':
-    case 'TECHNICIAN':
-      return 'TECHNICIAN';
-
-    case 'ACCOUNTING':
-    case 'SALE':
-    case 'SALES':
-    case 'CHECKER':
-    case 'OPERATIONS':
-    default:
-      return 'ACCOUNTING';
-  }
-}
+const BRAND = {
+  primary: "#1E3A8A",
+  accent: "#2563EB",
+  buttonGradient: "linear-gradient(135deg, #1E3A8A 0%, #2563EB 100%)",
+};
 
 export default function Login({ onLogin }: Props) {
-  const [identifier, setIdentifier] = useState('');
-  const [pin, setPin] = useState('');
-  const [error, setError] = useState('');
+  const [employeeId, setEmployeeId] = useState("");
+  const [pin, setPin] = useState("");
+  const [error, setError] = useState("");
   const [showPin, setShowPin] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<{
-    identifier?: boolean;
+    employeeId?: boolean;
     pin?: boolean;
   }>({});
   const [loading, setLoading] = useState(false);
 
-  // Login page uses a neutral/default theme.
-  // The user's real role is received only after backend authentication.
-  const theme = getRoleTheme('ACCOUNTING');
-
-  const handleIdentifierChange = (value: string) => {
-    setIdentifier(value);
-
-    setFieldErrors((prev) => ({
-      ...prev,
-      identifier: false,
-    }));
-
-    setError('');
+  const handleEmployeeIdChange = (value: string) => {
+    const upper = value.toUpperCase();
+    setEmployeeId(upper);
+    setFieldErrors((prev) => ({ ...prev, employeeId: false }));
+    setError("");
   };
 
-  const handleSubmit = async (
-    e: React.FormEvent
-  ) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    setError('');
-
-    const errors: {
-      identifier?: boolean;
-      pin?: boolean;
-    } = {};
-
-    if (!identifier.trim()) {
-      errors.identifier = true;
-    }
-
-    if (!pin.trim()) {
-      errors.pin = true;
-    }
-
+    setError("");
+    const errors: { employeeId?: boolean; pin?: boolean } = {};
+    if (!employeeId.trim()) errors.employeeId = true;
+    if (!pin.trim()) errors.pin = true;
     setFieldErrors(errors);
-
-    if (Object.keys(errors).length > 0) {
-      return;
-    }
+    if (Object.keys(errors).length > 0) return;
 
     setLoading(true);
-
     try {
-      const result = await loginWithPin(
-        identifier,
-        pin
-      );
+      // Authenticate directly against the database via backend PIN service
+      const res = await loginWithPin(employeeId, pin);
 
-      const appRole = mapBackendRole(
-        result.account.role_name
-      );
+      const fullName = res.employee
+        ? `${res.employee.Emp_fname || ""} ${res.employee.Emp_lname || ""}`.trim()
+        : res.account?.username || employeeId;
 
-      const fullName = [
-        result.employee?.Emp_fname,
-        result.employee?.Emp_lname,
-      ]
-        .filter(Boolean)
-        .join(' ')
-        .trim();
+      const rawRole = (res.account?.role_name || "").toUpperCase();
+      const mappedRole: "ACCOUNTING" | "ADMIN" | "TECHNICIAN" =
+        rawRole.includes("ADMIN")
+          ? "ADMIN"
+          : rawRole.includes("TECH")
+          ? "TECHNICIAN"
+          : "ACCOUNTING";
 
       onLogin({
-        id:
-          result.account.username ||
-          result.employee.Emp_IDno,
-        fullName:
-          fullName ||
-          result.account.username,
-        employeeId:
-          result.employee?.Emp_IDno,
-        role: appRole,
+        id: (res.employee?.Emp_IDno || employeeId).toLowerCase(),
+        fullName: fullName || employeeId,
+        employeeId: res.employee?.Emp_IDno || employeeId,
+        role: mappedRole,
       });
-    } catch (err) {
-      const message =
-        err instanceof Error
-          ? err.message
-          : 'Unable to log in.';
-
-      setError(message);
+    } catch (err: any) {
+      setError(
+        err?.message || "Invalid Employee ID / Username or PIN. Please check your credentials."
+      );
     } finally {
       setLoading(false);
     }
@@ -207,16 +142,13 @@ export default function Login({ onLogin }: Props) {
       className="min-h-screen overflow-y-auto grid lg:grid-cols-2"
       style={{
         background:
-          'radial-gradient(ellipse at 60% 20%, rgba(191,219,254,0.35) 0%, #EEF5FF 50%, #F8FAFC 100%)',
+          "radial-gradient(ellipse at 70% 20%, rgba(191,219,254,0.35) 0%, #EEF5FF 50%, #F8FAFC 100%)",
       }}
     >
-      {/* Left Brand Panel */}
+      {/* ── Left Brand Panel ── */}
       <div
-        className="hidden lg:flex flex-col w-[480px] shrink-0 p-10 relative overflow-hidden"
-        style={{
-          background: '#FFFFFF',
-          borderRight: '1px solid #E5E7EB',
-        }}
+        className="hidden lg:flex flex-col h-full p-8 xl:p-10 relative overflow-hidden"
+        style={{ background: "#FFFFFF", borderRight: "1px solid #E5E7EB" }}
       >
         <div
           className="absolute inset-0 opacity-[0.03]"
@@ -226,178 +158,130 @@ export default function Login({ onLogin }: Props) {
             backgroundSize: "40px 40px",
           }}
         />
-
         <div
           className="absolute animate-float-a pointer-events-none"
           style={{
-            width: 140,
-            height: 140,
-            right: -30,
-            top: 60,
-            borderRadius:
-              '38% 62% 63% 37% / 41% 44% 56% 59%',
-            background: `linear-gradient(135deg, ${theme.primary}22, ${theme.accent}18)`,
+            width: 160,
+            height: 160,
+            right: -40,
+            top: 80,
+            borderRadius: "38% 62% 63% 37% / 41% 44% 56% 59%",
+            background: `linear-gradient(135deg, ${BRAND.primary}22, ${BRAND.accent}18)`,
           }}
         />
-
         <div
           className="absolute animate-float-b pointer-events-none"
           style={{
-            width: 90,
-            height: 90,
-            right: 60,
-            top: 220,
-            borderRadius:
-              '63% 37% 37% 63% / 43% 37% 63% 57%',
-            background: `linear-gradient(135deg, ${theme.accent}15, ${theme.primary}10)`,
+            width: 72,
+            height: 72,
+            right: 72,
+            bottom: 160,
+            borderRadius: "63% 37% 37% 63% / 43% 37% 63% 57%",
+            background: `linear-gradient(135deg, ${BRAND.accent}15, ${BRAND.primary}10)`,
           }}
         />
 
-        <div
-          className="absolute animate-float-a pointer-events-none"
-          style={{
-            width: 60,
-            height: 60,
-            left: 20,
-            bottom: 200,
-            borderRadius: '50%',
-            background: `${theme.primary}12`,
-          }}
-        />
+        <div className="relative z-10 w-full max-w-md mx-auto flex flex-col flex-1">
+          <div className="flex justify-center">
+            <img src={logo} alt="AA2000 Logo" className="h-36 object-contain" />
+          </div>
 
-        <div className="flex items-center justify-center mb-4 relative z-10">
-          <img
-            src={logo}
-            alt="AA2000 Logo"
-            className="h-38 object-contain"
-          />
-        </div>
-
-        <div className="relative z-10 mt-2 animate-fade-in-up">
-          <h1
-            className="text-4xl font-black leading-tight mb-4 text-[#0F172A]"
-            style={{
-              fontFamily:
-                'Manrope, Inter, sans-serif',
-            }}
-          >
-            Survey smarter,
-            <br />
-            <span
-              style={{
-                color: theme.primary,
-              }}
+          <div className="flex-1 flex flex-col justify-center py-4 animate-fade-in-up">
+            <h1
+              className="text-3xl xl:text-4xl font-black leading-snug mb-3 text-[#0F172A]"
+              style={{ fontFamily: "Manrope, Inter, sans-serif" }}
             >
-              estimate faster.
-            </span>
-          </h1>
+              Survey smarter,
+              <br />
+              <span style={{ color: BRAND.primary }}>estimate faster.</span>
+            </h1>
+            <p className="text-sm leading-relaxed mb-5 text-slate-500 font-medium">
+              Built for field technicians and sales teams managing electronic
+              security installations across multiple sites in the Philippines.
+            </p>
 
-          <p className="text-sm leading-relaxed mb-8 text-slate-500 font-medium">
-            Built for field technicians and
-            sales teams managing electronic
-            security installations across
-            multiple sites in the Philippines.
-          </p>
-
-          <div className="space-y-4">
-            {features.map((feature, i) => (
-              <div
-                key={feature.label}
-                className="flex items-start gap-4 animate-fade-in-up"
-                style={{
-                  animationDelay: `${
-                    (i + 1) * 100
-                  }ms`,
-                }}
-              >
+            <div className="space-y-3">
+              {features.map((f, i) => (
                 <div
-                  className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0 transition-transform hover:scale-105"
+                  key={f.label}
+                  className="flex items-center gap-4 p-3.5 rounded-2xl animate-fade-in-up"
                   style={{
-                    background: `${theme.primary}10`,
-                    color: theme.primary,
-                    border: `1px solid ${theme.primary}20`,
+                    animationDelay: `${(i + 1) * 100}ms`,
+                    background: `${BRAND.primary}06`,
+                    border: `1px solid ${BRAND.primary}12`,
                   }}
                 >
-                  {feature.icon}
+                  <div
+                    className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0"
+                    style={{
+                      background: "#FFFFFF",
+                      color: BRAND.primary,
+                      border: `1px solid ${BRAND.primary}18`,
+                    }}
+                  >
+                    {f.icon}
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-[#1E293B]">
+                      {f.label}
+                    </p>
+                    <p className="text-xs text-slate-400 font-medium mt-0.5">
+                      {f.desc}
+                    </p>
+                  </div>
                 </div>
-
-                <div>
-                  <p className="text-sm font-bold text-[#1E293B]">
-                    {feature.label}
-                  </p>
-
-                  <p className="text-xs text-slate-400 font-medium mt-0.5">
-                    {feature.desc}
-                  </p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="relative z-10 mt-auto pt-6">
-          <div className="flex items-center gap-2 mb-3">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
-
-            <span className="text-[10px] font-bold text-emerald-700 tracking-wider">
-              SYSTEM ONLINE
-            </span>
+              ))}
+            </div>
           </div>
 
-          <p className="text-[10px] font-bold text-[#94A3B8]">
-            © 2026 AA2000 CONNECT. All rights
-            reserved.
-          </p>
+          <div className="pt-4">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
+              <span className="text-[10px] font-bold text-emerald-700 tracking-wider">
+                SYSTEM ONLINE
+              </span>
+            </div>
+            <p className="text-[10px] font-bold text-[#94A3B8]">
+              © 2026 AA2000 CONNECT. All rights reserved.
+            </p>
+          </div>
         </div>
       </div>
 
-      {/* Right Login Panel */}
-      <div className="flex-1 flex items-center justify-center p-6">
+      {/* ── Right Login Panel ── */}
+      <div className="flex items-center justify-center h-full p-6 lg:p-8">
         <div
-          className="w-full max-w-sm bg-white p-8 rounded-3xl shadow-sm animate-scale-in"
-          style={{
-            border: '1px solid #E5E7EB',
-          }}
+          className="w-full max-w-md bg-white px-8 py-8 rounded-3xl shadow-[0_12px_40px_rgba(15,23,42,0.06)] animate-scale-in flex flex-col"
+          style={{ border: "1px solid #E5E7EB" }}
         >
-          <div className="lg:hidden flex items-center gap-2.5 mb-8 justify-center">
-            <img
-              src={logo}
-              alt="AA2000 Logo"
-              className="h-12 object-contain"
-            />
+          <div className="lg:hidden flex items-center justify-center mb-8">
+            <img src={logo} alt="AA2000 Logo" className="h-12 object-contain" />
           </div>
 
           <div className="mb-6">
+            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400 mb-3">
+              Employee portal
+            </p>
             <h2
-              className="text-xl font-black mb-1 text-slate-800"
-              style={{
-                fontFamily:
-                  'Manrope, Inter, sans-serif',
-              }}
+              className="text-2xl font-black mb-2 text-slate-800"
+              style={{ fontFamily: "Manrope, Inter, sans-serif" }}
             >
               Welcome back
             </h2>
-
-            <p className="text-xs text-slate-400 font-medium">
-              Sign in with your Username or
-              Employee ID and PIN
+            <p className="text-sm text-slate-400 font-medium">
+              Sign in with your username and PIN
             </p>
           </div>
 
-          <form
-            onSubmit={handleSubmit}
-            className="space-y-4"
-          >
-            {/* Username / Employee ID */}
+          <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-[10px] font-bold mb-1.5 uppercase tracking-wider text-slate-400">
                 Username / Employee ID
               </label>
-
               <div className="relative">
                 <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400">
                   <svg
-                    className="w-3.5 h-3.5"
+                    className="w-4 h-4"
                     fill="none"
                     viewBox="0 0 24 24"
                     stroke="currentColor"
@@ -410,31 +294,23 @@ export default function Login({ onLogin }: Props) {
                     />
                   </svg>
                 </span>
-
                 <input
                   type="text"
-                  value={identifier}
-                  onChange={(e) =>
-                    handleIdentifierChange(
-                      e.target.value
-                    )
-                  }
-                  placeholder="Enter username or employee ID"
-                  className="search-input w-full pl-9 pr-4 py-3 rounded-xl text-xs font-medium bg-slate-50 border outline-none text-slate-700 focus:bg-white transition-all"
+                  value={employeeId}
+                  onChange={(e) => handleEmployeeIdChange(e.target.value)}
+                  placeholder="Enter your Employee ID or Username"
+                  className="search-input w-full pl-11 pr-4 py-3.5 rounded-xl text-sm font-medium bg-slate-50 border outline-none text-slate-700 focus:bg-white focus:ring-2 transition-all"
                   style={{
-                    borderColor:
-                      fieldErrors.identifier
-                        ? '#EF4444'
-                        : '#E2E8F0',
+                    borderColor: fieldErrors.employeeId ? "#EF4444" : "#E2E8F0",
+                    paddingLeft: "2.75rem",
+                    ["--tw-ring-color" as string]: `${BRAND.primary}40`,
                   }}
-                  autoComplete="username"
+                  autoComplete="off"
                 />
               </div>
-
-              {fieldErrors.identifier && (
+              {fieldErrors.employeeId && (
                 <p className="text-[10px] text-red-500 font-bold mt-1">
-                  Username or Employee ID is
-                  required
+                  Username is required
                 </p>
               )}
             </div>
@@ -443,11 +319,10 @@ export default function Login({ onLogin }: Props) {
               <label className="block text-[10px] font-bold mb-1.5 uppercase tracking-wider text-slate-400">
                 PIN
               </label>
-
               <div className="relative">
                 <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400">
                   <svg
-                    className="w-3.5 h-3.5"
+                    className="w-4 h-4"
                     fill="none"
                     viewBox="0 0 24 24"
                     stroke="currentColor"
@@ -460,52 +335,32 @@ export default function Login({ onLogin }: Props) {
                     />
                   </svg>
                 </span>
-
                 <input
-                  type={
-                    showPin
-                      ? 'text'
-                      : 'password'
-                  }
+                  type={showPin ? "text" : "password"}
                   value={pin}
                   onChange={(e) => {
                     setPin(e.target.value);
-
-                    setFieldErrors(
-                      (prev) => ({
-                        ...prev,
-                        pin: false,
-                      })
-                    );
-
-                    setError('');
+                    setFieldErrors((prev) => ({ ...prev, pin: false }));
+                    setError("");
                   }}
                   placeholder="Enter PIN"
-                  className="search-input w-full pl-9 pr-10 py-3 rounded-xl text-xs font-medium bg-slate-50 border outline-none text-slate-700 focus:bg-white transition-all"
+                  className="search-input w-full pl-11 pr-10 py-3.5 rounded-xl text-sm font-medium bg-slate-50 border outline-none text-slate-700 focus:bg-white focus:ring-2 transition-all"
                   style={{
-                    borderColor:
-                      fieldErrors.pin
-                        ? '#EF4444'
-                        : '#E2E8F0',
-                    letterSpacing: showPin
-                      ? 'normal'
-                      : '0.25em',
+                    borderColor: fieldErrors.pin ? "#EF4444" : "#E2E8F0",
+                    paddingLeft: "2.75rem",
+                    letterSpacing: (pin && !showPin) ? "0.25em" : "normal",
+                    ["--tw-ring-color" as string]: `${BRAND.primary}40`,
                   }}
-                  autoComplete="current-password"
                 />
-
                 <button
                   type="button"
-                  onClick={() =>
-                    setShowPin(
-                      (value) => !value
-                    )
-                  }
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                  onClick={() => setShowPin((v) => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 transition-colors"
+                  aria-label={showPin ? "Hide PIN" : "Show PIN"}
                 >
                   {showPin ? (
                     <svg
-                      className="w-3.5 h-3.5"
+                      className="w-4 h-4"
                       fill="none"
                       viewBox="0 0 24 24"
                       stroke="currentColor"
@@ -519,7 +374,7 @@ export default function Login({ onLogin }: Props) {
                     </svg>
                   ) : (
                     <svg
-                      className="w-3.5 h-3.5"
+                      className="w-4 h-4"
                       fill="none"
                       viewBox="0 0 24 24"
                       stroke="currentColor"
@@ -530,7 +385,6 @@ export default function Login({ onLogin }: Props) {
                         strokeLinejoin="round"
                         d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
                       />
-
                       <path
                         strokeLinecap="round"
                         strokeLinejoin="round"
@@ -540,7 +394,6 @@ export default function Login({ onLogin }: Props) {
                   )}
                 </button>
               </div>
-
               {fieldErrors.pin && (
                 <p className="text-[10px] text-red-500 font-bold mt-1">
                   PIN is required
@@ -563,67 +416,55 @@ export default function Login({ onLogin }: Props) {
                     d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
                   />
                 </svg>
-
                 {error}
               </div>
             )}
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full py-3 rounded-xl text-xs font-bold text-white transition-all duration-200 btn-press relative overflow-hidden"
-              style={{
-                background: loading
-                  ? '#E2E8F0'
-                  : theme.buttonGradient,
-                color: loading
-                  ? '#94A3B8'
-                  : '#fff',
-                cursor: loading
-                  ? 'not-allowed'
-                  : 'pointer',
-                boxShadow: loading
-                  ? 'none'
-                  : `0 4px 14px ${theme.primary}35`,
-              }}
-            >
-              {loading ? (
-                <span className="flex items-center justify-center gap-2">
-                  <svg
-                    className="w-3.5 h-3.5 animate-spin"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                  >
-                    <circle
-                      className="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                    />
+            <div className="pt-2">
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-3.5 rounded-xl text-sm font-bold text-white transition-all duration-200 btn-press relative overflow-hidden hover:brightness-105"
+                style={{
+                  background: loading ? "#E2E8F0" : BRAND.buttonGradient,
+                  color: loading ? "#94A3B8" : "#fff",
+                  cursor: loading ? "not-allowed" : "pointer",
+                  boxShadow: loading ? "none" : `0 4px 14px ${BRAND.primary}35`,
+                }}
+              >
+                {loading ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <svg
+                      className="w-4 h-4 animate-spin"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      />
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                      />
+                    </svg>
+                    Signing in...
+                  </span>
+                ) : (
+                  "Sign In"
+                )}
+              </button>
 
-                    <path
-                      className="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-                    />
-                  </svg>
-
-                  Signing in...
-                </span>
-              ) : (
-                'Sign In'
-              )}
-            </button>
+              <p className="mt-3 text-center text-[11px] font-medium text-slate-400">
+                Need access? Contact your system administrator.
+              </p>
+            </div>
           </form>
-
-          <div className="mt-5 pt-4 border-t border-slate-100">
-            <p className="text-center text-[10px] font-medium text-slate-400">
-              Authentication is handled by the
-              AA2000 backend.
-            </p>
-          </div>
         </div>
       </div>
     </div>
