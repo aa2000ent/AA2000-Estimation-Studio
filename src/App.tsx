@@ -36,6 +36,7 @@ import { DEFAULT_TECHNICIANS } from './constants/roles';
 import { useToast } from './components/utils/Toast';
 import { ExclamationTriangle } from './utils/Icons';
 import InstructionScreen from './components/auth/InstructionScreen';
+import OfflineBanner from './components/utils/OfflineBanner';
 
 
 export type Screen = 'login' | 'dashboard' | 'create-survey' | 'project-detail' | 'survey' | 'estimation' | 'settings' | 'notifications' | 'survey-summary' | 'instruction';
@@ -202,10 +203,25 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boole
 }
 
 export default function App() {
-  const [screen, setScreen] = useState<Screen>('login');
+  const [screen, setScreen] = useState<Screen>(() => {
+    if (typeof window !== 'undefined') {
+      const hash = window.location.hash.replace('#', '') as Screen;
+      const validScreens: Screen[] = ['login', 'dashboard', 'create-survey', 'project-detail', 'survey', 'estimation', 'settings', 'notifications', 'survey-summary', 'instruction'];
+      if (validScreens.includes(hash)) {
+        return hash;
+      }
+    }
+    return 'dashboard';
+  });
   const [screenHistory, setScreenHistory] = useState<Screen[]>([]);
-  const [user, setUser] = useState<User | null>(null);
-  const [authHydrated, setAuthHydrated] = useState(false);
+  const [user, setUser] = useState<User | null>(() => {
+    try {
+      return loadFromStorage<User | null>(STORAGE_KEYS.user, null);
+    } catch {
+      return null;
+    }
+  });
+  const [authHydrated, setAuthHydrated] = useState(true);
   const [currentProject, setCurrentProject] = useState<Project | null>(null);
   const [currentSurveyType, setCurrentSurveyType] = useState<SurveyType | null>(null);
   const [projects, setProjects] = useState<Project[]>(() => loadFromStorage<Project[]>(STORAGE_KEYS.projects, []));
@@ -280,9 +296,16 @@ export default function App() {
       STORAGE_KEYS.instruction
     );
 
-    setScreen(
-      hasSeen ? 'dashboard' : 'instruction'
-    );
+    const hash = window.location.hash.replace('#', '') as Screen;
+    const validScreens: Screen[] = ['login', 'dashboard', 'create-survey', 'project-detail', 'survey', 'estimation', 'settings', 'notifications', 'survey-summary', 'instruction'];
+
+    if (validScreens.includes(hash) && hash !== 'login' && hash !== 'instruction') {
+      setScreen(hash);
+    } else {
+      setScreen(
+        hasSeen ? 'dashboard' : 'instruction'
+      );
+    }
   } else {
     setUser(null);
     localStorage.removeItem(STORAGE_KEYS.user);
@@ -474,6 +497,9 @@ export default function App() {
       }
       return newScreen;
     });
+    try {
+      window.history.replaceState(null, '', `#${newScreen}`);
+    } catch {}
   }, []);
 
   // Sync screen state with URL hash
@@ -491,8 +517,10 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (screen && window.location.hash !== `#${screen}`) {
-      window.history.replaceState(null, '', `#${screen}`);
+    if (screen && screen !== 'dashboard') {
+      if (window.location.hash !== `#${screen}`) {
+        window.history.replaceState(null, '', `#${screen}`);
+      }
     }
   }, [screen]);
 

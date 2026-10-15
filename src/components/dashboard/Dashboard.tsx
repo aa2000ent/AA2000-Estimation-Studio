@@ -23,6 +23,7 @@ import SavedEstimationsView from '../estimation/SavedEstimationsView';
 import type { SurveyFormData } from '../estimation/CreateSurveyForm';
 import type { SaveEstimationFn } from '../../services/estimationWizardSnapshot';
 import SavedFoldersView from '../ai-sidebar/SavedFoldersView';
+import OfflineBanner from '../utils/OfflineBanner';
 import SparklineCard from './cards/SparklineCard';
 
 interface Props {
@@ -229,7 +230,7 @@ function StatusOverviewBanner({
     },
     {
       key: 'active',
-      label: 'Active',
+      label: 'In Progress',
       count: activeCount,
       stroke: '#2563EB',
       dot: 'bg-blue-600',
@@ -324,7 +325,7 @@ function StatusOverviewBanner({
           STATUS OVERVIEW
         </span>
 
-        {arcs.map((arc) => (
+        {arcs.filter(arc => arc.key !== 'rejected' || arc.count > 0).map((arc) => (
           <div
             key={arc.key}
             onMouseEnter={() => setHoveredStatus(arc.key)}
@@ -349,6 +350,58 @@ function StatusOverviewBanner({
 }
 
 
+
+function MiniSparkCard({
+  label,
+  value,
+  caption,
+  pill,
+  color,
+  shape,
+  icon,
+}: {
+  label: string;
+  value: number;
+  caption: string;
+  pill: string;
+  color: string;
+  shape: number[];
+  icon: React.ReactNode;
+}) {
+  const w = 110;
+  const h = 34;
+  const pts = shape.map((v, i) => [(i / (shape.length - 1)) * (w - 8) + 4, h - 4 - v * (h - 8)] as const);
+  const path = pts.map(([x, y], i) => `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
+  const last = pts[pts.length - 1];
+  const prev = pts[pts.length - 2];
+  return (
+    <div className="bg-white dark:bg-[#131B2E] rounded-3xl p-5 border border-slate-100 dark:border-slate-800 shadow-sm hover:shadow-md transition-all duration-300 animate-fade-in-up">
+      <div className="flex items-center justify-between">
+        <span className="text-[11px] font-black uppercase tracking-wider text-slate-800 dark:text-white">{label}</span>
+        <span style={{ color }} className="opacity-90">{icon}</span>
+      </div>
+      <div className="flex items-end justify-between mt-3 gap-2">
+        <div className="min-w-0">
+          <div className="text-4xl font-black leading-none" style={{ color }}>{value}</div>
+          <div className="text-[11px] font-medium text-slate-400 dark:text-slate-500 mt-2 truncate">{caption}</div>
+        </div>
+        <div className="flex flex-col items-end gap-1 shrink-0">
+          <span
+            className="text-[9px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wide border"
+            style={{ color, background: `${color}1A`, borderColor: `${color}33` }}
+          >
+            {pill}
+          </span>
+          <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} aria-hidden="true">
+            <path d={path} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            <circle cx={prev[0]} cy={prev[1]} r="2.5" fill={color} />
+            <circle cx={last[0]} cy={last[1]} r="3" fill={color} />
+          </svg>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function Dashboard({
   user,
@@ -376,7 +429,28 @@ export default function Dashboard({
   isDark: propIsDark,
   onToggleDark,
 }: Props) {
-  const [view, setView] = useState<View>('dashboard');
+  const [view, setView] = useState<View>(() => {
+    if (typeof window !== 'undefined') {
+      const hash = window.location.hash.replace('#', '') as View;
+      const validViews: View[] = [
+        'home', 'dashboard', 'workspace', 'create-survey',
+        'todo', 'assignment', 'missing', 'done', 'history',
+        'approval', 'finalize', 'ongoing', 'upcoming',
+        'missing-notif', 'approval-notif', 'finalize-notif',
+        'notifications', 'calendar', 'floor-plan',
+        'cctv', 'fire_alarm', 'fire_protection', 'access_control', 'burglar_alarm', 'other',
+        'ai-reader', 'ai-chat', 'estimation-hub', 'manual-estimation', 'ai-estimation',
+        'saved-folders', 'saved-boqs', 'saved-estimations'
+      ];
+      if (validViews.includes(hash)) return hash;
+
+      try {
+        const saved = localStorage.getItem('aa2000_last_view') as View;
+        if (validViews.includes(saved)) return saved;
+      } catch {}
+    }
+    return 'dashboard';
+  });
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 1024);
   const [isAiChatOpen, setIsAiChatOpen] = useState(false);
@@ -412,8 +486,13 @@ export default function Dashboard({
   }, [view]);
 
   useEffect(() => {
-    if (view && window.location.hash !== `#${view}`) {
-      window.history.replaceState(null, '', `#${view}`);
+    if (view) {
+      try {
+        localStorage.setItem('aa2000_last_view', view);
+        if (window.location.hash !== `#${view}`) {
+          window.history.replaceState(null, '', `#${view}`);
+        }
+      } catch {}
     }
   }, [view]);
 
@@ -614,6 +693,9 @@ export default function Dashboard({
       onExitOverride();
     }
     setView(v);
+    try {
+      window.history.replaceState(null, '', `#${v}`);
+    } catch {}
   };
 
   const navigateNotif = (type: string) => {
@@ -624,6 +706,9 @@ export default function Dashboard({
     };
     const targetView = m[type] || 'dashboard';
     setView(targetView as View);
+    try {
+      window.history.replaceState(null, '', `#${targetView}`);
+    } catch {}
     if (type === 'notifications' && onMarkNotificationsAsRead) onMarkNotificationsAsRead('all');
   };
 
@@ -639,13 +724,15 @@ export default function Dashboard({
 
   return (
     <div
-      className={`flex h-screen overflow-hidden w-full transition-colors duration-300 ${isDark ? 'bg-[#0B0F19]' : 'bg-[#F8FAFC]'}`}
+      className={`flex flex-col h-screen overflow-hidden w-full transition-colors duration-300 ${isDark ? 'bg-[#0B0F19]' : 'bg-[#F8FAFC]'}`}
       style={{
         background: isDark
           ? 'radial-gradient(ellipse at 20% 20%, rgba(37,99,235,0.06) 0%, transparent 60%), #0B0F19'
           : 'radial-gradient(ellipse at 20% 20%, rgba(191,219,254,0.2) 0%, transparent 55%), #F8FAFC',
       }}
     >
+      <OfflineBanner />
+      <div className="flex flex-1 overflow-hidden min-h-0">
       {/* Desktop Sidebar (Only rendered when not mobile) */}
       {!isMobile && (
         <div className="h-screen sticky top-0 z-40 shrink-0">
@@ -881,110 +968,176 @@ export default function Dashboard({
               onDeleteProject={handleDelete}
             />
           ) : view === 'dashboard' ? (
-            <div className="px-6 pt-6 pb-6 flex flex-col gap-6">
+            <div className="px-6 pt-8 pb-10 flex flex-col gap-8">
+              {/* Greeting */}
               <div>
-                <h2 className="text-xl font-black text-slate-800 dark:text-white">
-                  {timeGreeting}, {userGreetingName}
+                <h2 className="text-4xl sm:text-5xl font-black tracking-tight text-slate-900 dark:text-white leading-tight">
+                  {timeGreeting},{' '}
+                  <span className="text-blue-500 dark:text-blue-400">{userGreetingName}!</span>
                 </h2>
-                <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mt-0.5">
-                  {todayLabel} · AA2000 Security · Estimation Platform
+                <p className="mt-2 max-w-2xl text-sm sm:text-base font-medium text-slate-500 dark:text-slate-400">
+                  Welcome to the system control center. Create estimation projects, assign technical teams, review surveys, and approve final equipment pricing estimates.
                 </p>
               </div>
 
-              <StatusOverviewBanner
-                totalProjects={totalProjects}
-                rejectedCount={rejectedCount}
-                pendingCount={pendingCount}
-                activeCount={activeCount}
-                completedCount={completedCount}
-              />
+              <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 items-start">
+                {/* Left column: status overview + KPI cards */}
+                <div className="lg:col-span-2 flex flex-col gap-6 min-w-0">
+                  <StatusOverviewBanner
+                    totalProjects={totalProjects}
+                    rejectedCount={rejectedCount}
+                    pendingCount={pendingCount}
+                    activeCount={activeCount}
+                    completedCount={completedCount}
+                  />
 
-              {/* Project Cards Grid or Empty State */}
-              {actualProjects.length > 0 ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-16">
-                  {actualProjects.slice(0, 6).map((p, index) => {
-                    const isPending = p.status === 'Pending';
-                    const isAwaitingApproval = p.status === 'Finalized';
-                    const isRejected = p.status === 'Finalized - Rejected';
-                    return (
-                      <div
-                        key={p.id}
-                        onClick={() => onSelectProject(p)}
-                        className={`p-4 rounded-2xl border transition-all duration-300 cursor-pointer flex flex-col justify-between group/card relative overflow-hidden animate-fade-in-up hover:-translate-y-1.5 hover:shadow-xl ${
-                          isPending
-                            ? 'bg-amber-50/20 dark:bg-amber-950/20 border-amber-200/90 dark:border-amber-900/50 hover:border-amber-400'
-                            : isAwaitingApproval
-                            ? 'bg-blue-50/20 dark:bg-blue-950/20 border-blue-200/90 dark:border-blue-900/50 hover:border-blue-400'
-                            : 'bg-white dark:bg-[#131B2E] border-slate-200 dark:border-slate-800 hover:border-blue-400 dark:hover:border-blue-500'
-                        }`}
-                        style={{ animationDelay: `${index * 60}ms` }}
-                      >
-                        <div
-                          className={`absolute top-0 left-0 right-0 h-1 transition-opacity duration-300 opacity-0 group-hover/card:opacity-100 ${
-                            isPending
-                              ? 'bg-gradient-to-r from-amber-400 to-amber-600'
-                              : isAwaitingApproval
-                              ? 'bg-gradient-to-r from-blue-500 to-indigo-600'
-                              : isRejected
-                              ? 'bg-gradient-to-r from-rose-400 to-rose-600'
-                              : 'bg-gradient-to-r from-emerald-400 to-teal-500'
-                          }`}
-                        />
-                        <div>
-                          <div className="flex items-center justify-between gap-2 mb-2.5">
-                            <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 truncate">
-                              {p.clientName}
-                            </span>
-                            <span
-                              className={`text-[9px] font-extrabold px-2.5 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1.5 ${
-                                isPending
-                                  ? 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300'
-                                  : isAwaitingApproval
-                                  ? 'bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300'
-                                  : isRejected
-                                  ? 'bg-rose-100 dark:bg-rose-950 text-rose-800 dark:text-rose-300'
-                                  : 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300'
-                              }`}
-                            >
-                              {p.status}
-                            </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <MiniSparkCard
+                      label="Overall Projects"
+                      value={totalProjects}
+                      caption="Total surveys"
+                      pill={`${totalProjects > 0 ? Math.round(((totalProjects - completedCount) / totalProjects) * 100) : 0}% ACTIVE`}
+                      color="#2563EB"
+                      shape={[0.2, 0.3, 0.4, 0.5, 0.65, 0.8, 1]}
+                      icon={<StatBuilding className="w-5 h-5" />}
+                    />
+                    <MiniSparkCard
+                      label="In Progress"
+                      value={activeCount}
+                      caption="Active surveys"
+                      pill={`${totalProjects > 0 ? Math.round((activeCount / totalProjects) * 100) : 0}% ACTIVE`}
+                      color="#2563EB"
+                      shape={[0.3, 0.35, 0.5, 0.55, 0.6, 0.7, 0.68]}
+                      icon={<StatBolt className="w-5 h-5" />}
+                    />
+                    <MiniSparkCard
+                      label="Pending"
+                      value={pendingCount}
+                      caption="Awaiting survey"
+                      pill={`${totalProjects > 0 ? Math.round((pendingCount / totalProjects) * 100) : 0}% QUEUE`}
+                      color="#D97706"
+                      shape={[0.8, 0.7, 0.75, 0.6, 0.65, 0.5, 0.55]}
+                      icon={<StatCalendar className="w-5 h-5" />}
+                    />
+                    <MiniSparkCard
+                      label="Completed"
+                      value={completedCount}
+                      caption="Approved"
+                      pill={`${totalProjects > 0 ? Math.round((completedCount / totalProjects) * 100) : 0}% DONE`}
+                      color="#10B981"
+                      shape={[0.1, 0.1, 0.15, 0.12, 0.18, 0.2, 0.25]}
+                      icon={<StatCheckCircle className="w-5 h-5" />}
+                    />
+                  </div>
+                </div>
+
+                {/* Right column: pending surveys & active projects */}
+                <div className="lg:col-span-3 min-w-0 bg-white dark:bg-[#131B2E] rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm p-6 sm:p-7 animate-fade-in-up">
+                  <div className="flex flex-wrap items-start justify-between gap-3 pb-4 mb-5 border-b border-slate-100 dark:border-slate-800">
+                    <div>
+                      <div className="flex items-center gap-3">
+                        <h3 className="text-base sm:text-lg font-black uppercase tracking-tight text-slate-900 dark:text-white">
+                          Pending Surveys &amp; Active Projects
+                        </h3>
+                        <span className="text-[10px] font-black px-2.5 py-1 rounded-full bg-amber-500 text-white uppercase tracking-wide whitespace-nowrap">
+                          {pendingCount} Pending
+                        </span>
+                      </div>
+                      <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mt-1">
+                        Click any project below to open site survey, upload floor plan, or build BOQ
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setView('workspace')}
+                      className="text-xs font-black text-blue-600 dark:text-blue-400 hover:underline cursor-pointer whitespace-nowrap"
+                    >
+                      View All Workspace →
+                    </button>
+                  </div>
+
+                  {(() => {
+                    const dashboardCards = actualProjects
+                      .filter(p => p.status === 'Pending' || p.status === 'In Progress')
+                      .slice(0, 8);
+                    if (dashboardCards.length === 0) {
+                      return (
+                        <div className="py-16 text-center flex flex-col items-center justify-center">
+                          <div className="w-12 h-12 rounded-2xl bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 flex items-center justify-center mb-3">
+                            <StatClipboard className="w-6 h-6" />
                           </div>
-                          <h4 className="text-xs font-black text-slate-800 dark:text-white mb-1 leading-snug group-hover/card:text-blue-600 dark:group-hover/card:text-blue-400">{p.name}</h4>
-                          <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium truncate mb-3 flex items-center gap-1">
-                            <span>📍</span>
-                            <span>{p.location || 'Location not set'}</span>
+                          <h4 className="text-sm font-black text-slate-800 dark:text-white mb-1">No site surveys created yet</h4>
+                          <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm">
+                            No active site surveys have been assigned or submitted yet.
                           </p>
                         </div>
+                      );
+                    }
+                    return (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        {dashboardCards.map((p, index) => {
+                          const isPending = p.status === 'Pending';
+                          return (
+                            <div
+                              key={p.id}
+                              onClick={() => onSelectProject(p)}
+                              className={`p-4 rounded-2xl border transition-all duration-300 cursor-pointer flex flex-col justify-between group/card relative overflow-hidden animate-fade-in-up hover:-translate-y-1.5 hover:shadow-xl ${
+                                isPending
+                                  ? 'bg-amber-50/20 dark:bg-amber-950/20 border-amber-200/90 dark:border-amber-900/50 hover:border-amber-400'
+                                  : 'bg-white dark:bg-[#131B2E] border-slate-200 dark:border-slate-800 hover:border-blue-400 dark:hover:border-blue-500'
+                              }`}
+                              style={{ animationDelay: `${index * 60}ms` }}
+                            >
+                              <div
+                                className={`absolute top-0 left-0 right-0 h-1 transition-opacity duration-300 opacity-0 group-hover/card:opacity-100 ${
+                                  isPending
+                                    ? 'bg-gradient-to-r from-amber-400 to-amber-600'
+                                    : 'bg-gradient-to-r from-blue-500 to-indigo-600'
+                                }`}
+                              />
+                              <div>
+                                <div className="flex items-center justify-between gap-2 mb-2.5">
+                                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 truncate">
+                                    {p.clientName}
+                                  </span>
+                                  <span
+                                    className={`text-[9px] font-extrabold px-2.5 py-0.5 rounded-full uppercase tracking-wider whitespace-nowrap ${
+                                      isPending
+                                        ? 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300'
+                                        : 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300'
+                                    }`}
+                                  >
+                                    {p.status}
+                                  </span>
+                                </div>
+                                <h4 className="text-xs font-black text-slate-800 dark:text-white mb-1 leading-snug group-hover/card:text-blue-600 dark:group-hover/card:text-blue-400">{p.name}</h4>
+                                <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium truncate mb-3 flex items-center gap-1">
+                                  <span>📍</span>
+                                  <span>{p.location || 'Location not set'}</span>
+                                </p>
+                              </div>
 
-                        <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
-                          <span className="text-[10px] font-bold text-slate-400 truncate">
-                            {p.systemTypes?.slice(0, 2).join(', ') || 'General System'}
-                          </span>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); onSelectProject(p); }}
-                            className="px-3.5 py-1.5 rounded-xl text-xs font-black text-white shadow-sm flex items-center gap-1 shrink-0"
-                            style={{
-                              background: isPending ? 'linear-gradient(135deg, #D97706 0%, #B45309 100%)' : 'linear-gradient(135deg, #1D4ED8 0%, #1E40AF 100%)',
-                            }}
-                          >
-                            <span>Open Survey</span>
-                          </button>
-                        </div>
+                              <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
+                                <span className="text-[10px] font-bold text-slate-400 truncate">
+                                  {p.systemTypes?.slice(0, 2).join(', ') || 'General System'}
+                                </span>
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); onSelectProject(p); }}
+                                  className="px-3.5 py-1.5 rounded-xl text-xs font-black text-white shadow-sm flex items-center gap-1 shrink-0"
+                                  style={{
+                                    background: isPending ? 'linear-gradient(135deg, #D97706 0%, #B45309 100%)' : 'linear-gradient(135deg, #1D4ED8 0%, #1E40AF 100%)',
+                                  }}
+                                >
+                                  <span>Open Survey</span>
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
                     );
-                  })}
+                  })()}
                 </div>
-              ) : (
-                <div className="py-16 text-center flex flex-col items-center justify-center my-auto">
-                  <div className="w-12 h-12 rounded-2xl bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 flex items-center justify-center mb-3">
-                    <StatClipboard className="w-6 h-6" />
-                  </div>
-                  <h4 className="text-sm font-black text-slate-800 dark:text-white mb-1">No site surveys created yet</h4>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mb-4">
-                    No active site surveys have been assigned or submitted yet.
-                  </p>
-                </div>
-              )}
+              </div>
             </div>
           ) : view === 'notifications' ? (
             /* Notification View */
@@ -1424,6 +1577,7 @@ export default function Dashboard({
             activeProjectName={selectedCompanyProject?.name}
           />
         </div>
+      </div>
       </div>
 
     </div>
