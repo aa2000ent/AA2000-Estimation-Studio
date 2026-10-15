@@ -721,99 +721,99 @@ export default function Dashboard({
 
       <main className="flex-1 flex flex-col min-w-0 relative overflow-hidden">
 
-        {/*TOP NAVIGATION BAR (Glassmorphism)*/}
-                <div
-                  className={`sticky top-0 z-40 px-4 sm:px-6 h-16 flex items-center gap-4 shrink-0 border-b backdrop-blur-md transition-colors ${
-                    isDark ? 'bg-[#0D1527]/95 border-slate-800' : 'bg-white/95 border-slate-200'
-                  }`}
-                >
-                  {/* Left: Mobile navigation and global search */}
-                  <div className="flex flex-1 min-w-0 items-center gap-2 sm:gap-3">
-                    <button
-                      onClick={() => setMobileMenuOpen(true)}
-                      className="p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 lg:hidden transition-colors cursor-pointer"
-                      title="Open navigation menu"
-                    >
-                      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
-                      </svg>
-                    </button>
-                    <div className="relative block flex-1 min-w-0 max-w-lg">
-                      <svg
-                        className="absolute left-3.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400"
-                        fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}
-                      >
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                      </svg>
-                      <input
-                        type="text"
-                        placeholder="Search projects, surveys, clients..."
-                        value={search}
-                        onChange={e => setSearch(e.target.value)}
-                        className="search-input w-full h-9 pl-10 pr-4 rounded-xl text-[11px] font-medium bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 outline-none text-slate-700 dark:text-slate-200 focus:bg-white dark:focus:bg-slate-800 focus:border-blue-400 transition-all"
-                      />
-                    </div>
-                  </div>
+        {/* TOP NAVIGATION BAR (Glassmorphism) */}
+        <div
+          className={`sticky top-0 z-40 px-4 sm:px-6 h-16 flex items-center gap-4 shrink-0 border-b backdrop-blur-md transition-colors ${
+            isDark ? 'bg-[#0D1527]/95 border-slate-800' : 'bg-white/95 border-slate-200'
+          }`}
+        >
+          {/* Left: Mobile navigation and global search */}
+          <div className="flex flex-1 min-w-0 items-center gap-2 sm:gap-3">
+            <button
+              onClick={() => setMobileMenuOpen(true)}
+              className="p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 lg:hidden transition-colors cursor-pointer"
+              title="Open navigation menu"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+              </svg>
+            </button>
+            <div className="relative block flex-1 min-w-0 max-w-lg">
+              <svg
+                className="absolute left-3.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400"
+                fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+              <input
+                type="text"
+                placeholder="Search projects, surveys, clients..."
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                className="search-input w-full h-9 pl-10 pr-4 rounded-xl text-[11px] font-medium bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 outline-none text-slate-700 dark:text-slate-200 focus:bg-white dark:focus:bg-slate-800 focus:border-blue-400 transition-all"
+              />
+            </div>
+          </div>
 
-                  {/* Right: Time, appearance, notifications, and account */}
-                  <div className="flex items-center gap-2 sm:gap-3 overflow-visible shrink-0">
-                    <div
-                      className={`hidden sm:flex h-9 items-center gap-2.5 px-3 rounded-xl border text-[10px] ${
-                        isDark
-                          ? 'bg-slate-800/80 border-slate-700 text-slate-200'
-                          : 'bg-white border-slate-200 text-slate-600'
-                      }`}
-                      title={now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-                    >
-                      <svg className="w-3.5 h-3.5 text-slate-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                      <span className="font-mono font-black tracking-wide">{digitalClock}</span>
-                      <span className="h-4 w-px bg-slate-200 dark:bg-slate-600" />
-                      <span className="hidden lg:inline font-bold whitespace-nowrap">{todayLabel}</span>
-                    </div>
+          {/* Right: Time, appearance, notifications, and account */}
+          <div className="flex items-center gap-2 sm:gap-3 overflow-visible shrink-0">
+            <div
+              className={`hidden sm:flex h-9 items-center gap-2.5 px-3 rounded-xl border text-[10px] ${
+                isDark
+                  ? 'bg-slate-800/80 border-slate-700 text-slate-200'
+                  : 'bg-white border-slate-200 text-slate-600'
+              }`}
+              title={now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+            >
+              <svg className="w-3.5 h-3.5 text-slate-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span className="font-mono font-black tracking-wide">{digitalClock}</span>
+              <span className="h-4 w-px bg-slate-200 dark:bg-slate-600" />
+              <span className="hidden lg:inline font-bold whitespace-nowrap">{todayLabel}</span>
+            </div>
 
-                    <div className="relative hidden sm:flex w-[68px] h-9 items-center rounded-full border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 p-0.5 shadow-2xs overflow-hidden">
-                      <span
-                        className={`absolute top-0.5 left-0.5 w-8 h-8 rounded-full bg-blue-600 shadow-sm pointer-events-none transition-transform duration-300 ease-out ${
-                          isDark ? 'translate-x-8' : 'translate-x-0'
-                        }`}
-                      />
-                      <button
-                        onClick={() => { if (isDark) handleToggleTheme(); }}
-                        className={`relative z-10 w-8 h-8 rounded-full flex items-center justify-center transition-colors duration-300 cursor-pointer ${
-                          !isDark ? 'text-white' : 'text-amber-400'
-                        }`}
-                        title="Use light mode"
-                        aria-label="Use light mode"
-                        aria-pressed={!isDark}
-                      >
-                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.773-4.227l-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z" />
-                        </svg>
-                      </button>
-                      <button
-                        onClick={() => { if (!isDark) handleToggleTheme(); }}
-                        className={`relative z-10 w-8 h-8 rounded-full flex items-center justify-center transition-colors duration-300 cursor-pointer ${
-                          isDark ? 'text-white' : 'text-slate-500'
-                        }`}
-                        title="Use dark mode"
-                        aria-label="Use dark mode"
-                        aria-pressed={isDark}
-                      >
-                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z" />
-                        </svg>
-                      </button>
-                    </div>
+            <div className="relative hidden sm:flex w-[68px] h-9 items-center rounded-full border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 p-0.5 shadow-2xs overflow-hidden">
+              <span
+                className={`absolute top-0.5 left-0.5 w-8 h-8 rounded-full bg-blue-600 shadow-sm pointer-events-none transition-transform duration-300 ease-out ${
+                  isDark ? 'translate-x-8' : 'translate-x-0'
+                }`}
+              />
+              <button
+                onClick={() => { if (isDark) handleToggleTheme(); }}
+                className={`relative z-10 w-8 h-8 rounded-full flex items-center justify-center transition-colors duration-300 cursor-pointer ${
+                  !isDark ? 'text-white' : 'text-amber-400'
+                }`}
+                title="Use light mode"
+                aria-label="Use light mode"
+                aria-pressed={!isDark}
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v2.25m6.364.386l-1.591 1.591M21 12h-2.25m-.386 6.364l-1.591-1.591M12 18.75V21m-4.773-4.227l-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0z" />
+                </svg>
+              </button>
+              <button
+                onClick={() => { if (!isDark) handleToggleTheme(); }}
+                className={`relative z-10 w-8 h-8 rounded-full flex items-center justify-center transition-colors duration-300 cursor-pointer ${
+                  isDark ? 'text-white' : 'text-slate-500'
+                }`}
+                title="Use dark mode"
+                aria-label="Use dark mode"
+                aria-pressed={isDark}
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M21.752 15.002A9.718 9.718 0 0118 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 003 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 009.002-5.998z" />
+                </svg>
+              </button>
+            </div>
 
-                    {/* Notification Bell */}
-                    <NotificationBell notifications={notifications} onViewAll={navigateNotif} />
+            {/* Notification Bell */}
+            <NotificationBell notifications={notifications} onViewAll={navigateNotif} />
 
-                    {/* Account dropdown */}
-                    <AccountDropdown user={user} onLogout={onLogout} onSettings={() => { if (onSettings) onSettings(); }} />
-                  </div>
-                </div>
+            {/* Account dropdown */}
+            <AccountDropdown user={user} onLogout={onLogout} onSettings={() => { if (onSettings) onSettings(); }} />
+          </div>
+        </div>
 
         {/* ══════════════════════════════════════════
             PAGE CONTENT
@@ -880,6 +880,395 @@ export default function Dashboard({
               projects={projectList}
               onDeleteProject={handleDelete}
             />
+          ) : view === 'dashboard' ? (
+            <div className="px-6 pt-6 pb-6 flex flex-col gap-6">
+              <div>
+                <h2 className="text-xl font-black text-slate-800 dark:text-white">
+                  {timeGreeting}, {userGreetingName}
+                </h2>
+                <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mt-0.5">
+                  {todayLabel} · AA2000 Security · Estimation Platform
+                </p>
+              </div>
+
+              <StatusOverviewBanner
+                totalProjects={totalProjects}
+                rejectedCount={rejectedCount}
+                pendingCount={pendingCount}
+                activeCount={activeCount}
+                completedCount={completedCount}
+              />
+
+              {/* Project Cards Grid or Empty State */}
+              {actualProjects.length > 0 ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-16">
+                  {actualProjects.slice(0, 6).map((p, index) => {
+                    const isPending = p.status === 'Pending';
+                    const isAwaitingApproval = p.status === 'Finalized';
+                    const isRejected = p.status === 'Finalized - Rejected';
+                    return (
+                      <div
+                        key={p.id}
+                        onClick={() => onSelectProject(p)}
+                        className={`p-4 rounded-2xl border transition-all duration-300 cursor-pointer flex flex-col justify-between group/card relative overflow-hidden animate-fade-in-up hover:-translate-y-1.5 hover:shadow-xl ${
+                          isPending
+                            ? 'bg-amber-50/20 dark:bg-amber-950/20 border-amber-200/90 dark:border-amber-900/50 hover:border-amber-400'
+                            : isAwaitingApproval
+                            ? 'bg-blue-50/20 dark:bg-blue-950/20 border-blue-200/90 dark:border-blue-900/50 hover:border-blue-400'
+                            : 'bg-white dark:bg-[#131B2E] border-slate-200 dark:border-slate-800 hover:border-blue-400 dark:hover:border-blue-500'
+                        }`}
+                        style={{ animationDelay: `${index * 60}ms` }}
+                      >
+                        <div
+                          className={`absolute top-0 left-0 right-0 h-1 transition-opacity duration-300 opacity-0 group-hover/card:opacity-100 ${
+                            isPending
+                              ? 'bg-gradient-to-r from-amber-400 to-amber-600'
+                              : isAwaitingApproval
+                              ? 'bg-gradient-to-r from-blue-500 to-indigo-600'
+                              : isRejected
+                              ? 'bg-gradient-to-r from-rose-400 to-rose-600'
+                              : 'bg-gradient-to-r from-emerald-400 to-teal-500'
+                          }`}
+                        />
+                        <div>
+                          <div className="flex items-center justify-between gap-2 mb-2.5">
+                            <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 truncate">
+                              {p.clientName}
+                            </span>
+                            <span
+                              className={`text-[9px] font-extrabold px-2.5 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1.5 ${
+                                isPending
+                                  ? 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300'
+                                  : isAwaitingApproval
+                                  ? 'bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300'
+                                  : isRejected
+                                  ? 'bg-rose-100 dark:bg-rose-950 text-rose-800 dark:text-rose-300'
+                                  : 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300'
+                              }`}
+                            >
+                              {p.status}
+                            </span>
+                          </div>
+                          <h4 className="text-xs font-black text-slate-800 dark:text-white mb-1 leading-snug group-hover/card:text-blue-600 dark:group-hover/card:text-blue-400">{p.name}</h4>
+                          <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium truncate mb-3 flex items-center gap-1">
+                            <span>📍</span>
+                            <span>{p.location || 'Location not set'}</span>
+                          </p>
+                        </div>
+
+                        <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
+                          <span className="text-[10px] font-bold text-slate-400 truncate">
+                            {p.systemTypes?.slice(0, 2).join(', ') || 'General System'}
+                          </span>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); onSelectProject(p); }}
+                            className="px-3.5 py-1.5 rounded-xl text-xs font-black text-white shadow-sm flex items-center gap-1 shrink-0"
+                            style={{
+                              background: isPending ? 'linear-gradient(135deg, #D97706 0%, #B45309 100%)' : 'linear-gradient(135deg, #1D4ED8 0%, #1E40AF 100%)',
+                            }}
+                          >
+                            <span>Open Survey</span>
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="py-16 text-center flex flex-col items-center justify-center my-auto">
+                  <div className="w-12 h-12 rounded-2xl bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 flex items-center justify-center mb-3">
+                    <StatClipboard className="w-6 h-6" />
+                  </div>
+                  <h4 className="text-sm font-black text-slate-800 dark:text-white mb-1">No site surveys created yet</h4>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mb-4">
+                    No active site surveys have been assigned or submitted yet.
+                  </p>
+                </div>
+              )}
+            </div>
+          ) : view === 'notifications' ? (
+            /* Notification View */
+            <div className="px-6 pt-6 pb-6 flex-1 flex flex-col min-h-0">
+              <div className="bg-white dark:bg-[#131B2E] rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden animate-fade-in-up flex-1 flex flex-col min-h-[calc(100vh-120px)]">
+                {/* Tabs */}
+                <div className="px-6 pt-4 pb-0 border-b border-slate-100">
+                  <div className="flex flex-wrap gap-1">
+                    {[
+                      { key: 'ongoing', label: 'Ongoing', count: countOngoing, color: '#2563EB' },
+                      { key: 'upcoming', label: 'Upcoming', count: countUpcoming, color: '#059669' },
+                      { key: 'missing', label: 'Missing', count: countMissing, color: '#D97706' },
+                      ...(user.role === 'ADMIN' || user.role === 'ACCOUNTING'
+                        ? [
+                          { key: 'approval', label: 'Approval', count: countApproval, color: '#7C3AED' },
+                          { key: 'finalize', label: 'Finalize', count: countFinalize, color: '#059669' },
+                        ]
+                        : []),
+                    ].map(tab => (
+                      <button
+                        key={tab.key}
+                        onClick={() => setActiveNotifTab(tab.key as any)}
+                        className="flex items-center gap-1.5 px-3 py-2 text-[11px] font-bold uppercase tracking-wider border-b-2 transition-all mb-[-1px]"
+                        style={
+                          activeNotifTab === tab.key
+                            ? { borderColor: tab.color, color: tab.color }
+                            : { borderColor: 'transparent', color: '#94A3B8' }
+                        }
+                      >
+                        {tab.label}
+                        <span
+                          className="text-[9px] font-extrabold px-1.5 py-0.5 rounded-full"
+                          style={
+                            activeNotifTab === tab.key
+                              ? { background: `${tab.color}15`, color: tab.color }
+                              : { background: '#F1F5F9', color: '#94A3B8' }
+                          }
+                        >
+                          {tab.count}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="divide-y divide-slate-50">
+                  {notifications.filter(n => n.type === activeNotifTab).length === 0 ? (
+                    <div className="py-12 text-center">
+                      <div className="w-12 h-12 rounded-2xl bg-slate-50 flex items-center justify-center mx-auto mb-3">
+                        <Bell className="w-5 h-5 text-slate-300" />
+                      </div>
+                      <p className="text-xs font-bold text-slate-400">No alerts in this category</p>
+                    </div>
+                  ) : (
+                    notifications
+                      .filter(n => n.type === activeNotifTab)
+                      .map(n => {
+                        const cfg = typeConfig[n.type] || typeConfig.ongoing;
+                        return (
+                          <div
+                            key={n.id}
+                            onClick={() => navigateNotif(n.type)}
+                            className="px-6 py-4 flex items-start gap-4 cursor-pointer hover:bg-slate-50/50 transition-colors group"
+                          >
+                            <div
+                              className="w-2.5 h-2.5 rounded-full mt-1.5 shrink-0"
+                              style={{ background: !n.read ? cfg.dot : '#CBD5E1' }}
+                            />
+                            <div className="min-w-0 flex-1">
+                              <p className={`text-sm ${!n.read ? 'font-bold text-slate-800' : 'font-medium text-slate-500'}`}>
+                                {n.title}
+                              </p>
+                              <div className="flex items-center gap-3 mt-1.5">
+                                <span className="text-xs text-slate-400 font-medium">
+                                  {n.companyName} · {n.date}
+                                </span>
+                                <span
+                                  className="text-[8px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wide"
+                                  style={{ background: cfg.bg, color: cfg.color }}
+                                >
+                                  {cfg.label}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : view !== 'dashboard' && view !== 'home' && !isCategoryView ? (
+            /* Project Table (non-home, non-notifications, non-category views) */
+            <div className="px-6 pt-6 pb-6 flex-1 flex flex-col min-h-0">
+              <div className="bg-white dark:bg-[#131B2E] rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm animate-fade-in-up flex-1 flex flex-col min-h-[calc(100vh-120px)]">
+                {/* Table header */}
+                <div
+                  className="flex flex-col sm:flex-row items-center justify-between gap-3 px-6 py-4 border-b border-slate-100 dark:border-slate-800"
+                >
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg font-black text-slate-800 dark:text-white uppercase tracking-tight">
+                        {viewTitles[view] || 'Projects'}
+                      </span>
+                    </div>
+                    <p className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mt-0.5">
+                      AA2000 Security · Estimation Platform
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2 w-full sm:w-auto">
+                    <div className="relative flex-1 sm:max-w-xs">
+                      <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                      </svg>
+                      <input
+                        type="text"
+                        value={search}
+                        onChange={e => setSearch(e.target.value)}
+                        placeholder="Search projects..."
+                        className="search-input w-full pl-9 pr-4 py-2 rounded-xl text-xs font-medium bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 outline-none focus:bg-white dark:focus:bg-slate-800 transition-all"
+                      />
+                    </div>
+                    <select
+                      value={sort}
+                      onChange={e => setSort(e.target.value as SortMode)}
+                      className="px-3 py-2 rounded-xl text-xs font-medium bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-200 outline-none cursor-pointer"
+                    >
+                      <option value="newest">Newest</option>
+                      <option value="oldest">Oldest</option>
+                      <option value="name-asc">Name A–Z</option>
+                      <option value="name-desc">Name Z–A</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Table body */}
+                <div className="overflow-x-auto flex-1 pb-16">
+                  {ordered.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-16 gap-3 flex-1">
+                      <div
+                        className="w-14 h-14 rounded-2xl flex items-center justify-center text-2xl animate-float-a"
+                        style={{ background: theme.primaryAlpha08 }}
+                      >
+                        <StatClipboard className="w-6 h-6" />
+                      </div>
+                      <div className="text-center">
+                        <p className="text-xs font-bold text-slate-600 dark:text-slate-300">No projects found</p>
+                        <p className="text-[11px] text-slate-400 mt-0.5">
+                          {user.role === 'ADMIN' ? 'Create a new project to get started' : 'No assignments in this view yet'}
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="text-[9px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100 dark:border-slate-800">
+                          <th className="py-3 pl-6">Project / Client</th>
+                          <th className="py-3 text-center">Status</th>
+                          <th className="py-3 text-center">Date & Time</th>
+                          <th className="py-3 pr-6 text-right" />
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {ordered.map((project, i) => {
+                          const isPinned = pinned.has(project.id);
+                          const isOpen = menuOpen === project.id;
+                          const isNearBottom = ordered.length > 2 && i >= ordered.length - 2;
+                          const statusBar =
+                            Object.entries(statusConfig).find(([key]) => project.status?.includes(key))?.[1]?.bar || '#64748B';
+
+                          const formattedTime = (() => {
+                            if (!project.createdAt) return '';
+                            try {
+                              const d = new Date(project.createdAt);
+                              if (!isNaN(d.getTime())) {
+                                return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+                              }
+                            } catch {}
+                            return '';
+                          })();
+
+                          return (
+                            <tr
+                              key={project.id}
+                              onClick={() => onSelectProject(project)}
+                              className={`hover:bg-slate-50/80 dark:hover:bg-slate-800/50 cursor-pointer border-b border-slate-50 dark:border-slate-800/50 transition-colors group animate-fade-in-up ${
+                                isOpen ? 'relative z-50' : ''
+                              }`}
+                              style={{ animationDelay: `${i * 30}ms` }}
+                            >
+                              <td className="py-3.5 pl-6">
+                                <div className="flex items-center gap-3">
+                                  <div className="w-1 h-8 rounded-full shrink-0" style={{ background: statusBar }} />
+                                  <div>
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-xs font-bold text-slate-800 dark:text-white">{project.name}</span>
+                                      {isPinned && (
+                                        <span
+                                          className="text-[8px] font-extrabold px-1.5 py-0.5 rounded uppercase tracking-wide"
+                                          style={{ background: theme.primaryAlpha08, color: theme.primary }}
+                                        >
+                                          Pinned
+                                        </span>
+                                      )}
+                                    </div>
+                                    <p className="text-[10px] text-slate-400 mt-0.5">
+                                      {project.clientName} · {project.location}
+                                    </p>
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="py-3.5 text-center">
+                                <StatusBadge status={project.status} />
+                              </td>
+                              <td className="py-3.5 text-center text-[11px] font-medium text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                                <div className="flex items-center justify-center gap-1.5">
+                                  <span>{project.startDate || (project.createdAt ? project.createdAt.split('T')[0] : '—')}</span>
+                                  {formattedTime && (
+                                    <span className="text-[10px] text-slate-400 dark:text-slate-500 font-semibold">
+                                      · {formattedTime}
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+                              <td className={`py-3.5 pr-6 text-right relative ${isOpen ? 'z-50' : ''}`} onClick={e => e.stopPropagation()}>
+                                <button
+                                  onClick={() => setMenuOpen(isOpen ? null : project.id)}
+                                  className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-all opacity-0 group-hover:opacity-100 cursor-pointer"
+                                >
+                                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h.01M12 12h.01M19 12h.01" />
+                                  </svg>
+                                </button>
+                                {isOpen && (
+                                  <>
+                                    <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(null)} />
+                                    <div
+                                      className={`absolute right-4 z-50 w-48 rounded-xl bg-white dark:bg-[#162032] border border-slate-200 dark:border-slate-700 py-1.5 shadow-2xl text-left animate-scale-in ${
+                                        isNearBottom ? 'bottom-8' : 'top-10'
+                                      }`}
+                                    >
+                                      <button
+                                        onClick={() => { setEditProject(project); setMenuOpen(null); }}
+                                        className="w-full px-3.5 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-800 dark:hover:text-white flex items-center gap-2 cursor-pointer transition-colors"
+                                      >
+                                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                                        Edit Project
+                                      </button>
+                                      <button
+                                        onClick={() => handlePin(project.id)}
+                                        className="w-full px-3.5 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-800 dark:hover:text-white flex items-center gap-2 cursor-pointer transition-colors"
+                                      >
+                                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" /></svg>
+                                        {isPinned ? 'Unpin' : 'Pin Project'}
+                                      </button>
+                                      <button
+                                        onClick={() => onSelectProject(project)}
+                                        className="w-full px-3.5 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 hover:text-slate-800 flex items-center gap-2 cursor-pointer transition-colors"
+                                      >
+                                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                                        View Details
+                                      </button>
+                                      <div className="border-t border-slate-100 my-1" />
+                                      <button
+                                        onClick={() => { setDeleteConfirm(project.id); setMenuOpen(null); }}
+                                        className="w-full px-3.5 py-2 text-xs font-bold text-red-600 hover:bg-red-50 hover:text-red-700 flex items-center gap-2 cursor-pointer transition-colors"
+                                      >
+                                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                        Delete Project
+                                      </button>
+                                    </div>
+                                  </>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              </div>
+            </div>
           ) : (
             <Home
               user={user}
@@ -920,436 +1309,47 @@ export default function Dashboard({
         </div>
       </main>
 
-                          {/* Project Cards Grid or Empty State */}
-                          {actualProjects.length > 0 ? (
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-16">
-                              {actualProjects.slice(0, 6).map((p, index) => {
-                                const isPending = p.status === 'Pending';
-                                const isAwaitingApproval = p.status === 'Finalized';
-                                const isRejected = p.status === 'Finalized - Rejected';
-                                const isCompleted = p.status === 'Completed' || p.status === 'Finalized - Approved';
-                                return (
-                                  <div
-                                    key={p.id}
-                                    onClick={() => onSelectProject(p)}
-                                    className={`p-4 rounded-2xl border transition-all duration-300 cursor-pointer flex flex-col justify-between group/card relative overflow-hidden animate-fade-in-up hover:-translate-y-1.5 hover:shadow-xl ${
-                                      isPending
-                                        ? 'bg-amber-50/20 dark:bg-amber-950/20 border-amber-200/90 dark:border-amber-900/50 hover:border-amber-400'
-                                        : isAwaitingApproval
-                                        ? 'bg-blue-50/20 dark:bg-blue-950/20 border-blue-200/90 dark:border-blue-900/50 hover:border-blue-400'
-                                        : 'bg-white dark:bg-[#131B2E] border-slate-200 dark:border-slate-800 hover:border-blue-400 dark:hover:border-blue-500'
-                                    }`}
-                                    style={{ animationDelay: `${index * 60}ms` }}
-                                  >
-                                    <div
-                                      className={`absolute top-0 left-0 right-0 h-1 transition-opacity duration-300 opacity-0 group-hover/card:opacity-100 ${
-                                        isPending
-                                          ? 'bg-gradient-to-r from-amber-400 to-amber-600'
-                                          : isAwaitingApproval
-                                          ? 'bg-gradient-to-r from-blue-500 to-indigo-600'
-                                          : isRejected
-                                          ? 'bg-gradient-to-r from-rose-400 to-rose-600'
-                                          : 'bg-gradient-to-r from-emerald-400 to-teal-500'
-                                      }`}
-                                    />
-                                    <div>
-                                      <div className="flex items-center justify-between gap-2 mb-2.5">
-                                        <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 truncate">
-                                          {p.clientName}
-                                        </span>
-                                        <span
-                                          className={`text-[9px] font-extrabold px-2.5 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1.5 ${
-                                            isPending
-                                              ? 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300'
-                                              : isAwaitingApproval
-                                              ? 'bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300'
-                                              : isRejected
-                                              ? 'bg-rose-100 dark:bg-rose-950 text-rose-800 dark:text-rose-300'
-                                              : 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300'
-                                          }`}
-                                        >
-                                          {p.status}
-                                        </span>
-                                      </div>
-                                      <h4 className="text-xs font-black text-slate-800 dark:text-white mb-1 leading-snug group-hover/card:text-blue-600 dark:group-hover/card:text-blue-400">{p.name}</h4>
-                                      <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium truncate mb-3 flex items-center gap-1">
-                                        <span>📍</span>
-                                        <span>{p.location || 'Location not set'}</span>
-                                      </p>
-                                    </div>
-
-                                    <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
-                                      <span className="text-[10px] font-bold text-slate-400 truncate">
-                                        {p.systemTypes?.slice(0, 2).join(', ') || 'General System'}
-                                      </span>
-                                      <button
-                                        onClick={(e) => { e.stopPropagation(); onSelectProject(p); }}
-                                        className="px-3.5 py-1.5 rounded-xl text-xs font-black text-white shadow-sm flex items-center gap-1 shrink-0"
-                                        style={{
-                                          background: isPending ? 'linear-gradient(135deg, #D97706 0%, #B45309 100%)' : 'linear-gradient(135deg, #1D4ED8 0%, #1E40AF 100%)',
-                                        }}
-                                      >
-                                        <span>Open Survey</span>
-                                      </button>
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          ) : (
-                            <div className="py-16 text-center flex flex-col items-center justify-center my-auto">
-                              <div className="w-12 h-12 rounded-2xl bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 flex items-center justify-center mb-3">
-                                <StatClipboard className="w-6 h-6" />
-                              </div>
-                              <h4 className="text-sm font-black text-slate-800 dark:text-white mb-1">No site surveys created yet</h4>
-                              <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mb-4">
-                                No active site surveys have been assigned or submitted yet.
-                              </p>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                    </div>
-                  </div>
-                </>
-              )}
-
-              {/* Project Table (non-dashboard, non-notifications, non-category views) */}
-              {view !== 'dashboard' && view !== 'notifications' && !isCategoryView && (
-                <div className="px-6 pt-6 pb-6 flex-1 flex flex-col min-h-0">
-                  <div className="bg-white dark:bg-[#131B2E] rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm animate-fade-in-up flex-1 flex flex-col min-h-[calc(100vh-120px)]">
-                    {/* Table header */}
-                    <div
-                      className="flex flex-col sm:flex-row items-center justify-between gap-3 px-6 py-4 border-b border-slate-100 dark:border-slate-800"
-                    >
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-lg font-black text-slate-800 dark:text-white uppercase tracking-tight">
-                            {viewTitles[view] || 'Projects'}
-                          </span>
-
-                        </div>
-                        <p className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mt-0.5">
-                          AA2000 Security · Estimation Platform
-                        </p>
-                      </div>
-
-                      <div className="flex items-center gap-2 w-full sm:w-auto">
-                        <div className="relative flex-1 sm:max-w-xs">
-                          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                          </svg>
-                          <input
-                            type="text"
-                            value={search}
-                            onChange={e => setSearch(e.target.value)}
-                            placeholder="Search projects..."
-                            className="search-input w-full pl-9 pr-4 py-2 rounded-xl text-xs font-medium bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 outline-none focus:bg-white dark:focus:bg-slate-800 transition-all"
-                          />
-                        </div>
-                        <select
-                          value={sort}
-                          onChange={e => setSort(e.target.value as SortMode)}
-                          className="px-3 py-2 rounded-xl text-xs font-medium bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-200 outline-none cursor-pointer"
-                        >
-                          <option value="newest">Newest</option>
-                          <option value="oldest">Oldest</option>
-                          <option value="name-asc">Name A–Z</option>
-                          <option value="name-desc">Name Z–A</option>
-                        </select>
-                      </div>
-                    </div>
-
-                    {/* Table body */}
-                    <div className="overflow-x-auto flex-1 pb-16">
-                      {ordered.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center py-16 gap-3 flex-1">
-                          <div
-                            className="w-14 h-14 rounded-2xl flex items-center justify-center text-2xl animate-float-a"
-                            style={{ background: theme.primaryAlpha08 }}
-                          >
-                            <StatClipboard className="w-6 h-6" />
-                          </div>
-                          <div className="text-center">
-                            <p className="text-xs font-bold text-slate-600 dark:text-slate-300">No projects found</p>
-                            <p className="text-[11px] text-slate-400 mt-0.5">
-                              {user.role === 'ADMIN' ? 'Create a new project to get started' : 'No assignments in this view yet'}
-                            </p>
-                          </div>
-                        </div>
-                      ) : (
-                        <table className="w-full text-left border-collapse">
-                          <thead>
-                            <tr className="text-[9px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100 dark:border-slate-800">
-                              <th className="py-3 pl-6">Project / Client</th>
-                              <th className="py-3 text-center">Status</th>
-                              <th className="py-3 text-center">Date & Time</th>
-                              <th className="py-3 pr-6 text-right" />
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {ordered.map((project, i) => {
-                              const isPinned = pinned.has(project.id);
-                              const isOpen = menuOpen === project.id;
-                              const isNearBottom = ordered.length > 2 && i >= ordered.length - 2;
-                              const statusBar =
-                                Object.entries(statusConfig).find(([key]) => project.status?.includes(key))?.[1]?.bar || '#64748B';
-
-                              const formattedTime = (() => {
-                                if (!project.createdAt) return '';
-                                try {
-                                  const d = new Date(project.createdAt);
-                                  if (!isNaN(d.getTime())) {
-                                    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
-                                  }
-                                } catch {}
-                                return '';
-                              })();
-
-                              return (
-                                <tr
-                                  key={project.id}
-                                  onClick={() => onSelectProject(project)}
-                                  className={`hover:bg-slate-50/80 dark:hover:bg-slate-800/50 cursor-pointer border-b border-slate-50 dark:border-slate-800/50 transition-colors group animate-fade-in-up ${
-                                    isOpen ? 'relative z-50' : ''
-                                  }`}
-                                  style={{ animationDelay: `${i * 30}ms` }}
-                                >
-                                  <td className="py-3.5 pl-6">
-                                    <div className="flex items-center gap-3">
-                                      <div className="w-1 h-8 rounded-full shrink-0" style={{ background: statusBar }} />
-                                      <div>
-                                        <div className="flex items-center gap-2">
-                                          <span className="text-xs font-bold text-slate-800 dark:text-white">{project.name}</span>
-                                          {isPinned && (
-                                            <span
-                                              className="text-[8px] font-extrabold px-1.5 py-0.5 rounded uppercase tracking-wide"
-                                              style={{ background: theme.primaryAlpha08, color: theme.primary }}
-                                            >
-                                              Pinned
-                                            </span>
-                                          )}
-                                        </div>
-                                        <p className="text-[10px] text-slate-400 mt-0.5">
-                                          {project.clientName} · {project.location}
-                                        </p>
-                                      </div>
-                                    </div>
-                                  </td>
-                                  <td className="py-3.5 text-center">
-                                    <StatusBadge status={project.status} />
-                                  </td>
-                                  <td className="py-3.5 text-center text-[11px] font-medium text-slate-500 dark:text-slate-400 whitespace-nowrap">
-                                    <div className="flex items-center justify-center gap-1.5">
-                                      <span>{project.startDate || (project.createdAt ? project.createdAt.split('T')[0] : '—')}</span>
-                                      {formattedTime && (
-                                        <span className="text-[10px] text-slate-400 dark:text-slate-500 font-semibold">
-                                          · {formattedTime}
-                                        </span>
-                                      )}
-                                    </div>
-                                  </td>
-                                  <td className={`py-3.5 pr-6 text-right relative ${isOpen ? 'z-50' : ''}`} onClick={e => e.stopPropagation()}>
-                                    <button
-                                      onClick={() => setMenuOpen(isOpen ? null : project.id)}
-                                      className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-all opacity-0 group-hover:opacity-100 cursor-pointer"
-                                    >
-                                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h.01M12 12h.01M19 12h.01" />
-                                      </svg>
-                                    </button>
-                                    {isOpen && (
-                                      <>
-                                        <div className="fixed inset-0 z-40" onClick={() => setMenuOpen(null)} />
-                                        <div
-                                          className={`absolute right-4 z-50 w-48 rounded-xl bg-white dark:bg-[#162032] border border-slate-200 dark:border-slate-700 py-1.5 shadow-2xl text-left animate-scale-in ${
-                                            isNearBottom ? 'bottom-8' : 'top-10'
-                                          }`}
-                                        >
-                                          <button
-                                            onClick={() => { setEditProject(project); setMenuOpen(null); }}
-                                            className="w-full px-3.5 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-800 dark:hover:text-white flex items-center gap-2 cursor-pointer transition-colors"
-                                          >
-                                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
-                                            Edit Project
-                                          </button>
-                                          <button
-                                            onClick={() => handlePin(project.id)}
-                                            className="w-full px-3.5 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-800 dark:hover:text-white flex items-center gap-2 cursor-pointer transition-colors"
-                                          >
-                                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" /></svg>
-                                            {isPinned ? 'Unpin' : 'Pin Project'}
-                                          </button>
-                                          <button
-                                            onClick={() => onSelectProject(project)}
-                                            className="w-full px-3.5 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 hover:text-slate-800 flex items-center gap-2 cursor-pointer transition-colors"
-                                          >
-                                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
-                                            View Details
-                                          </button>
-                                          <div className="border-t border-slate-100 my-1" />
-                                          <button
-                                            onClick={() => { setDeleteConfirm(project.id); setMenuOpen(null); }}
-                                            className="w-full px-3.5 py-2 text-xs font-bold text-red-600 hover:bg-red-50 hover:text-red-700 flex items-center gap-2 cursor-pointer transition-colors"
-                                          >
-                                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                                            Delete Project
-                                          </button>
-                                        </div>
-                                      </>
-                                    )}
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Notification View */}
-              {view === 'notifications' && (
-                <div className="px-6 pt-6 pb-6 flex-1 flex flex-col min-h-0">
-                  <div className="bg-white dark:bg-[#131B2E] rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden animate-fade-in-up flex-1 flex flex-col min-h-[calc(100vh-120px)]">
-                    {/* Tabs */}
-                    <div className="px-6 pt-4 pb-0 border-b border-slate-100">
-                      <div className="flex flex-wrap gap-1">
-                        {[
-                          { key: 'ongoing', label: 'Ongoing', count: countOngoing, color: '#2563EB' },
-                          { key: 'upcoming', label: 'Upcoming', count: countUpcoming, color: '#059669' },
-                          { key: 'missing', label: 'Missing', count: countMissing, color: '#D97706' },
-                          ...(user.role === 'ADMIN' || user.role === 'ACCOUNTING'
-                            ? [
-                              { key: 'approval', label: 'Approval', count: countApproval, color: '#7C3AED' },
-                              { key: 'finalize', label: 'Finalize', count: countFinalize, color: '#059669' },
-                            ]
-                            : []),
-                        ].map(tab => (
-                          <button
-                            key={tab.key}
-                            onClick={() => setActiveNotifTab(tab.key as any)}
-                            className="flex items-center gap-1.5 px-3 py-2 text-[11px] font-bold uppercase tracking-wider border-b-2 transition-all mb-[-1px]"
-                            style={
-                              activeNotifTab === tab.key
-                                ? { borderColor: tab.color, color: tab.color }
-                                : { borderColor: 'transparent', color: '#94A3B8' }
-                            }
-                          >
-                            {tab.label}
-                            <span
-                              className="text-[9px] font-extrabold px-1.5 py-0.5 rounded-full"
-                              style={
-                                activeNotifTab === tab.key
-                                  ? { background: `${tab.color}15`, color: tab.color }
-                                  : { background: '#F1F5F9', color: '#94A3B8' }
-                              }
-                            >
-                              {tab.count}
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="divide-y divide-slate-50">
-                      {notifications.filter(n => n.type === activeNotifTab).length === 0 ? (
-                        <div className="py-12 text-center">
-                          <div className="w-12 h-12 rounded-2xl bg-slate-50 flex items-center justify-center mx-auto mb-3">
-                            <Bell className="w-5 h-5 text-slate-300" />
-                          </div>
-                          <p className="text-xs font-bold text-slate-400">No alerts in this category</p>
-                        </div>
-                      ) : (
-                        notifications
-                          .filter(n => n.type === activeNotifTab)
-                          .map(n => {
-                            const cfg = typeConfig[n.type] || typeConfig.ongoing;
-                            return (
-                              <div
-                                key={n.id}
-                                onClick={() => navigateNotif(n.type)}
-                                className="px-6 py-4 flex items-start gap-4 cursor-pointer hover:bg-slate-50/50 transition-colors group"
-                              >
-                                <div
-                                  className="w-2.5 h-2.5 rounded-full mt-1.5 shrink-0"
-                                  style={{ background: !n.read ? cfg.dot : '#CBD5E1' }}
-                                />
-                                <div className="min-w-0 flex-1">
-                                  <p className={`text-sm ${!n.read ? 'font-bold text-slate-800' : 'font-medium text-slate-500'}`}>
-                                    {n.title}
-                                  </p>
-                                  <div className="flex items-center gap-3 mt-1.5">
-                                    <span className="text-xs text-slate-400 font-medium">
-                                      {n.companyName} · {n.date}
-                                    </span>
-                                    <span
-                                      className="text-[8px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wide"
-                                      style={{ background: cfg.bg, color: cfg.color }}
-                                    >
-                                      {cfg.label}
-                                    </span>
-                                  </div>
-                                </div>
-                              </div>
-                            );
-                          })
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </>
+      {/* ── Modals ── */}
+      {showCreate && (
+        <CreateProjectModal
+          userRole={user.role}
+          onClose={() => setShowCreate(false)}
+          onCreate={p => { onCreateProject(p); setProjectList(prev => [...prev, p]); }}
+          isCompanyMode={isCompanyMode}
+        />
       )}
-    </div>
 
-        {/* ── Modals ── */}
-        {showCreate && (
-          <CreateProjectModal
-            userRole={user.role}
-            onClose={() => setShowCreate(false)}
-            onCreate={p => { onCreateProject(p); setProjectList(prev => [...prev, p]); }}
-            isCompanyMode={isCompanyMode}
-          />
-        )}
+      {editProject && (
+        <EditProjectModal project={editProject} onClose={() => setEditProject(null)} onSave={handleSaveEdit} />
+      )}
 
-        {editProject && (
-          <EditProjectModal project={editProject} onClose={() => setEditProject(null)} onSave={handleSaveEdit} />
-        )}
-
-        {deleteConfirm && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop">
-            <div className="w-full max-w-sm p-6 rounded-3xl bg-white shadow-2xl border border-slate-100 text-center animate-scale-in">
-              <div className="w-12 h-12 rounded-2xl flex items-center justify-center mx-auto mb-4 bg-red-50">
-                <svg className="w-6 h-6 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                </svg>
-              </div>
-              <h3 className="font-black text-slate-800 text-base mb-1">Delete Project?</h3>
-              <p className="text-xs text-slate-400 mb-5">This action cannot be undone.</p>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setDeleteConfirm(null)}
-                  className="flex-1 py-2.5 rounded-xl text-xs font-bold bg-slate-50 text-slate-600 border border-slate-200 btn-press"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={() => handleDelete(deleteConfirm)}
-                  className="flex-1 py-2.5 rounded-xl text-xs font-bold text-white bg-red-500 shadow-md shadow-red-100 btn-press"
-                >
-                  Delete
-                </button>
-              </div>
+      {deleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop">
+          <div className="w-full max-w-sm p-6 rounded-3xl bg-white shadow-2xl border border-slate-100 text-center animate-scale-in">
+            <div className="w-12 h-12 rounded-2xl flex items-center justify-center mx-auto mb-4 bg-red-50">
+              <svg className="w-6 h-6 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+            </div>
+            <h3 className="font-black text-slate-800 text-base mb-1">Delete Project?</h3>
+            <p className="text-xs text-slate-400 mb-5">This action cannot be undone.</p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setDeleteConfirm(null)}
+                className="flex-1 py-2.5 rounded-xl text-xs font-bold bg-slate-50 text-slate-600 border border-slate-200 btn-press"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleDelete(deleteConfirm)}
+                className="flex-1 py-2.5 rounded-xl text-xs font-bold text-white bg-red-500 shadow-md shadow-red-100 btn-press"
+              >
+                Delete
+              </button>
             </div>
           </div>
-        )}
-      </main>
+        </div>
+      )}
 
       <div
         aria-hidden={!isAiChatOpen}
