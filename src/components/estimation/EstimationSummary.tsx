@@ -1,5 +1,5 @@
 import React from 'react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import type { Project, User } from '../../App';
 import type { EstimationManpowerEntry, EstimationConsumableEntry, EstimationAdditionalFeeEntry } from '../../types';
 import type { FloorPlanEstimation } from '../../services/geminiFloorPlanService';
@@ -191,6 +191,94 @@ function createScopeOfWork(count: number): ScopeOfWorkEntry {
   };
 }
 
+interface EstimationSnapshotInput {
+  manpower: EstimationManpowerEntry[];
+  consumables: EstimationConsumableEntry[];
+  fees: EstimationAdditionalFeeEntry[];
+  scopeOfWorks: ScopeOfWorkEntry[];
+  constraints?: { physical?: string; electrical?: string; installation?: string };
+  priceTier?: string;
+  aiQuotation?: unknown;
+  aiBaseline?: unknown;
+  technicianNotes?: string;
+  discrepancyJustifications?: string[] | null;
+}
+
+type EstimationSection = 'manpower' | 'consumables' | 'fees' | 'scopeOfWorks' | 'fieldNotes' | 'constraints';
+
+const ESTIMATION_SECTION_FIELDS: Record<EstimationSection, string[]> = {
+  manpower: ['manpower'],
+  consumables: ['consumables', 'priceTier'],
+  fees: ['fees'],
+  scopeOfWorks: ['scopeOfWorks'],
+  fieldNotes: ['technicianNotes', 'discrepancyJustifications'],
+  constraints: ['constraints'],
+};
+
+function serializeEstimationSnapshot(input: EstimationSnapshotInput): string {
+  return JSON.stringify({
+    manpower: input.manpower,
+    consumables: input.consumables,
+    fees: input.fees,
+    scopeOfWorks: input.scopeOfWorks,
+    constraints: {
+      physical: input.constraints?.physical ?? '',
+      electrical: input.constraints?.electrical ?? '',
+      installation: input.constraints?.installation ?? '',
+    },
+    priceTier: input.priceTier ?? 'srp',
+    aiQuotation: input.aiQuotation ?? null,
+    aiBaseline: input.aiBaseline ?? null,
+    technicianNotes: input.technicianNotes ?? '',
+    discrepancyJustifications: input.discrepancyJustifications ?? [],
+  });
+}
+
+function getChangedEstimationSections(currentSnapshot: string, savedSnapshot: string | null): Set<EstimationSection> {
+  if (!savedSnapshot) return new Set();
+
+  try {
+    const current = JSON.parse(currentSnapshot) as Record<string, unknown>;
+    const saved = JSON.parse(savedSnapshot) as Record<string, unknown>;
+    const changed = new Set<EstimationSection>();
+
+    (Object.entries(ESTIMATION_SECTION_FIELDS) as [EstimationSection, string[]][]).forEach(([section, fields]) => {
+      if (fields.some(field => JSON.stringify(current[field]) !== JSON.stringify(saved[field]))) {
+        changed.add(section);
+      }
+    });
+
+    return changed;
+  } catch {
+    return new Set();
+  }
+}
+
+function parseEstimationSnapshot(snapshot: string | null): Record<string, any> | null {
+  if (!snapshot) return null;
+  try {
+    return JSON.parse(snapshot);
+  } catch {
+    return null;
+  }
+}
+
+function getChangedRowFields(
+  currentRow: Record<string, any>,
+  savedRows: unknown,
+  fields: string[],
+): Set<string> {
+  if (!Array.isArray(savedRows)) return new Set();
+
+  const savedRow = savedRows.find(row => row?.id === currentRow.id);
+
+  if (!savedRow) return new Set(fields);
+
+  return new Set(fields.filter(field => (
+    JSON.stringify(currentRow[field]) !== JSON.stringify(savedRow[field])
+  )));
+}
+
 const getInputStyle = (dark: boolean): React.CSSProperties => ({
   padding: '8px 12px',
   borderRadius: '8px',
@@ -219,6 +307,8 @@ import { submitEstimationToDB } from '../../services/estimationSubmission';
 export default function EstimationSummary({ project, user, onBack, onUpdateStatus, isDark }: Props) {
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const savedSnapshotRef = useRef<string | null>(null);
+  const [isInitialStateLoaded, setIsInitialStateLoaded] = useState(false);
   const showPrices = canViewPrices(user?.role, user);
 
   // Sync dark theme reactive state
@@ -291,6 +381,46 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
   });
   const [quotDiscount, setQuotDiscount] = useState<number>(0);
   const [showEditQuotation, setShowEditQuotation] = useState(false);
+
+  const currentEstimationSnapshot = serializeEstimationSnapshot({
+    manpower,
+    consumables,
+    fees,
+    scopeOfWorks,
+    constraints,
+    priceTier,
+    aiQuotation,
+    aiBaseline,
+    technicianNotes,
+    discrepancyJustifications,
+  });
+  const hasUnsavedChanges = isInitialStateLoaded && (
+    savedSnapshotRef.current === null || currentEstimationSnapshot !== savedSnapshotRef.current
+  );
+  const changedSections = getChangedEstimationSections(currentEstimationSnapshot, savedSnapshotRef.current);
+  const savedSnapshotData = parseEstimationSnapshot(savedSnapshotRef.current);
+  const currentSnapshotData = parseEstimationSnapshot(currentEstimationSnapshot) || {};
+  const isSavedFieldChanged = (field: string) => savedSnapshotData !== null && (
+    JSON.stringify(currentSnapshotData[field]) !== JSON.stringify(savedSnapshotData[field])
+  );
+  const isSavedNestedFieldChanged = (section: string, field: string) => savedSnapshotData !== null && (
+    JSON.stringify(currentSnapshotData[section]?.[field]) !== JSON.stringify(savedSnapshotData[section]?.[field])
+  );
+  const getInputChangedStyle = (changed: boolean): React.CSSProperties => changed ? {
+    backgroundColor: dark ? '#2B2412' : '#FFFBEB',
+    border: dark ? '1px solid #92400E' : '1px solid #FCD34D',
+    boxShadow: dark ? '0 0 0 1px rgba(245, 158, 11, 0.18)' : '0 0 0 1px rgba(245, 158, 11, 0.16)',
+  } : {};
+  const editedBadge = (section: EstimationSection) => changedSections.has(section) ? (
+    <span
+      title="This section has unsaved changes"
+      className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${
+        dark ? 'bg-amber-950/60 text-amber-300' : 'bg-amber-100 text-amber-700'
+      }`}
+    >
+      Edited
+    </span>
+  ) : null;
 
   // Recalculate consumable prices when priceTier changes
   useEffect(() => {
@@ -694,10 +824,25 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
 
   // Load initial estimate or pre-fill from completed surveys if available
   useEffect(() => {
+    savedSnapshotRef.current = null;
+    setIsInitialStateLoaded(false);
+
     const saved = localStorage.getItem(`aa2000_estimation_${project.id}`);
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
+        savedSnapshotRef.current = serializeEstimationSnapshot({
+          manpower: parsed.manpower || [],
+          consumables: parsed.consumables || [],
+          fees: parsed.fees || [],
+          scopeOfWorks: parsed.scopeOfWorks || [],
+          constraints: parsed.constraints,
+          priceTier: parsed.priceTier,
+          aiQuotation: parsed.aiQuotation,
+          aiBaseline: parsed.aiBaseline,
+          technicianNotes: parsed.technicianNotes,
+          discrepancyJustifications: parsed.discrepancyJustifications,
+        });
         if (parsed.manpower) setManpower(parsed.manpower);
         if (parsed.consumables) setConsumables(parsed.consumables);
         if (parsed.fees) setFees(parsed.fees);
@@ -708,6 +853,7 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
         if (parsed.aiQuotation) setAiQuotation(parsed.aiQuotation);
         if (parsed.technicianNotes) setTechnicianNotes(parsed.technicianNotes);
         if (parsed.discrepancyJustifications) setDiscrepancyJustifications(parsed.discrepancyJustifications);
+        setIsInitialStateLoaded(true);
         return;
       } catch (e) {
         console.error('Failed to parse saved estimation', e);
@@ -731,6 +877,7 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
         runEstimateFromSurveys(projectSurveys);
       }
     }
+    setIsInitialStateLoaded(true);
   }, [project.id]);
 
   // Populate editable quotation header fields whenever the modal is opened
@@ -1418,6 +1565,7 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
             <div className="flex items-center gap-2">
               <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${dark ? 'bg-blue-950/60 text-blue-400' : 'bg-blue-50 text-[#1E3A8A]'}`}><UserIcon className="w-5 h-5" /></div>
               <h2 className={`text-xs font-black uppercase tracking-wider ${dark ? 'text-slate-100' : 'text-slate-800'}`}>MANPOWER BREAKDOWN</h2>
+              {editedBadge('manpower')}
             </div>
             <div className="flex items-center gap-3">
               {totalManDays > 0 && (
@@ -1441,28 +1589,30 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
                 </tr>
               </thead>
               <tbody>
-                {manpower.map(m => (
+                {manpower.map(m => {
+                  const changedFields = getChangedRowFields(m, savedSnapshotData?.manpower, ['role', 'headcount', 'hours', 'manDays', 'dayRate']);
+                  return (
                   <tr key={m.id} className={`border-b transition-colors ${dark ? 'border-slate-800/60 hover:bg-slate-800/30' : 'border-slate-50 hover:bg-slate-50/50'}`}>
                     <td className="py-2.5 pr-2">
                       <input value={m.role} onChange={e => updateManpower(m.id, 'role', e.target.value)} placeholder="e.g. Lead Security Engineer"
-                        style={{ ...inputStyle, width: '220px', fontWeight: '600' }} />
+                        style={{ ...inputStyle, ...getInputChangedStyle(changedFields.has('role')), width: '220px', fontWeight: '600' }} />
                     </td>
                     <td className="py-2.5 pr-2 text-center">
                       <input type="number" min={1} value={m.headcount} onChange={e => updateManpower(m.id, 'headcount', Number(e.target.value))}
-                        style={{ ...inputStyle, width: '60px', textAlign: 'center' }} />
+                        style={{ ...inputStyle, ...getInputChangedStyle(changedFields.has('headcount')), width: '60px', textAlign: 'center' }} />
                     </td>
                     <td className="py-2.5 pr-2 text-center">
                       <input type="number" min={1} value={m.hours} onChange={e => updateManpower(m.id, 'hours', Number(e.target.value))}
-                        style={{ ...inputStyle, width: '70px', textAlign: 'center' }} />
+                        style={{ ...inputStyle, ...getInputChangedStyle(changedFields.has('hours')), width: '70px', textAlign: 'center' }} />
                     </td>
                     <td className="py-2.5 pr-2 text-center">
-                      <span className={`text-xs font-black px-2 py-1 rounded-lg ${dark ? 'bg-blue-950/60 text-blue-300' : 'bg-blue-50 text-blue-600'}`}>{m.manDays}</span>
+                      <span style={getInputChangedStyle(changedFields.has('manDays'))} className={`text-xs font-black px-2 py-1 rounded-lg ${dark ? 'bg-blue-950/60 text-blue-300' : 'bg-blue-50 text-blue-600'}`}>{m.manDays}</span>
                     </td>
                     {showPrices && (
                       <>
                         <td className="py-2.5 pr-2">
                           <input type="number" min={0} value={m.dayRate || ''} onChange={e => updateManpower(m.id, 'dayRate', Number(e.target.value))}
-                            placeholder="1000" style={{ ...inputStyle, width: '90px', textAlign: 'right' }} />
+                            placeholder="1000" style={{ ...inputStyle, ...getInputChangedStyle(changedFields.has('dayRate')), width: '90px', textAlign: 'right' }} />
                         </td>
                         <td className="py-2.5 pr-2 text-right">
                           <span className={`text-xs font-black ${dark ? 'text-slate-100' : 'text-slate-900'}`}>₱{((m.totalCost || (m.dayRate || 0) * m.manDays)).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
@@ -1471,7 +1621,8 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
                     )}
                     <td className="py-2.5">{removeBtn(() => setManpower(prev => prev.filter(x => x.id !== m.id)))}</td>
                   </tr>
-                ))}
+                  );
+                })}
                 {showPrices && manpower.length > 0 && (
                   <tr className={`border-t-2 ${dark ? 'border-slate-800 bg-[#0D1527]/70' : 'border-slate-100 bg-slate-50/70'}`}>
                     <td colSpan={5} className={`py-2.5 text-right text-xs font-bold pr-3 ${dark ? 'text-slate-300' : 'text-slate-700'}`}>Total Manpower Cost:</td>
@@ -1499,6 +1650,7 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
             <div className="flex items-center gap-2">
               <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${dark ? 'bg-amber-950/60 text-amber-400' : 'bg-amber-50 text-amber-600'}`}><PackageIcon className="w-5 h-5" /></div>
               <h2 className={`text-xs font-black uppercase tracking-wider ${dark ? 'text-slate-100' : 'text-slate-800'}`}>BILL OF MATERIALS</h2>
+              {editedBadge('consumables')}
             </div>
             <div className="flex items-center gap-3">
               {consumables.length > 0 && (
@@ -1507,7 +1659,10 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
                 </span>
               )}
               {showPrices && (
-                <div className={`flex items-center gap-1 border rounded-xl p-1 ${dark ? 'bg-[#0D1527] border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
+                <div
+                  style={getInputChangedStyle(isSavedFieldChanged('priceTier'))}
+                  className={`flex items-center gap-1 border rounded-xl p-1 ${dark ? 'bg-[#0D1527] border-slate-800' : 'bg-slate-50 border-slate-200'}`}
+                >
                   {(['srp', 'contractorPrice', 'dealerPrice'] as const).map(tier => (
                     <button
                       key={tier}
@@ -1539,14 +1694,16 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
                 </tr>
               </thead>
               <tbody>
-                {consumables.map(c => (
+                {consumables.map(c => {
+                  const changedFields = getChangedRowFields(c, savedSnapshotData?.consumables, ['name', 'quantity', 'unit', 'unitPrice']);
+                  return (
                   <tr key={c.id} className={`border-b transition-colors ${dark ? 'border-slate-800/60 hover:bg-slate-800/30' : 'border-slate-50 hover:bg-slate-50/50'}`}>
                     <td className="py-2.5 pr-2">
                       <input
                         value={c.name}
                         onChange={e => updateConsumable(c.id, 'name', e.target.value)}
                         placeholder="e.g. Hikvision DS-2CD2143G2-I"
-                        style={{ ...inputStyle, width: '280px', fontWeight: '600' }}
+                        style={{ ...inputStyle, ...getInputChangedStyle(changedFields.has('name')), width: '280px', fontWeight: '600' }}
                       />
                     </td>
                     <td className="py-2.5 pr-2">
@@ -1556,17 +1713,17 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
                     </td>
                     <td className="py-2.5 pr-2 text-center">
                       <input type="number" min={1} value={c.quantity} onChange={e => updateConsumable(c.id, 'quantity', Number(e.target.value))}
-                        style={{ ...inputStyle, width: '50px', textAlign: 'center', fontWeight: 'bold' }} />
+                        style={{ ...inputStyle, ...getInputChangedStyle(changedFields.has('quantity')), width: '50px', textAlign: 'center', fontWeight: 'bold' }} />
                     </td>
                     <td className="py-2.5 pr-2 text-slate-500 font-medium">
                       <input value={c.unit} onChange={e => updateConsumable(c.id, 'unit', e.target.value)}
-                        placeholder="pcs" style={{ ...inputStyle, width: '50px' }} />
+                        placeholder="pcs" style={{ ...inputStyle, ...getInputChangedStyle(changedFields.has('unit')), width: '50px' }} />
                     </td>
                     {showPrices && (
                       <>
                         <td className="py-2.5 pr-2 text-right">
                           <input type="number" min={0} value={c.unitPrice || ''} onChange={e => updateConsumable(c.id, 'unitPrice', Number(e.target.value))}
-                            placeholder="0" style={{ ...inputStyle, width: '90px', textAlign: 'right' }} />
+                            placeholder="0" style={{ ...inputStyle, ...getInputChangedStyle(changedFields.has('unitPrice')), width: '90px', textAlign: 'right' }} />
                         </td>
                         <td className={`py-2.5 pr-2 text-right font-black ${dark ? 'text-slate-100' : 'text-slate-900'}`}>
                           ₱{(c.totalPrice || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -1575,7 +1732,8 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
                     )}
                     <td className="py-2.5">{removeBtn(() => setConsumables(prev => prev.filter(x => x.id !== c.id)))}</td>
                   </tr>
-                ))}
+                  );
+                })}
                 {showPrices && consumables.length > 0 && (
                   <tr className={`border-t-2 ${dark ? 'border-slate-800 bg-[#0D1527]/70' : 'border-slate-100 bg-slate-50/70'}`}>
                     <td colSpan={5} className={`py-2.5 text-right text-xs font-bold pr-3 ${dark ? 'text-slate-300' : 'text-slate-700'}`}>Total Materials Price:</td>
@@ -1602,15 +1760,18 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
                 </svg>
               </div>
               <h2 className={`text-xs font-black uppercase tracking-wider ${dark ? 'text-slate-100' : 'text-slate-800'}`}>ADDITIONAL FEES</h2>
+              {editedBadge('fees')}
             </div>
             {addBtn('Add Fee', () => setFees(prev => [...prev, createFee()]))}
           </div>
           <div className="space-y-2">
-            {fees.map(f => (
+            {fees.map(f => {
+              const changedFields = getChangedRowFields(f, savedSnapshotData?.fees, ['type', 'description', 'amount']);
+              return (
               <div key={f.id} className={`flex items-center justify-between py-2 border-b ${dark ? 'border-slate-800' : 'border-slate-100'}`}>
                 <div className="flex items-center gap-3">
                   <select value={f.type} onChange={e => updateFee(f.id, 'type', e.target.value)}
-                    style={{ ...inputStyle, width: '160px', cursor: 'pointer', fontWeight: 'bold' }}>
+                    style={{ ...inputStyle, ...getInputChangedStyle(changedFields.has('type')), width: '160px', cursor: 'pointer', fontWeight: 'bold' }}>
                     <option>Travel Fee</option>
                     <option>Permit Fee</option>
                     <option>Congestion Fee</option>
@@ -1622,17 +1783,18 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
                   </select>
                   <input value={f.description} onChange={e => updateFee(f.id, 'description', e.target.value)}
                     placeholder="Describe the fee / requirement..."
-                    style={{ ...inputStyle, width: '320px' }} />
+                    style={{ ...inputStyle, ...getInputChangedStyle(changedFields.has('description')), width: '320px' }} />
                 </div>
                 <div className="flex items-center gap-3">
                   {showPrices && (
                     <input type="number" min={0} value={f.amount ?? ''} onChange={e => updateFee(f.id, 'amount', Number(e.target.value))}
-                      style={{ ...inputStyle, width: '110px', textAlign: 'right', fontWeight: 'bold' }} />
+                      style={{ ...inputStyle, ...getInputChangedStyle(changedFields.has('amount')), width: '110px', textAlign: 'right', fontWeight: 'bold' }} />
                   )}
                   {removeBtn(() => setFees(prev => prev.filter(x => x.id !== f.id)))}
                 </div>
               </div>
-            ))}
+              );
+            })}
             {fees.length === 0 && (
               <p className="py-4 text-center text-xs text-slate-400 font-semibold">No additional fees configured.</p>
             )}
@@ -1684,7 +1846,10 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
                 <Document className="w-5 h-5" />
               </div>
               <div>
-                <h2 className={`text-xs font-black uppercase tracking-wider ${dark ? 'text-slate-100' : 'text-slate-800'}`}>Scope of Works &amp; Deliverables (Section B)</h2>
+                <div className="flex items-center gap-2">
+                  <h2 className={`text-xs font-black uppercase tracking-wider ${dark ? 'text-slate-100' : 'text-slate-800'}`}>Scope of Works &amp; Deliverables (Section B)</h2>
+                  {editedBadge('scopeOfWorks')}
+                </div>
                 <p className="text-[10px] text-slate-400 font-semibold">Specific procedural steps, cleaning, testing, and testing certificates</p>
               </div>
             </div>
@@ -1703,7 +1868,9 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
                 </tr>
               </thead>
               <tbody>
-                {scopeOfWorks.map((s, idx) => (
+                {scopeOfWorks.map((s, idx) => {
+                  const changedFields = getChangedRowFields(s, savedSnapshotData?.scopeOfWorks, ['description', 'unit', 'totalPrice']);
+                  return (
                   <tr key={s.id} className={`border-b ${dark ? 'border-slate-800' : 'border-slate-100'}`}>
                     <td className={`py-2.5 pr-2 text-center font-bold text-xs ${dark ? 'text-slate-300' : 'text-slate-700'}`}>
                       {idx + 1}
@@ -1718,7 +1885,7 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
                         placeholder="SYSTEM / EQUIPMENT NAME&#10;General Cleaning&#10;1. Step one...&#10;2. Step two..."
                         rows={Math.max(2, s.description.split('\n').length)}
                         className={`w-full resize-y rounded-xl text-xs outline-none focus:border-blue-500 font-sans leading-relaxed ${dark ? 'text-slate-100 bg-[#0D1527]' : 'text-slate-700 bg-white'}`}
-                        style={{ ...inputStyle, padding: '8px 10px' }}
+                         style={{ ...inputStyle, ...getInputChangedStyle(changedFields.has('description')), padding: '8px 10px' }}
                       />
                     </td>
                     <td className="py-2.5 pr-2">
@@ -1729,7 +1896,7 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
                           setScopeOfWorks(prev => prev.map(x => x.id === s.id ? { ...x, unit: val } : x));
                         }}
                         placeholder="1 LOT"
-                        style={{ ...inputStyle, textAlign: 'center' }}
+                         style={{ ...inputStyle, ...getInputChangedStyle(changedFields.has('unit')), textAlign: 'center' }}
                       />
                     </td>
                     {showPrices && (
@@ -1743,7 +1910,7 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
                             setScopeOfWorks(prev => prev.map(x => x.id === s.id ? { ...x, totalPrice: val } : x));
                           }}
                           placeholder="0.00"
-                          style={{ ...inputStyle, textAlign: 'right', fontWeight: 'bold' }}
+                           style={{ ...inputStyle, ...getInputChangedStyle(changedFields.has('totalPrice')), textAlign: 'right', fontWeight: 'bold' }}
                         />
                       </td>
                     )}
@@ -1751,7 +1918,8 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
                       {removeBtn(() => setScopeOfWorks(prev => prev.filter(x => x.id !== s.id)))}
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
                 {scopeOfWorks.length === 0 && (
                   <tr>
                     <td colSpan={showPrices ? 5 : 4} className="py-8 text-center text-xs text-slate-400 font-semibold">
@@ -1774,9 +1942,12 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
                 </svg>
               </div>
               <div>
-                <h2 className={`text-xs font-black uppercase tracking-wider ${dark ? 'text-slate-100' : 'text-slate-800'}`}>
-                  TECHNICIAN FIELD NOTES &amp; GROUND OVERRIDE REASONS
-                </h2>
+                <div className="flex items-center gap-2">
+                  <h2 className={`text-xs font-black uppercase tracking-wider ${dark ? 'text-slate-100' : 'text-slate-800'}`}>
+                    TECHNICIAN FIELD NOTES &amp; GROUND OVERRIDE REASONS
+                  </h2>
+                  {editedBadge('fieldNotes')}
+                </div>
                 <p className="text-[10px] text-slate-400 font-medium">
                   Document any physical site changes or reasons why counts/manpower differ from AI recommendation for Sales &amp; Admin review
                 </p>
@@ -1798,10 +1969,18 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
                 'Existing conduits obstructed - Re-piping needed',
               ].map(tag => {
                 const isSelected = discrepancyJustifications.includes(tag);
+                const savedTags = Array.isArray(savedSnapshotData?.discrepancyJustifications)
+                  ? savedSnapshotData.discrepancyJustifications
+                  : [];
+                const isTagChanged = savedSnapshotData !== null && savedTags.includes(tag) !== isSelected;
                 return (
                   <button
                     key={tag}
                     type="button"
+                    style={isTagChanged ? {
+                      borderColor: dark ? '#D97706' : '#F59E0B',
+                      boxShadow: dark ? '0 0 0 1px rgba(245, 158, 11, 0.18)' : '0 0 0 1px rgba(245, 158, 11, 0.16)',
+                    } : undefined}
                     onClick={() => {
                       setDiscrepancyJustifications(prev =>
                         isSelected ? prev.filter(t => t !== tag) : [...prev, tag]
@@ -1828,7 +2007,7 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
             rows={3}
             placeholder="Type additional technician observations, site inspection remarks, or specific agreements made with the client on site..."
             className={`w-full rounded-xl text-xs outline-none focus:border-blue-500 leading-relaxed ${dark ? 'text-slate-100 bg-[#0D1527]' : 'text-slate-700 bg-white'}`}
-            style={{ ...inputStyle, padding: '12px' }}
+            style={{ ...inputStyle, ...getInputChangedStyle(isSavedFieldChanged('technicianNotes')), padding: '12px' }}
           />
         </div>
 
@@ -1842,6 +2021,7 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
               </svg>
             </div>
             <h2 className={`text-xs font-black uppercase tracking-wider ${dark ? 'text-slate-100' : 'text-slate-800'}`}>INSTALLATION NOTES &amp; CONSTRAINTS</h2>
+            {editedBadge('constraints')}
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {([
@@ -1857,7 +2037,7 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
                   rows={4}
                   placeholder={c.placeholder}
                   className={`w-full resize-none rounded-xl text-xs outline-none focus:border-blue-500 leading-relaxed ${dark ? 'text-slate-100 bg-[#0D1527]' : 'text-slate-700 bg-white'}`}
-                  style={{ ...inputStyle, padding: '10px 12px' }}
+                  style={{ ...inputStyle, ...getInputChangedStyle(isSavedNestedFieldChanged('constraints', c.key)), padding: '10px 12px' }}
                 />
               </div>
             ))}
@@ -1865,14 +2045,14 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
         </div>
 
         {/* Bottom Actions */}
-        <div className="flex flex-wrap items-center justify-between gap-3 mt-8">
+        <div className="flex flex-wrap items-end justify-between gap-3 mt-4">
           <button onClick={onBack} className={`px-6 py-3 rounded-xl text-xs font-bold border transition-colors cursor-pointer ${
             dark ? 'bg-[#131B2E] text-slate-300 border-slate-700 hover:text-white hover:bg-slate-800' : 'bg-white text-slate-500 border-slate-200 hover:text-slate-800'
           }`}>
             Back to Project
           </button>
           
-          <div className="flex items-center gap-3">
+          <div className="flex items-end gap-3">
             {showPrices && (
               <button
                 onClick={() => setShowQuotationModal(true)}
@@ -1887,64 +2067,113 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
               </button>
             )}
 
-            <button
-              disabled={isSubmitting}
-              onClick={async () => {
-                const estimationData = {
-                  manpower,
-                  consumables,
-                  fees,
-                  scopeOfWorks,
-                  constraints,
-                  priceTier,
-                  aiQuotation,
-                  aiBaseline,
-                  technicianNotes,
-                  discrepancyJustifications,
-                  updatedAt: new Date().toISOString(),
-                };
-                // Local cache (offline fallback)
-                localStorage.setItem(`aa2000_estimation_${project.id}`, JSON.stringify(estimationData));
+            <div className="flex flex-col items-end gap-1.5">
+              <div
+                id="estimation-save-status"
+                role="status"
+                aria-live="polite"
+                className={`flex items-center gap-1.5 text-[10px] font-bold ${
+                  isSubmitting
+                    ? dark ? 'text-blue-300' : 'text-blue-600'
+                    : hasUnsavedChanges
+                    ? dark ? 'text-amber-300' : 'text-amber-700'
+                    : dark ? 'text-slate-400' : 'text-slate-500'
+                }`}
+              >
+                <span className={`w-1.5 h-1.5 rounded-full ${
+                  isSubmitting ? 'bg-blue-500 animate-pulse' : hasUnsavedChanges ? 'bg-amber-500' : 'bg-slate-400'
+                }`} />
+                {isSubmitting
+                  ? 'Saving estimation...'
+                  : !isInitialStateLoaded
+                  ? 'Loading estimation...'
+                  : hasUnsavedChanges
+                  ? changedSections.size > 0
+                  ? `Unsaved changes · ${changedSections.size} section${changedSections.size === 1 ? '' : 's'} edited`
+                  : 'Unsaved changes'
+                  : 'No unsaved changes'}
+              </div>
 
-                // Persist to the database
-                setIsSubmitting(true);
-                const reportPdf = await generateReportPdf(true); // null if generation failed
-                const result = await submitEstimationToDB({
-                  project: project as any, user: user as any, manpower, consumables, fees, scopeOfWorks,
-                  constraints, priceTier, aiQuotation, aiBaseline,
-                  technicianNotes, discrepancyJustifications, reportPdf,
-                });
-                setIsSubmitting(false);
-                if (result.success && !result.fileUploaded) {
-                  toast.warning('Estimation saved, but the PDF report could not be attached.');
+              <span
+                title={
+                  isSubmitting
+                    ? 'The estimation is currently being saved.'
+                    : !isInitialStateLoaded
+                    ? 'The estimation is still loading.'
+                    : !hasUnsavedChanges
+                    ? 'There are no changes to save.'
+                    : undefined
                 }
-                if (!result.success) {
-                  toast.error(`Could not submit to the database: ${result.message}. Your work is saved locally; please try again.`);
-                  return; // keep status unchanged and stay on this screen
-                }
+              >
+                <button
+                  disabled={isSubmitting || !isInitialStateLoaded || !hasUnsavedChanges}
+                  onClick={async () => {
+                    if (isSubmitting || !isInitialStateLoaded || !hasUnsavedChanges) return;
+                    const snapshotAtSubmit = currentEstimationSnapshot;
+                    const estimationData = {
+                      manpower,
+                      consumables,
+                      fees,
+                      scopeOfWorks,
+                      constraints,
+                      priceTier,
+                      aiQuotation,
+                      aiBaseline,
+                      technicianNotes,
+                      discrepancyJustifications,
+                      updatedAt: new Date().toISOString(),
+                    };
+                    // Local cache (offline fallback)
+                    localStorage.setItem(`aa2000_estimation_${project.id}`, JSON.stringify(estimationData));
 
-                const isApproved = project.status === 'Completed' || project.status === 'Finalized - Approved';
-                const isAlreadyFinalized = project.status === 'Finalized';
+                    // Persist to the database
+                    setIsSubmitting(true);
+                    const reportPdf = await generateReportPdf(true); // null if generation failed
+                    const result = await submitEstimationToDB({
+                      project: project as any, user: user as any, manpower, consumables, fees, scopeOfWorks,
+                      constraints, priceTier, aiQuotation, aiBaseline,
+                      technicianNotes, discrepancyJustifications, reportPdf,
+                    });
+                    setIsSubmitting(false);
+                    if (result.success && !result.fileUploaded) {
+                      toast.warning('Estimation saved, but the PDF report could not be attached.');
+                    }
+                    if (!result.success) {
+                      toast.error(`Could not submit to the database: ${result.message}. Your work is saved locally; please try again.`);
+                      return; // keep status unchanged and stay on this screen
+                    }
 
-                if (onUpdateStatus && !isApproved && !isAlreadyFinalized) {
-                  // Only set to 'Finalized' (Awaiting Approval) for unsubmitted/pending projects
-                  onUpdateStatus(project.id, 'Finalized');
-                }
+                    savedSnapshotRef.current = snapshotAtSubmit;
 
-                if (isApproved) {
-                  toast.success('Estimation updated successfully.');
-                } else if (isAlreadyFinalized) {
-                  toast.success('Estimation updated. The project remains awaiting approval from Admin or Sales.');
-                } else {
-                  toast.success('Estimation saved. The project is now awaiting approval from Admin or Sales.');
-                }
+                    const isApproved = project.status === 'Completed' || project.status === 'Finalized - Approved';
+                    const isAlreadyFinalized = project.status === 'Finalized';
 
-                onBack();
-              }}
-              className="px-8 py-3 rounded-xl text-xs font-bold text-white transition-all shadow-sm hover:opacity-95 bg-blue-600 hover:bg-blue-700 cursor-pointer"
-            >
-              {isSubmitting ? 'Submitting...' : 'Save Estimation'}
-            </button>
+                    if (onUpdateStatus && !isApproved && !isAlreadyFinalized) {
+                      // Only set to 'Finalized' (Awaiting Approval) for unsubmitted/pending projects
+                      onUpdateStatus(project.id, 'Finalized');
+                    }
+
+                    if (isApproved) {
+                      toast.success('Estimation updated successfully.');
+                    } else if (isAlreadyFinalized) {
+                      toast.success('Estimation updated. The project remains awaiting approval from Admin or Sales.');
+                    } else {
+                      toast.success('Estimation saved. The project is now awaiting approval from Admin or Sales.');
+                    }
+
+                    onBack();
+                  }}
+                  aria-describedby="estimation-save-status"
+                  style={isSubmitting || !isInitialStateLoaded || !hasUnsavedChanges ? {
+                    backgroundColor: dark ? '#334155' : '#CBD5E1',
+                    color: dark ? '#94A3B8' : '#475569',
+                  } : undefined}
+                  className="px-8 py-3 rounded-xl text-xs font-bold text-white transition-all shadow-sm hover:opacity-95 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 disabled:text-slate-600 dark:disabled:bg-slate-700 dark:disabled:text-slate-400 disabled:hover:opacity-100 disabled:cursor-not-allowed disabled:shadow-none cursor-pointer"
+                >
+                  {isSubmitting ? 'Submitting...' : 'Save Estimation'}
+                </button>
+              </span>
+            </div>
           </div>
         </div>
 
