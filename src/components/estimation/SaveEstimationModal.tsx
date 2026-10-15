@@ -6,6 +6,7 @@ import type {
   EstimationFlowAiContext,
   SaveEstimationFn,
 } from '../../services/estimationWizardSnapshot';
+import type { Project } from '../../App';
 
 interface Props {
   open: boolean;
@@ -18,8 +19,10 @@ interface Props {
   fileName?: string;
   /** Systems picked before the analysis — supplies the saved system scope (no UI here). */
   initialSystemTypes?: SystemType[];
+  /** Optional project list for client lookup */
+  projects?: Project[];
   /** Called once the database accepted the record. */
-  onSaved?: (res: { message?: string; projId?: number }) => void;
+  onSaved?: (res: { message?: string; projId?: number; pdfUrl?: string }) => void;
 }
 
 type SaveForm = {
@@ -34,12 +37,6 @@ type SaveForm = {
   systemTypes: SystemType[];
 };
 
-/**
- * Shared save dialog: the client-details form from the Manual Estimation
- * wizard, shown as a modal. Used by the AI Estimation document analysis and
- * the floor-plan analysis views. The system scope is not selectable here —
- * it is the selection made before the analysis (initialSystemTypes).
- */
 export default function SaveEstimationModal({
   open,
   onClose,
@@ -47,11 +44,16 @@ export default function SaveEstimationModal({
   ai,
   fileName,
   initialSystemTypes,
+  projects = [],
   onSaved,
 }: Props) {
   const [saving, setSaving] = useState(false);
-  const [success, setSuccess] = useState<{ message?: string; projId?: number } | null>(null);
+  const [success, setSuccess] = useState<{ message?: string; projId?: number; pdfUrl?: string } | null>(null);
   const [saveError, setSaveError] = useState('');
+  const [clientSearch, setClientSearch] = useState('');
+  const [showClientDropdown, setShowClientDropdown] = useState(false);
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
+
   const [form, setForm] = useState<SaveForm>(() => ({
     companyName: '',
     projectName: (fileName || '').replace(/\.[^.]+$/, ''),
@@ -68,7 +70,7 @@ export default function SaveEstimationModal({
     if (open) {
       setSaveError('');
       setSuccess(null);
-      // Pre-analysis system selection carries into the form.
+      setTouched({});
       if (initialSystemTypes && initialSystemTypes.length > 0) {
         setForm(prev => ({ ...prev, systemTypes: [...initialSystemTypes] }));
       }
@@ -79,25 +81,49 @@ export default function SaveEstimationModal({
     if (field === 'systemTypes') return;
     const value = field === 'clientContactNumber' ? raw.replace(/\D/g, '').slice(0, 11) : raw;
     setForm(prev => ({ ...prev, [field]: value }) as SaveForm);
+    setTouched(prev => ({ ...prev, [field]: true }));
   };
 
-  const validateSaveForm = (): string | null => {
-    if (!form.companyName.trim()) return 'Please enter the Company Name.';
-    if (!form.projectName.trim()) return 'Please enter the Project Name.';
-    if (!form.locationName.trim()) return 'Please enter the Location Name / Area.';
-    if (!form.buildingType) return 'Please select the Building Type.';
-    if (!form.startDate) return 'Please select the Survey Schedule Date.';
-    if (form.systemTypes.length === 0) return 'Please select at least one system type.';
-    return null;
+  // Client lookup filtering
+  const matchingClients = projects.filter(p => {
+    if (!clientSearch.trim()) return false;
+    const term = clientSearch.toLowerCase();
+    return (
+      p.clientName?.toLowerCase().includes(term) ||
+      p.name?.toLowerCase().includes(term) ||
+      p.clientContactName?.toLowerCase().includes(term)
+    );
+  });
+
+  const handleSelectClient = (p: Project) => {
+    setForm(prev => ({
+      ...prev,
+      companyName: p.clientName || p.name,
+      clientName: p.clientContactName || '',
+      clientEmail: p.clientEmail || '',
+      clientContactNumber: p.clientPhone || '',
+      locationName: p.locationName || p.location || '',
+    }));
+    setClientSearch(p.clientName || p.name);
+    setShowClientDropdown(false);
   };
+
+  // Required Field Checks
+  const isCompanyNameValid = Boolean(form.companyName.trim());
+  const isProjectNameValid = Boolean(form.projectName.trim());
+  const isLocationValid = Boolean(form.locationName.trim());
+  const isBuildingTypeValid = Boolean(form.buildingType);
+  const isStartDateValid = Boolean(form.startDate);
+
+  const isFormValid =
+    isCompanyNameValid &&
+    isProjectNameValid &&
+    isLocationValid &&
+    isBuildingTypeValid &&
+    isStartDateValid;
 
   const handleSave = async () => {
-    if (saving || success) return;
-    const invalid = validateSaveForm();
-    if (invalid) {
-      setSaveError(invalid);
-      return;
-    }
+    if (saving || success || !isFormValid) return;
     setSaveError('');
     setSaving(true);
     try {
@@ -111,7 +137,7 @@ export default function SaveEstimationModal({
         latitude: 0,
         longitude: 0,
         surveyScope: `AI estimation analysis${fileName ? ` of ${fileName}` : ''}`,
-        systemTypes: form.systemTypes,
+        systemTypes: form.systemTypes.length > 0 ? form.systemTypes : ['CCTV'],
         buildingType: form.buildingType,
         floors: '',
         buildingLength: '',
@@ -119,6 +145,7 @@ export default function SaveEstimationModal({
         floorHeight: '',
         startDate: form.startDate,
       };
+
       const res = await onSave(data, ai);
       if (res.success) {
         setSuccess({ message: res.message, projId: res.projId });
@@ -142,38 +169,41 @@ export default function SaveEstimationModal({
 
   if (!open) return null;
 
-  const field = (
+  const renderField = (
     label: string,
+    fieldKey: keyof SaveForm,
     value: string,
     onChange: (v: string) => void,
     placeholder: string,
     required = false,
     type = 'text'
-  ) => (
-    <div>
-      <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1.5">
-        {label}
-        {required ? ' *' : ''}
-      </label>
-      <input
-        type={type}
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        placeholder={placeholder}
-        className="w-full px-3 py-2 text-xs font-semibold border border-slate-200 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800 text-slate-800 dark:text-white outline-none focus:border-blue-500"
-      />
-    </div>
-  );
+  ) => {
+    const isInvalid = required && touched[fieldKey] && !value.trim();
+    return (
+      <div>
+        <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1.5">
+          {label}
+          {required ? <span className="text-red-500 font-bold ml-1">*</span> : ''}
+        </label>
+        <input
+          type={type}
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          onBlur={() => setTouched(prev => ({ ...prev, [fieldKey]: true }))}
+          placeholder={placeholder}
+          className={`w-full px-3 py-2 text-xs font-semibold border rounded-xl outline-none transition-colors ${
+            isInvalid
+              ? 'border-red-500 bg-red-50/20 text-red-900 focus:border-red-600'
+              : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:border-blue-500'
+          }`}
+        />
+        {isInvalid && (
+          <p className="text-[10px] font-bold text-red-500 mt-1">This field is required.</p>
+        )}
+      </div>
+    );
+  };
 
-  const cardHeading = (text: string) => (
-    <p className="text-[10px] font-bold uppercase tracking-wider text-blue-700 dark:text-blue-400">
-      {text}
-    </p>
-  );
-
-  // Portaled to <body>: an ancestor with a transform (animate-fade-in-up keeps
-  // translateY(0) via fill-mode both) would otherwise become the containing
-  // block for position:fixed and center the dialog inside the main content.
   return createPortal(
     <div
       className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 animate-fade-in"
@@ -183,44 +213,49 @@ export default function SaveEstimationModal({
       aria-label="Save estimation to database"
     >
       <div
-        className="bg-white dark:bg-[#131B2E] rounded-3xl w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6 shadow-2xl animate-scale-in"
+        className="bg-white dark:bg-[#131B2E] rounded-3xl w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6 sm:p-8 shadow-2xl animate-scale-in"
         onClick={e => e.stopPropagation()}
       >
         {success ? (
-          <div className="space-y-5">
-            <div className="space-y-1.5">
-              {cardHeading('SAVE TO DATABASE')}
-              <h3 className="text-lg font-black text-slate-900 dark:text-white">
-                Estimation saved
+          <div className="space-y-6 text-center py-4">
+            <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-600 font-black text-2xl flex items-center justify-center mx-auto">
+              ✓
+            </div>
+            <div>
+              <h3 className="text-xl font-black text-slate-900 dark:text-white">
+                Estimation Saved Successfully!
               </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-medium">
+                {success.projId ? `Project #${success.projId} registered in database.` : 'Project record stored.'}
+              </p>
             </div>
 
-            <div className="p-3.5 px-4 bg-emerald-50/80 dark:bg-emerald-950/40 border border-emerald-100 dark:border-emerald-900/40 rounded-xl text-xs text-emerald-700 dark:text-emerald-300 font-semibold leading-relaxed">
-              {success.projId ? `Saved to the database (Project #${success.projId}).` : 'Saved to the database.'}{' '}
-              The project is now pending validation in the Estimation workspace.
+            <div className="p-4 bg-emerald-50/80 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900/50 rounded-2xl text-xs text-emerald-800 dark:text-emerald-300 font-semibold leading-relaxed text-left">
+              The project details and BOQ analysis have been saved. You can review or edit the estimate from the Dashboard workspace.
             </div>
 
-            <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
+            <div className="flex justify-end pt-2">
               <button
                 type="button"
                 onClick={close}
-                className="px-6 py-2.5 rounded-xl text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white transition-all shadow-md shadow-blue-500/20 cursor-pointer"
+                className="px-6 py-2.5 rounded-full text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white transition-all shadow-md shadow-blue-500/20 cursor-pointer"
               >
                 Done
               </button>
             </div>
           </div>
         ) : (
-          <div className="space-y-5">
-            <div className="flex items-start justify-between gap-3">
-              <div className="space-y-1.5 min-w-0">
-                {cardHeading('SAVE TO DATABASE')}
+          <div className="space-y-6">
+            <div className="flex items-start justify-between gap-3 pb-4 border-b border-slate-100 dark:border-slate-800">
+              <div className="space-y-1 min-w-0">
+                <span className="text-[10px] font-black uppercase tracking-wider text-blue-600 dark:text-blue-400">
+                  SAVE TO DATABASE
+                </span>
                 <h3 className="text-lg font-black text-slate-900 dark:text-white">
-                  Client details &amp; system selection
+                  Save Estimation Project
                 </h3>
                 <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                  The same form as the Manual Estimation wizard — required before this analysis can
-                  be saved.
+                  Fill in client &amp; project information to store this estimate in the database.
                 </p>
               </div>
               <button
@@ -228,54 +263,107 @@ export default function SaveEstimationModal({
                 onClick={close}
                 disabled={saving}
                 aria-label="Close"
-                className="shrink-0 w-8 h-8 rounded-full text-slate-400 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center text-sm font-black cursor-pointer"
+                className="shrink-0 w-8 h-8 rounded-full text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center text-sm font-black cursor-pointer"
               >
                 ✕
               </button>
             </div>
 
-            {/* Client details (wizard: PROJECT INFORMATION) */}
-            <div className="space-y-4">
-              {cardHeading('CLIENT DETAILS')}
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                {field('Company Name', form.companyName, v => update('companyName', v), 'e.g. ABC Corporation Philippines', true)}
-                {field('Project Name', form.projectName, v => update('projectName', v), 'e.g. Headquarters CCTV Install', true)}
-                {field('Client Contact Name (Optional)', form.clientName, v => update('clientName', v), 'e.g. Juan Dela Cruz')}
-                {field('Client Contact Number (Optional)', form.clientContactNumber, v => update('clientContactNumber', v), 'e.g. 09171234567')}
+            {/* Existing Client Lookup */}
+            {projects.length > 0 && (
+              <div className="relative bg-blue-50/40 dark:bg-blue-950/20 p-4 rounded-2xl border border-blue-100 dark:border-blue-900/40">
+                <label className="block text-[11px] font-bold text-blue-900 dark:text-blue-300 mb-1.5">
+                  🔍 Look Up Existing Client / Company
+                </label>
+                <input
+                  type="text"
+                  value={clientSearch}
+                  onChange={e => {
+                    setClientSearch(e.target.value);
+                    setShowClientDropdown(true);
+                  }}
+                  onFocus={() => setShowClientDropdown(true)}
+                  placeholder="Type company name or contact person..."
+                  className="w-full px-3.5 py-2 text-xs font-semibold border border-blue-200 dark:border-blue-800 rounded-xl bg-white dark:bg-slate-800 text-slate-800 dark:text-white outline-none focus:border-blue-500"
+                />
+                {showClientDropdown && matchingClients.length > 0 && (
+                  <div className="absolute left-4 right-4 top-full mt-1 bg-white dark:bg-[#131B2E] border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl max-h-48 overflow-y-auto z-50 p-2 space-y-1">
+                    {matchingClients.map(p => (
+                      <div
+                        key={p.id}
+                        onClick={() => handleSelectClient(p)}
+                        className="p-2.5 rounded-xl hover:bg-blue-50 dark:hover:bg-slate-800 cursor-pointer text-xs font-bold text-slate-800 dark:text-white flex items-center justify-between"
+                      >
+                        <div>
+                          <p>{p.clientName || p.name}</p>
+                          <p className="text-[10px] text-slate-400 font-normal">{p.locationName || p.location}</p>
+                        </div>
+                        <span className="text-[10px] text-blue-600 font-bold">Autofill →</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
-              {field('Client Email Address (Optional)', form.clientEmail, v => update('clientEmail', v), 'e.g. client@email.com')}
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                {field('Location Name / Area', form.locationName, v => update('locationName', v), 'e.g. Makati City, Manila', true)}
+            )}
+
+            {/* Group 1: CLIENT & COMPANY INFORMATION */}
+            <div className="space-y-4">
+              <h4 className="text-xs font-black uppercase tracking-wider text-slate-900 dark:text-white flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-blue-600" />
+                1. Client &amp; Company Information
+              </h4>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {renderField('Company Name', 'companyName', form.companyName, v => update('companyName', v), 'e.g. ABC Corporation Philippines', true)}
+                {renderField('Client Contact Name', 'clientName', form.clientName, v => update('clientName', v), 'e.g. Juan Dela Cruz')}
+                {renderField('Client Email Address', 'clientEmail', form.clientEmail, v => update('clientEmail', v), 'e.g. client@email.com')}
+                {renderField('Client Contact Number', 'clientContactNumber', form.clientContactNumber, v => update('clientContactNumber', v), 'e.g. 09171234567')}
+              </div>
+            </div>
+
+            {/* Group 2: PROJECT & SITE DETAILS */}
+            <div className="space-y-4 pt-2 border-t border-slate-100 dark:border-slate-800">
+              <h4 className="text-xs font-black uppercase tracking-wider text-slate-900 dark:text-white flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-blue-600" />
+                2. Project &amp; Site Details
+              </h4>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {renderField('Project Name', 'projectName', form.projectName, v => update('projectName', v), 'e.g. Headquarters CCTV Install', true)}
+                {renderField('Location Name / Area', 'locationName', form.locationName, v => update('locationName', v), 'e.g. Makati City, Manila', true)}
                 <div>
                   <label className="block text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1.5">
-                    Building Type *
+                    Building Type <span className="text-red-500 font-bold">*</span>
                   </label>
                   <select
                     value={form.buildingType}
                     onChange={e => update('buildingType', e.target.value)}
-                    className="w-full px-3 py-2 text-xs font-semibold border border-slate-200 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800 text-slate-800 dark:text-white outline-none focus:border-blue-500 cursor-pointer"
+                    onBlur={() => setTouched(prev => ({ ...prev, buildingType: true }))}
+                    className={`w-full px-3 py-2 text-xs font-semibold border rounded-xl outline-none cursor-pointer ${
+                      touched.buildingType && !form.buildingType
+                        ? 'border-red-500 bg-red-50/20 text-red-900'
+                        : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-white focus:border-blue-500'
+                    }`}
                   >
                     <option value="">Select building type</option>
                     {BUILDING_TYPES.map(t => (
                       <option key={t} value={t}>{t}</option>
                     ))}
                   </select>
+                  {touched.buildingType && !form.buildingType && (
+                    <p className="text-[10px] font-bold text-red-500 mt-1">Please select building type.</p>
+                  )}
                 </div>
-                {field('Survey Schedule Date', form.startDate, v => update('startDate', v), '', true, 'date')}
+                {renderField('Survey Schedule Date', 'startDate', form.startDate, v => update('startDate', v), '', true, 'date')}
               </div>
             </div>
 
-            {/* Save error */}
+            {/* Error banner */}
             {saveError && (
-              <div
-                className="p-3.5 px-4 bg-red-50/80 dark:bg-red-950/40 border border-red-100 dark:border-red-900/40 rounded-xl text-xs text-red-600 dark:text-red-300 font-semibold leading-relaxed"
-                role="alert"
-              >
+              <div className="p-3.5 px-4 bg-red-50/80 dark:bg-red-950/40 border border-red-100 dark:border-red-900/40 rounded-xl text-xs text-red-600 dark:text-red-300 font-semibold leading-relaxed">
                 {saveError}
               </div>
             )}
 
-            {/* Form actions */}
+            {/* Actions */}
             <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
               <button
                 type="button"
@@ -288,20 +376,21 @@ export default function SaveEstimationModal({
               <button
                 type="button"
                 onClick={handleSave}
-                disabled={saving}
-                className={`px-6 py-2.5 rounded-xl text-xs font-bold text-white transition-all shadow-md cursor-pointer ${
-                  saving
-                    ? 'bg-blue-400 cursor-wait'
-                    : 'bg-blue-600 hover:bg-blue-700 shadow-blue-500/20'
+                disabled={saving || !isFormValid}
+                title={!isFormValid ? "Please fill in all required fields (Company Name, Project Name, Location, Building Type, and Schedule Date) to save." : "Save Estimation to Database"}
+                className={`px-6 py-2.5 rounded-full text-xs font-bold text-white transition-all shadow-md ${
+                  saving || !isFormValid
+                    ? 'bg-slate-300 dark:bg-slate-800 text-slate-400 dark:text-slate-600 cursor-not-allowed shadow-none'
+                    : 'bg-blue-600 hover:bg-blue-700 cursor-pointer shadow-blue-500/20'
                 }`}
               >
-                {saving ? 'Saving to database…' : 'Save Estimation'}
+                {saving ? 'Saving to Database...' : 'Save Estimation'}
               </button>
             </div>
           </div>
         )}
       </div>
     </div>,
-    document.body,
+    document.body
   );
 }

@@ -369,7 +369,7 @@ export default function App() {
       .then(scans => { if (!cancelled) setAiScans(scans); })
       .catch(err => console.error('Failed to load saved AI scans:', err));
     return () => { cancelled = true; };
-  }, [user, authHydrated]);
+  }, [user?.id, authHydrated]);
 
   // Sync notifications from projects automatically
   useEffect(() => {
@@ -475,6 +475,26 @@ export default function App() {
       return newScreen;
     });
   }, []);
+
+  // Sync screen state with URL hash
+  useEffect(() => {
+    const handleHashChange = () => {
+      const hash = window.location.hash.replace('#', '') as Screen;
+      const validScreens: Screen[] = ['login', 'dashboard', 'create-survey', 'project-detail', 'survey', 'estimation', 'settings', 'notifications', 'survey-summary', 'instruction'];
+      if (validScreens.includes(hash)) {
+        setScreen(hash);
+      }
+    };
+
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
+
+  useEffect(() => {
+    if (screen && window.location.hash !== `#${screen}`) {
+      window.history.replaceState(null, '', `#${screen}`);
+    }
+  }, [screen]);
 
   const handleGoBack = useCallback(() => {
     setScreenHistory(prev => {

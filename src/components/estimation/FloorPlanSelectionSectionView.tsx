@@ -969,6 +969,7 @@ export default function FloorPlanSelectionSectionView({
           ai={dbAiContext}
           fileName={dbFileName}
           initialSystemTypes={activeSystemTypes}
+          projects={projects}
           onSaved={res => {
             setDbSaved(true);
             setDbSaveMessage(

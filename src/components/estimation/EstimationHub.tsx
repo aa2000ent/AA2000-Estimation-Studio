@@ -33,6 +33,7 @@ export default function EstimationHub({ user, onCreateProject, onSelectProject, 
     locationName: '',
     startDate: new Date().toISOString().slice(0, 10),
   });
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [systemTypes, setSystemTypes] = useState<SystemType[]>([]);
   const [surveyNotes, setSurveyNotes] = useState('');
   const [, setIsDocScanning] = useState(false);
@@ -243,26 +244,48 @@ export default function EstimationHub({ user, onCreateProject, onSelectProject, 
                 Step 1: Company &amp; Project Details
               </h2>
               <div className="grid grid-cols-1 gap-x-4 gap-y-5 sm:grid-cols-2">
-                {detailFields.map(field => (
-                  <label key={field.key} className={`block min-w-0 ${field.key === 'clientEmail' ? 'sm:col-span-2' : ''}`}>
-                    <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                      {field.label}{field.optional ? ' (Optional)' : ''}
-                    </span>
-                    <input
-                      type={field.type ?? 'text'}
-                      value={projectDetails[field.key]}
-                      onChange={event => updateProjectDetail(field.key, event.target.value)}
-                      placeholder={field.placeholder}
-                      className="w-full min-w-0 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none transition-colors placeholder:text-slate-400 focus:border-blue-500 dark:border-slate-700 dark:bg-[#162032] dark:text-white"
-                    />
-                  </label>
-                ))}
+                {detailFields.map(field => {
+                  const val = projectDetails[field.key];
+                  const isRequired = !field.optional;
+                  const isInvalid = isRequired && touched[field.key] && !val.trim();
+                  return (
+                    <label key={field.key} className={`block min-w-0 ${field.key === 'clientEmail' ? 'sm:col-span-2' : ''}`}>
+                      <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                        {field.label}{field.optional ? ' (Optional)' : ' *'}
+                      </span>
+                      <input
+                        type={field.type ?? 'text'}
+                        value={val}
+                        onChange={event => {
+                          updateProjectDetail(field.key, event.target.value);
+                          setTouched(prev => ({ ...prev, [field.key]: true }));
+                        }}
+                        onBlur={() => setTouched(prev => ({ ...prev, [field.key]: true }))}
+                        placeholder={field.placeholder}
+                        className={`w-full min-w-0 rounded-xl border px-4 py-3 text-sm transition-colors outline-none ${
+                          isInvalid
+                            ? 'border-red-500 bg-red-50/20 text-red-900 focus:border-red-600'
+                            : 'border-slate-200 bg-white text-slate-800 focus:border-blue-500 dark:border-slate-700 dark:bg-[#162032] dark:text-white'
+                        }`}
+                      />
+                      {isInvalid && (
+                        <p className="text-[10px] font-bold text-red-500 mt-1">This field is required.</p>
+                      )}
+                    </label>
+                  );
+                })}
               </div>
               <div className="mt-6 flex justify-end">
                 <button
                   type="button"
+                  disabled={!isStep1Complete}
                   onClick={() => setActiveManualStep(2)}
-                  className="rounded-xl bg-blue-600 px-6 py-3 text-xs font-bold text-white transition-all hover:bg-blue-700 shadow-md shadow-blue-500/20 cursor-pointer"
+                  title={!isStep1Complete ? "Please fill in all required fields (Company Name, Project Name, and Location) to continue." : "Continue to System Selection"}
+                  className={`rounded-xl px-6 py-3 text-xs font-bold text-white transition-all shadow-md ${
+                    !isStep1Complete
+                      ? 'bg-slate-300 dark:bg-slate-800 text-slate-400 cursor-not-allowed shadow-none'
+                      : 'bg-blue-600 hover:bg-blue-700 shadow-blue-500/20 cursor-pointer'
+                  }`}
                 >
                   Continue to System Selection →
                 </button>
@@ -323,8 +346,14 @@ export default function EstimationHub({ user, onCreateProject, onSelectProject, 
                 </button>
                 <button
                   type="button"
+                  disabled={!isStep2Complete}
                   onClick={handleStartWizardFlow}
-                  className="rounded-xl bg-blue-600 px-6 py-3 text-xs font-bold text-white transition-all hover:bg-blue-700 shadow-md shadow-blue-500/20 cursor-pointer"
+                  title={!isStep2Complete ? "Please select at least one security system type to continue." : "Continue to Site Survey Wizard"}
+                  className={`rounded-xl px-6 py-3 text-xs font-bold text-white transition-all shadow-md ${
+                    !isStep2Complete
+                      ? 'bg-slate-300 dark:bg-slate-800 text-slate-400 cursor-not-allowed shadow-none'
+                      : 'bg-blue-600 hover:bg-blue-700 shadow-blue-500/20 cursor-pointer'
+                  }`}
                 >
                   Continue to Site Survey Wizard →
                 </button>

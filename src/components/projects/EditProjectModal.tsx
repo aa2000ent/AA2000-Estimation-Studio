@@ -68,6 +68,8 @@ export default function EditProjectModal({ project, onClose, onSave }: Props) {
   const [systemTypes, setSystemTypes] = useState<string[]>(project.systemTypes || []);
   const [surveyScope, setSurveyScope] = useState(project.surveyScope || '');
 
+  const isFormValid = name.trim() !== '' && clientName.trim() !== '' && location.trim() !== '';
+
   // Auto-calculate Total Floor Area whenever length, width, or floors change
   useEffect(() => {
     const l = Number(buildingLength) || 0;
@@ -460,7 +462,12 @@ export default function EditProjectModal({ project, onClose, onSave }: Props) {
               ) : (
                 <button
                   type="submit"
-                  className="px-6 py-2.5 rounded-xl text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 transition-colors shadow-md shadow-emerald-600/20 flex items-center gap-1.5 cursor-pointer"
+                  disabled={!isFormValid}
+                  className={`px-6 py-2.5 rounded-xl text-xs font-bold text-white transition-all shadow-md flex items-center gap-1.5 ${
+                    !isFormValid
+                      ? 'bg-slate-300 text-slate-500 cursor-not-allowed shadow-none'
+                      : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/20 cursor-pointer'
+                  }`}
                 >
                   <Check className="w-3.5 h-3.5" />
                   Save Project Changes

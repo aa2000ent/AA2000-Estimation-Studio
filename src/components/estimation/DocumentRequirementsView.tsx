@@ -16,6 +16,7 @@ interface Props {
   onSaveEstimation?: SaveEstimationFn;
   /** Systems picked before the analysis — prefills the save form. */
   initialSystemTypes?: SystemType[];
+  projects?: Project[];
   isDark?: boolean;
 }
 
@@ -189,6 +190,7 @@ export default function DocumentRequirementsView({
             ai={{ mode: 'ai', estimation: result }}
             fileName={fileName}
             initialSystemTypes={initialSystemTypes}
+            projects={projects}
             onSaved={res => {
               setSaved(true);
               setSaveMessage(

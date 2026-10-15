@@ -399,6 +399,24 @@ export default function Dashboard({
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  // Sync view state with URL hash
+  useEffect(() => {
+    const handleHash = () => {
+      const h = window.location.hash.replace('#', '') as View;
+      if (h && h !== view) {
+        setView(h);
+      }
+    };
+    window.addEventListener('hashchange', handleHash);
+    return () => window.removeEventListener('hashchange', handleHash);
+  }, [view]);
+
+  useEffect(() => {
+    if (view && window.location.hash !== `#${view}`) {
+      window.history.replaceState(null, '', `#${view}`);
+    }
+  }, [view]);
+
   const [menuOpen, setMenuOpen] = useState<string | null>(null);
   const [pinned, setPinned] = useState<Set<string>>(() => {
     try { const s = localStorage.getItem('aa2000_pinned'); return s ? new Set(JSON.parse(s)) : new Set(); }
@@ -676,7 +694,10 @@ export default function Dashboard({
                 isMobile={true}
                 user={user}
                 currentView={activeViewOverride || view}
-                onNavigate={navigate}
+                onNavigate={(v) => {
+                  setMobileMenuOpen(false);
+                  navigate(v);
+                }}
                 notifications={notifications}
                 projects={projects}
                 aiScans={aiScans}
@@ -800,39 +821,7 @@ export default function Dashboard({
         <div className="flex-1 overflow-y-auto">
           {contentOverride ? (
             contentOverride
-          ) : (
-            <>
-              {/* Always mounted (hidden when inactive) so AI analysis continues in background */}
-              <div style={{ display: view === 'ai-reader' ? undefined : 'none' }}>
-                <AISidebar
-                  onCreateProject={onCreateProject}
-                  onSelectProject={onSelectProject}
-                  onSaveAIScan={onSaveAIScan}
-                />
-              </div>
-              <div style={{ display: view === 'floor-plan' ? undefined : 'none' }}>
-                <FloorPlanView userRole={user.role} />
-              </div>
-              <div
-                style={{
-                  display: ['estimation-hub', 'manual-estimation', 'ai-estimation'].includes(view) ? undefined : 'none',
-                  height: ['estimation-hub', 'manual-estimation', 'ai-estimation'].includes(view) ? '100%' : undefined,
-                }}
-              >
-                <EstimationHub
-                  key={view}
-                  user={user}
-                  projects={projects}
-                  onCreateProject={onCreateProject}
-                  onSelectProject={onSelectProject}
-                  onSaveAIScan={onSaveAIScan}
-                  onSaveEstimation={onSaveAiEstimation}
-                  onNavigateToCreate={onNavigateToCreate}
-                  isDark={isDark}
-                  initialMode={view === 'manual-estimation' ? 'manual' : view === 'ai-estimation' ? 'ai' : undefined}
-                />
-              </div>
-              {selectedCompanyProject ? (
+          ) : selectedCompanyProject ? (
             <CompanyDetail
               user={user}
               companyProject={selectedCompanyProject}
@@ -842,7 +831,56 @@ export default function Dashboard({
               onNewSurvey={() => onNavigateToCreate()}
               onDeleteProject={handleDelete}
             />
-          ) : view === 'home' || view === 'ai-reader' || view === 'floor-plan' || isCategoryView ? (
+          ) : view === 'ai-reader' ? (
+            <AISidebar
+              onCreateProject={onCreateProject}
+              onSelectProject={onSelectProject}
+              onSaveAIScan={onSaveAIScan}
+            />
+          ) : view === 'floor-plan' ? (
+            <FloorPlanView userRole={user.role} />
+          ) : ['estimation-hub', 'manual-estimation', 'ai-estimation'].includes(view) ? (
+            <EstimationHub
+              key={view}
+              user={user}
+              projects={projects}
+              onCreateProject={onCreateProject}
+              onSelectProject={onSelectProject}
+              onSaveAIScan={onSaveAIScan}
+              onSaveEstimation={onSaveAiEstimation}
+              onNavigateToCreate={onNavigateToCreate}
+              isDark={isDark}
+              initialMode={view === 'manual-estimation' ? 'manual' : view === 'ai-estimation' ? 'ai' : undefined}
+            />
+          ) : view === 'approval' ? (
+            <ApprovalPipeline
+              user={user}
+              projects={projectList}
+              onSelectProject={onSelectProject}
+              onNavigateToCreate={onNavigateToCreate}
+            />
+          ) : view === 'calendar' ? (
+            <CalendarView
+              projects={projectList}
+              onSelectProject={onSelectProject}
+              userRole={user.role || 'ACCOUNTING'}
+              isDark={isDark}
+            />
+          ) : view === 'saved-folders' ? (
+            <SavedFoldersView
+              aiScans={aiScans}
+              onRenameAIScan={onRenameAIScan}
+              onDeleteAIScan={onDeleteAIScan}
+              onUpdateAIScan={onUpdateAIScan}
+            />
+          ) : view === 'saved-boqs' ? (
+            <SavedBOQsView userRole={user.role} />
+          ) : view === 'history' || view === 'saved-estimations' ? (
+            <SavedEstimationsView
+              projects={projectList}
+              onDeleteProject={handleDelete}
+            />
+          ) : (
             <Home
               user={user}
               projects={projectList}
@@ -878,147 +916,9 @@ export default function Dashboard({
               onUpdateAIScan={onUpdateAIScan}
               isDark={isDark}
             />
-          ) : ['estimation-hub', 'manual-estimation', 'ai-estimation'].includes(view) ? null
-          : view === 'approval' ? (
-            <ApprovalPipeline
-              user={user}
-              projects={projectList}
-              onSelectProject={onSelectProject}
-              onNavigateToCreate={onNavigateToCreate}
-            />
-          ) : view === 'calendar' ? (
-            <CalendarView
-              projects={projectList}
-              onSelectProject={onSelectProject}
-              userRole={user.role || 'ACCOUNTING'}
-              isDark={isDark}
-            />
-          ) : view === 'saved-folders' ? (
-            <SavedFoldersView
-              aiScans={aiScans}
-              onRenameAIScan={onRenameAIScan}
-              onDeleteAIScan={onDeleteAIScan}
-              onUpdateAIScan={onUpdateAIScan}
-            />
-          ) : view === 'saved-boqs' ? (
-            <SavedBOQsView userRole={user.role} />
-          ) : view === 'history' ? (
-            <SavedEstimationsView
-              projects={projectList}
-              statusFilter={['Completed', 'Finalized - Approved', 'Finalized - Rejected', 'Unknown']}
-              onDeleteProject={handleDelete}
-            />
-          ) : view === 'saved-estimations' ? (
-            <SavedEstimationsView
-              projects={projectList}
-              onDeleteProject={handleDelete}
-            />
-          ) : (
-            <div className="pb-10">
-              {/* Dashboard view: title + stats */}
-              {view === 'dashboard' && (
-                <>
-                  {/* Clean Header with Enriched Large Dynamic Time-Based Greeting */}
-                  <div className="px-6 pt-6 animate-fade-in-up">
-                    <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
-                      <div className="max-w-3xl">
-                        <h1
-                          className="text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight flex items-center gap-2.5 flex-wrap"
-                          style={{ fontFamily: 'Manrope, Inter, sans-serif' }}
-                        >
-                          <span className="text-slate-900 dark:text-white">{timeGreeting},</span>
-                          <span className="text-blue-600 dark:text-blue-400">{userGreetingName}!</span>
-                        </h1>
-                        <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 font-medium leading-relaxed mt-2 max-w-2xl">
-                          Welcome to the system control center. Create estimation projects, assign technical teams, review surveys, and approve final equipment pricing estimates.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* 2-Column Dashboard Layout: Right = Pending Surveys & Active Projects, left = Status Banner + Stat Cards */}
-                  <div className="px-6 pt-6">
-                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-                      {/* Left Column: Screenshot Group (Status Overview Banner + 4 Stat Cards in 2x2) */}
-                      <div className="lg:col-span-5 flex flex-col gap-6">
-                        {/* Status Overview Banner */}
-                        <StatusOverviewBanner
-                          totalProjects={totalProjects}
-                          rejectedCount={rejectedCount}
-                          pendingCount={pendingCount}
-                          activeCount={activeCount}
-                          completedCount={completedCount}
-                        />
-
-                        {/* 4 Stat Cards in 2x2 Grid */}
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                          <SparklineCard
-                            label="OVERALL PROJECTS"
-                            value={totalProjects}
-                            totalProjects={totalProjects}
-                            sub="Total surveys"
-                            icon={<StatBuilding className="w-5 h-5" />}
-                            valueColor="#2563EB"
-                            onClick={() => navigate('assignment')}
-                            delay={0}
-                          />
-                          <SparklineCard
-                            label="ACTIVE"
-                            value={activeCount}
-                            totalProjects={totalProjects}
-                            sub="Approved, scheduled or under way"
-                            icon={<StatBolt className="w-5 h-5" />}
-                            valueColor="#2563EB"
-                            onClick={() => navigate('workspace')}
-                            delay={50}
-                          />
-                          <SparklineCard
-                            label="PENDING"
-                            value={pendingCount}
-                            totalProjects={totalProjects}
-                            sub="Awaiting kickoff"
-                            icon={<StatCalendar className="w-5 h-5" />}
-                            valueColor="#F59E0B"
-                            onClick={() => navigate('workspace')}
-                            delay={100}
-                          />
-                          <SparklineCard
-                            label="COMPLETED"
-                            value={completedCount}
-                            totalProjects={totalProjects}
-                            sub="Finalized surveys"
-                            icon={<StatCheckCircle className="w-5 h-5" />}
-                            valueColor="#16A34A"
-                            onClick={() => navigate('done')}
-                            delay={150}
-                          />
-                        </div>
-                      </div>
-
-                      {/* Right Column: Pending Surveys & Active Projects */}
-                      <div className="lg:col-span-7 flex flex-col">
-                        <div className="bg-white dark:bg-[#131B2E] rounded-3xl p-6 border border-slate-200/80 dark:border-slate-800 shadow-sm animate-fade-in-up flex-1 flex flex-col relative min-h-[380px]">
-                          <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100 dark:border-slate-800">
-                            <div>
-                              <h3 className="text-sm font-black tracking-wider text-slate-800 dark:text-white uppercase flex items-center gap-2">
-                                <span>Pending Surveys &amp; Active Projects</span>
-                                {pendingCount > 0 && (
-                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500 text-white">
-                                    {pendingCount} Pending
-                                  </span>
-                                )}
-                              </h3>
-                              <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mt-0.5">
-                                Click any project below to open site survey, upload floor plan, or build BOQ
-                              </p>
-                            </div>
-                            <button
-                              onClick={() => navigate('workspace')}
-                              className="text-xs font-bold text-blue-700 dark:text-blue-400 hover:text-blue-900 dark:hover:text-blue-300 transition-colors shrink-0"
-                            >
-                              View All Workspace →
-                            </button>
-                          </div>
+          )}
+        </div>
+      </main>
 
                           {/* Project Cards Grid or Empty State */}
                           {actualProjects.length > 0 ? (
