@@ -12,7 +12,7 @@ export interface BoqExportItem {
 }
 
 export function exportBoqToExcel(projectTitle: string, items: BoqExportItem[]) {
-  const wsData = [
+  const wsData: (string | number)[][] = [
     ['AA2000 SECURITY & ESTIMATION PLATFORM'],
     [`Project / Quotation: ${projectTitle}`],
     [`Generated Date: ${new Date().toLocaleDateString()}`],

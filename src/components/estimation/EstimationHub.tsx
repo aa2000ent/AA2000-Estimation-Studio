@@ -33,9 +33,10 @@ export default function EstimationHub({ user, onCreateProject, onSelectProject, 
     locationName: '',
     startDate: new Date().toISOString().slice(0, 10),
   });
-  const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [systemTypes, setSystemTypes] = useState<SystemType[]>([]);
   const [surveyNotes, setSurveyNotes] = useState('');
+  const [errorMsg, setErrorMsg] = useState('');
+  const [showRequiredErrors, setShowRequiredErrors] = useState(false);
   const [, setIsDocScanning] = useState(false);
 
   useEffect(() => {
@@ -66,13 +67,13 @@ export default function EstimationHub({ user, onCreateProject, onSelectProject, 
     { type: 'XRAY_SECURITY', label: 'X-Ray, Turnstile & Walk-Through' },
   ];
 
-  const detailFields: { key: keyof typeof projectDetails; label: string; placeholder: string; type?: string; optional?: boolean }[] = [
-    { key: 'companyName', label: 'Company Name', placeholder: 'e.g. ABC Corporation Philippines' },
-    { key: 'projectName', label: 'Project Name', placeholder: 'e.g. Headquarters CCTV Install' },
+  const detailFields: { key: keyof typeof projectDetails; label: string; placeholder: string; type?: string; optional?: boolean; required?: boolean }[] = [
+    { key: 'companyName', label: 'Company Name', placeholder: 'e.g. ABC Corporation Philippines', required: true },
+    { key: 'projectName', label: 'Project Name', placeholder: 'e.g. Headquarters CCTV Install', required: true },
     { key: 'clientName', label: 'Client Contact Name', placeholder: 'e.g. Juan Dela Cruz (Optional)', optional: true },
     { key: 'clientContactNumber', label: 'Client Contact Number', placeholder: 'e.g. 09171234567 (Optional)', optional: true },
     { key: 'clientEmail', label: 'Client Email Address', placeholder: 'e.g. client@email.com (Optional)', optional: true },
-    { key: 'locationName', label: 'Location Name / Area', placeholder: 'e.g. Makati City, Manila' },
+    { key: 'locationName', label: 'Location Name / Area', placeholder: 'e.g. Makati City, Manila', required: true },
     { key: 'startDate', label: 'Survey Schedule Date', placeholder: '', type: 'date' },
   ];
 
@@ -96,6 +97,28 @@ export default function EstimationHub({ user, onCreateProject, onSelectProject, 
     setIsSurveyWizardActive(false);
     setIsSurveyCompleted(true);
     setActiveManualStep(3);
+  };
+
+  const continueToSystemSelection = () => {
+    setShowRequiredErrors(true);
+
+    if (!projectDetails.companyName.trim() || !projectDetails.projectName.trim() || !projectDetails.locationName.trim()) {
+      setErrorMsg('Please fill up the missing fields.');
+      return;
+    }
+
+    setErrorMsg('');
+    setActiveManualStep(2);
+  };
+
+  const continueToSurveyWizard = () => {
+    if (systemTypes.length === 0) {
+      setErrorMsg('Please select at least one system type.');
+      return;
+    }
+
+    setErrorMsg('');
+    handleStartWizardFlow();
   };
 
   const continueToSurvey = () => {
@@ -244,48 +267,38 @@ export default function EstimationHub({ user, onCreateProject, onSelectProject, 
                 Step 1: Company &amp; Project Details
               </h2>
               <div className="grid grid-cols-1 gap-x-4 gap-y-5 sm:grid-cols-2">
-                {detailFields.map(field => {
-                  const val = projectDetails[field.key];
-                  const isRequired = !field.optional;
-                  const isInvalid = isRequired && touched[field.key] && !val.trim();
-                  return (
-                    <label key={field.key} className={`block min-w-0 ${field.key === 'clientEmail' ? 'sm:col-span-2' : ''}`}>
-                      <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                        {field.label}{field.optional ? ' (Optional)' : ' *'}
-                      </span>
-                      <input
-                        type={field.type ?? 'text'}
-                        value={val}
-                        onChange={event => {
-                          updateProjectDetail(field.key, event.target.value);
-                          setTouched(prev => ({ ...prev, [field.key]: true }));
-                        }}
-                        onBlur={() => setTouched(prev => ({ ...prev, [field.key]: true }))}
-                        placeholder={field.placeholder}
-                        className={`w-full min-w-0 rounded-xl border px-4 py-3 text-sm transition-colors outline-none ${
-                          isInvalid
-                            ? 'border-red-500 bg-red-50/20 text-red-900 focus:border-red-600'
-                            : 'border-slate-200 bg-white text-slate-800 focus:border-blue-500 dark:border-slate-700 dark:bg-[#162032] dark:text-white'
-                        }`}
-                      />
-                      {isInvalid && (
-                        <p className="text-[10px] font-bold text-red-500 mt-1">This field is required.</p>
-                      )}
-                    </label>
-                  );
-                })}
+                {detailFields.map(field => (
+                  <label key={field.key} className={`block min-w-0 ${field.key === 'clientEmail' ? 'sm:col-span-2' : ''}`}>
+                    <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                      {field.label}{field.optional ? ' (Optional)' : field.required ? <span className="text-red-600"> *</span> : null}
+                    </span>
+                    <input
+                      type={field.type ?? 'text'}
+                      value={projectDetails[field.key]}
+                      onChange={event => updateProjectDetail(field.key, event.target.value)}
+                      placeholder={field.placeholder}
+                      className={`w-full min-w-0 rounded-xl border bg-white px-4 py-3 text-sm text-slate-800 outline-none transition-colors placeholder:text-slate-400 focus:border-blue-500 dark:bg-[#162032] dark:text-white ${
+                        showRequiredErrors && field.required && !projectDetails[field.key].trim()
+                          ? 'border-red-600 dark:border-red-500'
+                          : 'border-slate-200 dark:border-slate-700'
+                      }`}
+                    />
+                  </label>
+                ))}
               </div>
+              {errorMsg && (
+                <div className="mt-5 flex items-center gap-1.5 rounded-xl border border-red-100 bg-red-50 p-3 text-[11px] font-bold text-red-600 animate-shake dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300">
+                  <svg className="h-4 w-4 shrink-0 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4.5c-.77-.833-2.694-.833-3.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                  </svg>
+                  <span>{errorMsg}</span>
+                </div>
+              )}
               <div className="mt-6 flex justify-end">
                 <button
                   type="button"
-                  disabled={!isStep1Complete}
-                  onClick={() => setActiveManualStep(2)}
-                  title={!isStep1Complete ? "Please fill in all required fields (Company Name, Project Name, and Location) to continue." : "Continue to System Selection"}
-                  className={`rounded-xl px-6 py-3 text-xs font-bold text-white transition-all shadow-md ${
-                    !isStep1Complete
-                      ? 'bg-slate-300 dark:bg-slate-800 text-slate-400 cursor-not-allowed shadow-none'
-                      : 'bg-blue-600 hover:bg-blue-700 shadow-blue-500/20 cursor-pointer'
-                  }`}
+                  onClick={continueToSystemSelection}
+                  className="rounded-xl bg-blue-600 px-6 py-3 text-xs font-bold text-white transition-all hover:bg-blue-700 shadow-md shadow-blue-500/20 cursor-pointer"
                 >
                   Continue to System Selection →
                 </button>
@@ -324,6 +337,14 @@ export default function EstimationHub({ user, onCreateProject, onSelectProject, 
                   );
                 })}
               </div>
+              {errorMsg && (
+                <div className="mt-5 flex items-center gap-1.5 rounded-xl border border-red-100 bg-red-50 p-3 text-[11px] font-bold text-red-600 animate-shake dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300">
+                  <svg className="h-4 w-4 shrink-0 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4.5c-.77-.833-2.694-.833-3.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                  </svg>
+                  <span>{errorMsg}</span>
+                </div>
+              )}
               <label className="mt-5 block">
                 <span className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-slate-400">
                   Survey / Installation Notes (Optional)
@@ -346,14 +367,8 @@ export default function EstimationHub({ user, onCreateProject, onSelectProject, 
                 </button>
                 <button
                   type="button"
-                  disabled={!isStep2Complete}
-                  onClick={handleStartWizardFlow}
-                  title={!isStep2Complete ? "Please select at least one security system type to continue." : "Continue to Site Survey Wizard"}
-                  className={`rounded-xl px-6 py-3 text-xs font-bold text-white transition-all shadow-md ${
-                    !isStep2Complete
-                      ? 'bg-slate-300 dark:bg-slate-800 text-slate-400 cursor-not-allowed shadow-none'
-                      : 'bg-blue-600 hover:bg-blue-700 shadow-blue-500/20 cursor-pointer'
-                  }`}
+                  onClick={continueToSurveyWizard}
+                  className="rounded-xl bg-blue-600 px-6 py-3 text-xs font-bold text-white transition-all hover:bg-blue-700 shadow-md shadow-blue-500/20 cursor-pointer"
                 >
                   Continue to Site Survey Wizard →
                 </button>

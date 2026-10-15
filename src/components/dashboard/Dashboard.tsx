@@ -1229,7 +1229,7 @@ export default function Dashboard({
                 </div>
               </div>
             </div>
-          ) : view !== 'dashboard' && view !== 'home' && !isCategoryView ? (
+          ) : view !== 'home' && !isCategoryView ? (
             /* Project Table (non-home, non-notifications, non-category views) */
             <div className="px-6 pt-6 pb-6 flex-1 flex flex-col min-h-0">
               <div className="bg-white dark:bg-[#131B2E] rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm animate-fade-in-up flex-1 flex flex-col min-h-[calc(100vh-120px)]">

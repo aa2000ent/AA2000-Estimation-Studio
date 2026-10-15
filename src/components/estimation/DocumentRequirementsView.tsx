@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import type { Project } from '../../App';
 import type { EstimationAnalyzeResult } from '../../services/api/estimationFlow';
 import type { SaveEstimationFn } from '../../services/estimationWizardSnapshot';
 import type { SystemType } from './CreateSurveyForm';
@@ -38,6 +39,7 @@ export default function DocumentRequirementsView({
   onReanalyze,
   onSaveEstimation,
   initialSystemTypes,
+  projects,
   isDark = false,
 }: Props) {
   const summary = result.summary;
