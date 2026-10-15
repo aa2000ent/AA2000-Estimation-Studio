@@ -133,8 +133,8 @@ export default function Sidebar({
   const [isPinned, setIsPinned] = useState(true);
   const [isHovered, setIsHovered] = useState(false);
   const [savedBOQCount, setSavedBOQCount] = useState(0);
-  // Sidebar is expanded if pinned OR hovered
-  const isExpanded = !isMobile && (isPinned || isHovered);
+  // Sidebar is expanded on mobile or when pinned/hovered on desktop
+  const isExpanded = isMobile || isPinned || isHovered;
 
   const handleTogglePin = () => {
     setIsPinned(prev => !prev);
@@ -235,7 +235,7 @@ export default function Sidebar({
           ? 'bg-[#0D1527] border-slate-800/80 text-white'
           : 'bg-white border-slate-200/80 text-slate-800'
       } ${
-        isExpanded ? 'w-72 xl:w-72' : 'w-20'
+        isMobile ? 'w-full' : isExpanded ? 'w-72 xl:w-72' : 'w-20'
       }`}
     >
       <div className="flex flex-col h-full relative">

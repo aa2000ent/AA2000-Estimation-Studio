@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import type { Project } from '../../App';
 import {
   extractSectionRequirements,
   type FloorPlanAnalyzeResult,
@@ -209,6 +210,7 @@ interface Props {
   onSaveEstimation?: SaveEstimationFn;
   /** Systems picked before the analysis — prefills the save form. */
   initialSystemTypes?: SystemType[];
+  projects?: Project[];
 }
 
 function buildSections(
@@ -263,6 +265,7 @@ export default function FloorPlanSelectionSectionView({
   uploadedFile,
   onSaveEstimation,
   initialSystemTypes,
+  projects,
 }: Props) {
   const { toast } = useToast();
   const [uploadedFileUrl, setUploadedFileUrl] = useState<string | null>(null);
@@ -969,6 +972,7 @@ export default function FloorPlanSelectionSectionView({
           ai={dbAiContext}
           fileName={dbFileName}
           initialSystemTypes={activeSystemTypes}
+          projects={projects}
           onSaved={res => {
             setDbSaved(true);
             setDbSaveMessage(

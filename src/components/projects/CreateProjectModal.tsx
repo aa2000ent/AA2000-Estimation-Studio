@@ -66,6 +66,12 @@ export default function CreateProjectModal({ userRole, onClose, onCreate, isComp
   const [errorMsg, setErrorMsg] = useState('');
   const [showRequiredErrors, setShowRequiredErrors] = useState(false);
 
+  const toggleSystemType = (type: string) => {
+    setSystemTypes(previous => previous.includes(type)
+      ? previous.filter(existingType => existingType !== type)
+      : [...previous, type]);
+  };
+
   useEffect(() => {
     setErrorMsg('');
   }, [name, client, email, phone, location, buildingType, buildingLength, buildingWidth, floorHeight, floors, rooms, systemTypes, step]);
@@ -111,11 +117,10 @@ export default function CreateProjectModal({ userRole, onClose, onCreate, isComp
     }
   };
 
-  const toggleSystemType = (type: string) => {
-    setSystemTypes(prev =>
-      prev.includes(type) ? prev.filter(t => t !== type) : [...prev, type]
-    );
-  };
+  const isStep0Valid = name.trim() !== '' && client.trim() !== '' && location.trim() !== '';
+  const isStep1Valid = buildingType.trim() !== '';
+  const isStep2Valid = !isCompanyMode || systemTypes.length > 0;
+  const isCurrentStepValid = step === 0 ? isStep0Valid : step === 1 ? isStep1Valid : isStep2Valid;
 
   const validateStep = (currentStep: number): boolean => {
     if (currentStep !== 0) return true;
@@ -489,20 +494,28 @@ export default function CreateProjectModal({ userRole, onClose, onCreate, isComp
             {step < activeSteps.length - 1 ? (
               <button
                 type="button"
+                disabled={!isCurrentStepValid}
                 onClick={() => {
                   if (!validateStep(step)) return;
                   setStep(step + 1);
                 }}
-                className="flex-1 py-2.5 rounded-xl text-xs font-bold text-white transition-all shadow-sm hover:opacity-95"
-                style={{ background: '#1E3A8A' }}
+                className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all shadow-sm ${
+                  !isCurrentStepValid
+                    ? 'bg-slate-300 dark:bg-slate-800 text-slate-400 cursor-not-allowed shadow-none'
+                    : 'bg-[#1E3A8A] text-white hover:opacity-95 cursor-pointer'
+                }`}
               >
                 Next Step →
               </button>
             ) : (
               <button
                 type="submit"
-                className="flex-1 py-2.5 rounded-xl text-xs font-bold text-white transition-all shadow-sm hover:opacity-95"
-                style={{ background: isCompanyMode ? '#059669' : '#1E3A8A' }}
+                disabled={!isCurrentStepValid}
+                className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all shadow-sm ${
+                  !isCurrentStepValid
+                    ? 'bg-slate-300 dark:bg-slate-800 text-slate-400 cursor-not-allowed shadow-none'
+                    : isCompanyMode ? 'bg-emerald-600 text-white hover:bg-emerald-700 cursor-pointer' : 'bg-[#1E3A8A] text-white hover:opacity-95 cursor-pointer'
+                }`}
               >
                 {isCompanyMode ? 'Create Company' : 'Create Project'}
               </button>

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import type { Project } from '../../App';
 import type { EstimationAnalyzeResult } from '../../services/api/estimationFlow';
 import type { SaveEstimationFn } from '../../services/estimationWizardSnapshot';
 import type { SystemType } from './CreateSurveyForm';
@@ -16,6 +17,7 @@ interface Props {
   onSaveEstimation?: SaveEstimationFn;
   /** Systems picked before the analysis — prefills the save form. */
   initialSystemTypes?: SystemType[];
+  projects?: Project[];
   isDark?: boolean;
 }
 
@@ -37,6 +39,7 @@ export default function DocumentRequirementsView({
   onReanalyze,
   onSaveEstimation,
   initialSystemTypes,
+  projects,
   isDark = false,
 }: Props) {
   const summary = result.summary;
@@ -189,6 +192,7 @@ export default function DocumentRequirementsView({
             ai={{ mode: 'ai', estimation: result }}
             fileName={fileName}
             initialSystemTypes={initialSystemTypes}
+            projects={projects}
             onSaved={res => {
               setSaved(true);
               setSaveMessage(
