@@ -16,6 +16,10 @@ import {
 import {
   analyzeFloorPlan,
   analyzeEstimation,
+  MAX_FLOORPLAN_FILES,
+  MAX_FLOORPLAN_FILE_BYTES,
+  MAX_FLOOR_PLAN_TITLE_LENGTH,
+  type FloorPlanLabel,
   type FloorPlanAnalyzeResult,
   type EstimationAnalyzeResult,
 } from '../../services/api/estimationFlow';
@@ -25,6 +29,12 @@ interface FileWithContent {
   parsed: ParsedFile;
   loading: boolean;
   error: string | null;
+}
+
+/** One uploaded floor plan plus the title the user gives it (e.g. "Ground Floor"). */
+interface FloorPlanUpload {
+  file: File;
+  title: string;
 }
 
 interface Props {
@@ -107,7 +117,8 @@ export default function TORComparisonView({ onScanningChange, onSaveEstimation }
   const [showFloorPlanSelection, setShowFloorPlanSelection] = useState(false);
   const [torFile, setTorFile] = useState<FileWithContent | null>(null);
   const [proposalFile, setProposalFile] = useState<FileWithContent | null>(null);
-  const [floorPlanFile, setFloorPlanFile] = useState<FileWithContent | null>(null);
+  const [floorPlanUploads, setFloorPlanUploads] = useState<FloorPlanUpload[]>([]);
+  const hasFloorPlans = floorPlanUploads.length > 0;
   const [floorPlanResult, setFloorPlanResult] = useState<FloorPlanAnalyzeResult | null>(null);
   const [floorPlanLoading, setFloorPlanLoading] = useState(false);
   const [estResult, setEstResult] = useState<EstimationAnalyzeResult | null>(null);
@@ -164,25 +175,41 @@ export default function TORComparisonView({ onScanningChange, onSaveEstimation }
     }
   }, [toast]);
 
-  const handleFloorPlanFiles = useCallback(async (files: FileList | File[]) => {
-    const fileArray = Array.from(files);
-    if (fileArray.length === 0) return;
-    const file = fileArray[0];
-    if (!isFloorPlanFile(file)) {
-      toast.error('Unsupported floor plan. Upload a PDF, PNG, or JPG image.');
-      return;
+  const handleFloorPlanFiles = useCallback((files: FileList | File[]) => {
+    const incoming = Array.from(files);
+    if (incoming.length === 0) return;
+    const next = [...floorPlanUploads];
+    for (const file of incoming) {
+      if (next.length >= MAX_FLOORPLAN_FILES) {
+        toast.error(`You can upload up to ${MAX_FLOORPLAN_FILES} floor plans. Remove one to add another.`);
+        break;
+      }
+      if (!isFloorPlanFile(file)) {
+        toast.error(`"${file.name}" is not a supported floor plan. Upload a PDF, PNG, or JPG.`);
+        continue;
+      }
+      if (file.size > MAX_FLOORPLAN_FILE_BYTES) {
+        toast.error(`"${file.name}" exceeds the 12 MB file limit.`);
+        continue;
+      }
+      if (next.some(item => item.file.name === file.name && item.file.size === file.size)) {
+        toast.error(`"${file.name}" is already uploaded.`);
+        continue;
+      }
+      next.push({ file, title: '' });
     }
-    setFloorPlanFile({ file, parsed: { fileName: file.name, fileType: '', content: '', size: file.size }, loading: true, error: null });
+    setFloorPlanUploads(next);
     setFloorPlanResult(null);
-    try {
-      const parsed = await parseFile(file);
-      setFloorPlanFile({ file, parsed, loading: false, error: null });
-      toast.success(`Floor plan "${file.name}" loaded successfully`);
-    } catch (err) {
-      setFloorPlanFile({ file, parsed: { fileName: file.name, fileType: '', content: '', size: file.size }, loading: false, error: 'Failed to parse file' });
-      toast.error(`Failed to parse floor plan: ${err}`);
-    }
-  }, [toast]);
+  }, [floorPlanUploads, toast]);
+
+  const updateFloorPlanTitle = useCallback((index: number, title: string) => {
+    setFloorPlanUploads(prev => prev.map((item, i) => (i === index ? { ...item, title } : item)));
+  }, []);
+
+  const floorPlanLabels = useCallback((): FloorPlanLabel[] =>
+    floorPlanUploads
+      .map(item => ({ fileName: item.file.name, title: item.title.trim() }))
+      .filter(label => label.title), [floorPlanUploads]);
 
   const removeTorFile = useCallback(() => {
     setTorFile(null);
@@ -196,16 +223,26 @@ export default function TORComparisonView({ onScanningChange, onSaveEstimation }
     setEstError('');
     setShowDocResults(false);
   }, []);
-  const removeFloorPlanFile = useCallback(() => {
-    setFloorPlanFile(null);
+  const removeFloorPlanFile = useCallback((index: number) => {
+    setFloorPlanUploads(prev => prev.filter((_, i) => i !== index));
     setFloorPlanResult(null);
   }, []);
 
   const handleRunComparison = useCallback(async () => {
     if (selectedDocType === 'floor_plan') {
-      if (!floorPlanFile) {
+      if (!hasFloorPlans) {
         toast.error('Please upload a floor plan to analyze.');
         return;
+      }
+      const seenTitles = new Set<string>();
+      for (const item of floorPlanUploads) {
+        const key = item.title.trim().toLowerCase();
+        if (!key) continue;
+        if (seenTitles.has(key)) {
+          toast.error(`Two floor plans are titled "${item.title.trim()}". Give each plan its own title.`);
+          return;
+        }
+        seenTitles.add(key);
       }
       if (systemTypes.length === 0) {
         setShowSystemModal(true);
@@ -219,7 +256,8 @@ export default function TORComparisonView({ onScanningChange, onSaveEstimation }
       analysisControllerRef.current = controller;
       try {
         const result = await analyzeFloorPlan({
-          files: [floorPlanFile.file],
+          files: floorPlanUploads.map(item => item.file),
+          labels: floorPlanLabels(),
           // Selected systems reach the prompt as "System types of interest".
           projectContext: { systemTypes },
           analysisOptions: {
@@ -325,7 +363,7 @@ export default function TORComparisonView({ onScanningChange, onSaveEstimation }
         onScanningChange?.(false);
       }
     }
-  }, [selectedDocType, torFile, proposalFile, floorPlanFile, systemTypes, toast, onScanningChange]);
+  }, [selectedDocType, torFile, proposalFile, floorPlanUploads, hasFloorPlans, floorPlanLabels, systemTypes, toast, onScanningChange]);
 
   const cancelAnalysis = () => {
     analysisControllerRef.current?.abort();
@@ -335,18 +373,14 @@ export default function TORComparisonView({ onScanningChange, onSaveEstimation }
     onScanningChange?.(false);
   };
 
-  const currentFile =
-    selectedDocType === 'proposal'
-      ? proposalFile
-      : selectedDocType === 'floor_plan'
-        ? floorPlanFile
-        : torFile;
+  const currentFile = selectedDocType === 'proposal' ? proposalFile : torFile;
 
   if (showFloorPlanSelection) {
     return (
       <FloorPlanSelectionSectionView
         result={floorPlanResult}
-        uploadedFile={floorPlanFile?.file}
+        uploadedFiles={floorPlanUploads.map(item => item.file)}
+        floorPlans={floorPlanLabels()}
         onSaveEstimation={onSaveEstimation}
         initialSystemTypes={systemTypes}
         onBackToDocument={() => setShowFloorPlanSelection(false)}
@@ -531,14 +565,70 @@ export default function TORComparisonView({ onScanningChange, onSaveEstimation }
                 : 'Upload a proposal to review proposed equipment and quantities.'}
             </p>
             {/* Active file or upload button */}
-            {currentFile ? (
+            {selectedDocType === 'floor_plan' ? (
+              <div className="mt-2 flex w-full max-w-2xl flex-col gap-2">
+                {floorPlanUploads.map((item, index) => (
+                  <div
+                    key={`${item.file.name}-${index}`}
+                    className="flex flex-col gap-2 rounded-xl border border-blue-200 bg-white p-3 px-4 text-left shadow-xs dark:border-blue-900 dark:bg-[#131B2E]"
+                  >
+                    <div className="flex items-center gap-3">
+                      <FileTypeIcon fileName={item.file.name} />
+                      <span className="min-w-0 flex-1 break-all text-xs font-bold text-slate-800 dark:text-white">
+                        {item.file.name}
+                        <span className="ml-2 font-semibold text-slate-400">
+                          {item.file.size < 1024 * 1024
+                            ? `${Math.max(1, Math.round(item.file.size / 1024))} KB`
+                            : `${(item.file.size / (1024 * 1024)).toFixed(1)} MB`}
+                        </span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => removeFloorPlanFile(index)}
+                        className="shrink-0 text-slate-400 hover:text-red-500 text-xs font-bold cursor-pointer"
+                      >
+                        ✕ Remove
+                      </button>
+                    </div>
+                    <input
+                      type="text"
+                      value={item.title}
+                      maxLength={MAX_FLOOR_PLAN_TITLE_LENGTH}
+                      onChange={e => updateFloorPlanTitle(index, e.target.value)}
+                      placeholder="Floor plan title, e.g. Ground Floor, 2nd Floor Mezzanine, Roof Deck"
+                      aria-label={`Title for ${item.file.name}`}
+                      className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-800 outline-none focus:border-blue-400 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                    />
+                  </div>
+                ))}
+                {floorPlanUploads.length < MAX_FLOORPLAN_FILES && (
+                  <label className="mx-auto mt-1 px-6 py-3 rounded-full text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 transition-all shadow-md shadow-blue-500/20 cursor-pointer inline-flex items-center gap-2">
+                    <span>{hasFloorPlans ? '+ Add another floor plan' : 'Open File / Select from Device'}</span>
+                    <input
+                      type="file"
+                      multiple
+                      accept={FLOOR_PLAN_ACCEPT}
+                      className="hidden"
+                      onChange={e => {
+                        if (e.target.files && e.target.files.length > 0) handleFloorPlanFiles(e.target.files);
+                        e.target.value = '';
+                      }}
+                    />
+                  </label>
+                )}
+                {hasFloorPlans && (
+                  <p className="text-center text-[10px] font-medium text-slate-400 dark:text-slate-500">
+                    Titles are optional, but tell the AI which floor each plan shows.
+                  </p>
+                )}
+              </div>
+            ) : currentFile ? (
               <div className="mt-2 flex w-full max-w-2xl items-center gap-3 rounded-xl border border-blue-200 bg-white p-3 px-4 shadow-xs dark:border-blue-900 dark:bg-[#131B2E]">
                 <span className="min-w-0 flex-1 break-all text-left text-xs font-bold text-slate-800 dark:text-white">{currentFile.parsed.fileName}</span>
                 <button
                   type="button"
                   onClick={() => {
                     if (selectedDocType === 'proposal') removeProposalFile();
-                    else if (selectedDocType === 'floor_plan') removeFloorPlanFile();
                     else removeTorFile();
                   }}
                   className="shrink-0 text-slate-400 hover:text-red-500 text-xs font-bold cursor-pointer"
@@ -556,18 +646,12 @@ export default function TORComparisonView({ onScanningChange, onSaveEstimation }
                   <span>Open File / Select from Device</span>
                   <input
                     type="file"
-                    accept={
-                      selectedDocType === 'floor_plan'
-                        ? FLOOR_PLAN_ACCEPT
-                        : REFERENCE_DOCUMENT_ACCEPT
-                    }
+                    accept={REFERENCE_DOCUMENT_ACCEPT}
                     className="hidden"
                     onChange={e => {
                       if (e.target.files && e.target.files.length > 0) {
                         if (selectedDocType === 'proposal') {
                           handleProposalFiles(e.target.files);
-                        } else if (selectedDocType === 'floor_plan') {
-                          handleFloorPlanFiles(e.target.files);
                         } else {
                           handleTorFiles(e.target.files);
                         }
@@ -581,7 +665,7 @@ export default function TORComparisonView({ onScanningChange, onSaveEstimation }
 
             <p className="text-[10px] font-medium text-slate-400 dark:text-slate-500 mt-2">
               {selectedDocType === 'floor_plan'
-                ? 'Accepted floor plans: PDF, PNG, JPG'
+                ? `Accepted floor plans: PDF, PNG, JPG — up to ${MAX_FLOORPLAN_FILES} plans, 12 MB each`
                 : 'Accepted TOR / reference documents: PDF, DOCX'}
             </p>
           </>
@@ -623,7 +707,7 @@ export default function TORComparisonView({ onScanningChange, onSaveEstimation }
           {systemTypes.length === 0
             ? 'Select at least one system type to enable AI analysis'
             : selectedDocType === 'floor_plan'
-              ? floorPlanFile
+              ? hasFloorPlans
                 ? 'Floor plan ready for AI analysis'
                 : 'Upload a floor plan to enable AI analysis'
               : currentFile
@@ -635,12 +719,12 @@ export default function TORComparisonView({ onScanningChange, onSaveEstimation }
           disabled={
             systemTypes.length === 0 ||
             (selectedDocType === 'floor_plan'
-              ? !floorPlanFile || floorPlanLoading
+              ? !hasFloorPlans || floorPlanLoading
               : !currentFile || analyzing)
           }
           className={`flex items-center justify-center gap-2 rounded-full px-6 py-3 text-xs font-bold transition-all cursor-pointer sm:w-auto ${
             systemTypes.length > 0 &&
-            (selectedDocType === 'floor_plan' ? floorPlanFile : currentFile) &&
+            (selectedDocType === 'floor_plan' ? hasFloorPlans : currentFile) &&
             !floorPlanLoading &&
             !analyzing
               ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-md shadow-blue-500/20'

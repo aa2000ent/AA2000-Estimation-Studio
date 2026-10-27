@@ -6,8 +6,10 @@
 import { apiClient } from './index';
 
 const AI_REQUEST_TIMEOUT_MS = 180000;
-const MAX_FLOORPLAN_FILES = 6;
-const MAX_FLOORPLAN_FILE_BYTES = 12 * 1024 * 1024;
+// The live /api/floorplan/analyze takes one drawing per call and allows 5 calls a
+// minute per session, so one analysis covers at most 5 floor plans.
+export const MAX_FLOORPLAN_FILES = 5;
+export const MAX_FLOORPLAN_FILE_BYTES = 12 * 1024 * 1024;
 const SUPPORTED_EXTENSIONS = ['pdf', 'png', 'jpg', 'jpeg', 'gif', 'webp'];
 
 function isLocalEstimationApiMockEnabled(): boolean {
@@ -112,6 +114,8 @@ export interface FloorPlanSection {
 
 export interface FloorPlanPage {
   pageNumber: number;
+  /** The title the user gave the floor plan this page came from (e.g. "Ground Floor"). */
+  title?: string;
   floorNumber?: number;
   scale?: { value?: number; unit?: string };
   dimensions?: { width?: number; height?: number; unit?: string };
@@ -174,12 +178,52 @@ export interface SupplementalDocument {
   content: string;
 }
 
+/** Descriptive title the user gives each uploaded plan (e.g. "Ground Floor"), sent to the AI as context. */
+export interface FloorPlanLabel {
+  fileName: string;
+  title: string;
+}
+
+export const MAX_FLOOR_PLAN_TITLE_LENGTH = 80;
+
 export interface FloorPlanAnalyzeRequest {
   files: File[];
+  /** Titles matched to the uploads by fileName. */
+  labels?: FloorPlanLabel[];
   fileType?: string;
   projectContext?: FloorPlanProjectContext;
   analysisOptions?: FloorPlanAnalyzeOptions;
   supplementalDocuments?: SupplementalDocument[];
+}
+
+/**
+ * Mock mode only: one page per uploaded file, each carrying its title, so the
+ * demo shows how titles flow through. The real server tags pages itself.
+ */
+function withMockPageTitles(
+  result: FloorPlanAnalyzeResult,
+  files: File[],
+  labels: FloorPlanLabel[]
+): FloorPlanAnalyzeResult {
+  const template = result.pages?.[0];
+  if (!template) return result;
+  return {
+    ...result,
+    pages: files.map((file, index) => {
+      const title = labels.find(label => label.fileName === file.name)?.title;
+      const suffix = `-p${index + 1}`;
+      const tag = (list?: FloorPlanSection[]) =>
+        list?.map(section => ({ ...section, sectionId: `${section.sectionId}${suffix}` }));
+      return {
+        ...template,
+        pageNumber: index + 1,
+        floorNumber: index,
+        ...(title ? { title } : {}),
+        sections: tag(template.sections),
+        corridors: tag(template.corridors),
+      };
+    }),
+  };
 }
 
 export async function analyzeFloorPlan(
@@ -191,6 +235,11 @@ export async function analyzeFloorPlan(
     throw new Error('Attach at least one floor plan file.');
   }
 
+  const tooLongTitle = (request.labels || []).find(l => l.title.length > MAX_FLOOR_PLAN_TITLE_LENGTH);
+  if (tooLongTitle) {
+    throw new Error(`Floor plan titles must be ${MAX_FLOOR_PLAN_TITLE_LENGTH} characters or fewer.`);
+  }
+
   const oversized = files.find(f => f.size > MAX_FLOORPLAN_FILE_BYTES);
   if (oversized) {
     throw new Error(`"${oversized.name}" exceeds the 12 MB file limit.`);
@@ -199,7 +248,7 @@ export async function analyzeFloorPlan(
   if (isLocalEstimationApiMockEnabled()) {
     logMockMode();
     await waitForMockResponse(1800, signal);
-    return {
+    return withMockPageTitles({
       requestId: 'local-mock-floorplan',
       analyzedAt: new Date().toISOString(),
       processingTimeMs: 1800,
@@ -285,44 +334,131 @@ export async function analyzeFloorPlan(
         'Use controlled access for the server room.',
         'Provide camera coverage at the lobby entrance and main corridor.',
       ],
-    };
+    }, files, request.labels || []);
   }
 
-  const formData = new FormData();
-  // Always attach primary file as `file` required by /api/floorplan/analyze schema
-  files.forEach((file, index) => {
-    formData.append('file', file, file.name || `floorplan_${index + 1}`);
-  });
+  const titleFor = (file: File) =>
+    (request.labels || []).find(label => label.fileName === file.name)?.title.trim() || '';
 
-  const fileType = (request.fileType || fileTypeFromName(files[0]?.name || '') || 'pdf').toLowerCase().replace('.', '');
-  formData.append('fileType', fileType);
-  if (request.projectContext) {
-    formData.append('projectContext', JSON.stringify(request.projectContext));
+  const analyzeOne = async (file: File): Promise<FloorPlanAnalyzeResult> => {
+    const formData = new FormData();
+    // The endpoint takes exactly one drawing per call, in `file`.
+    formData.append('file', file, file.name || 'floorplan');
+
+    const fileType = (files.length === 1 && request.fileType ? request.fileType : fileTypeFromName(file.name) || 'pdf')
+      .toLowerCase()
+      .replace('.', '');
+    formData.append('fileType', fileType);
+    const title = titleFor(file);
+    if (title) formData.append('floorPlanTitle', title);
+    if (request.projectContext) {
+      formData.append('projectContext', JSON.stringify(request.projectContext));
+    }
+    if (request.analysisOptions) {
+      formData.append('analysisOptions', JSON.stringify(request.analysisOptions));
+    }
+    if (request.supplementalDocuments && request.supplementalDocuments.length > 0) {
+      formData.append('supplementalDocuments', JSON.stringify(request.supplementalDocuments));
+    }
+
+    const response = await apiClient.postForm<
+      EstimationFlowBackendResponse<FloorPlanAnalyzeResult>
+    >(FLOORPLAN_ANALYZE_ENDPOINT, formData, { timeoutMs: AI_REQUEST_TIMEOUT_MS, signal });
+
+    if (!response.success || !response.data) {
+      throw new Error(response.error?.message || 'Floor plan analysis failed.');
+    }
+
+    const body = response.data;
+    if (!body.success) {
+      throw new Error(body.error || 'Floor plan analysis failed.');
+    }
+    // /api/floorplan/analyze answers with the result itself (api-specs.md); older
+    // servers wrapped it in `data`. Accept both.
+    const result = body.data ?? ((body as unknown as FloorPlanAnalyzeResult).pages ? (body as unknown as FloorPlanAnalyzeResult) : undefined);
+    if (!result) {
+      throw new Error('Floor plan analysis returned an empty response.');
+    }
+
+    return result;
+  };
+
+  // One request per floor plan, one after the other. The API allows one request
+  // a second, so there is a short pause between plans.
+  const results: FloorPlanAnalyzeResult[] = [];
+  for (let index = 0; index < files.length; index += 1) {
+    if (index > 0) await waitForMockResponse(1100, signal);
+    try {
+      results.push(await analyzeOne(files[index]));
+    } catch (error) {
+      if (files.length === 1 || (error instanceof DOMException && error.name === 'AbortError')) throw error;
+      const message = error instanceof Error ? error.message : 'Floor plan analysis failed.';
+      throw new Error(`"${files[index].name}": ${message}`);
+    }
   }
-  if (request.analysisOptions) {
-    formData.append('analysisOptions', JSON.stringify(request.analysisOptions));
-  }
-  if (request.supplementalDocuments && request.supplementalDocuments.length > 0) {
-    formData.append('supplementalDocuments', JSON.stringify(request.supplementalDocuments));
+  return results.length === 1 ? results[0] : mergeFloorPlanResults(results);
+}
+
+/**
+ * Joins the per-plan results into one: pages are renumbered in upload order
+ * (each keeps its title), section ids get a per-plan prefix so they stay
+ * unique, and the summary totals are summed.
+ */
+function mergeFloorPlanResults(results: FloorPlanAnalyzeResult[]): FloorPlanAnalyzeResult {
+  const prefixIds = (list: FloorPlanSection[] | undefined, plan: number) =>
+    list?.map(section => ({ ...section, sectionId: `f${plan}-${section.sectionId}` }));
+
+  let pageNumber = 0;
+  const pages: FloorPlanPage[] = results.flatMap((result, index) =>
+    (result.pages ?? []).map(page => ({
+      ...page,
+      pageNumber: ++pageNumber,
+      sections: prefixIds(page.sections, index + 1),
+      corridors: prefixIds(page.corridors, index + 1),
+      verticalCirculation: prefixIds(page.verticalCirculation, index + 1),
+      utilityAreas: prefixIds(page.utilityAreas, index + 1),
+    }))
+  );
+
+  const sum = (pick: (result: FloorPlanAnalyzeResult) => number | undefined) =>
+    results.reduce((total, result) => total + (pick(result) ?? 0), 0);
+
+  const roomTypes: Record<string, number> = {};
+  const coverage: Record<string, { roomsCovered?: number; cameraCount?: number }> = {};
+  for (const result of results) {
+    for (const [type, count] of Object.entries(result.summary?.roomTypes ?? {})) {
+      roomTypes[type] = (roomTypes[type] ?? 0) + count;
+    }
+    for (const [system, detail] of Object.entries(result.summary?.systemsCoverage ?? {})) {
+      const merged = coverage[system] ?? {};
+      if (detail.roomsCovered !== undefined) merged.roomsCovered = (merged.roomsCovered ?? 0) + detail.roomsCovered;
+      if (detail.cameraCount !== undefined) merged.cameraCount = (merged.cameraCount ?? 0) + detail.cameraCount;
+      coverage[system] = merged;
+    }
   }
 
-  const response = await apiClient.postForm<
-    EstimationFlowBackendResponse<FloorPlanAnalyzeResult>
-  >(FLOORPLAN_ANALYZE_ENDPOINT, formData, { timeoutMs: AI_REQUEST_TIMEOUT_MS, signal });
-
-  if (!response.success || !response.data) {
-    throw new Error(response.error?.message || 'Floor plan analysis failed.');
-  }
-
-  const body = response.data;
-  if (!body.success) {
-    throw new Error(body.error || 'Floor plan analysis failed.');
-  }
-  if (!body.data) {
-    throw new Error('Floor plan analysis returned an empty response.');
-  }
-
-  return body.data;
+  const first = results[0];
+  return {
+    requestId: first.requestId,
+    analyzedAt: results[results.length - 1].analyzedAt,
+    processingTimeMs: sum(result => result.processingTimeMs),
+    fileInfo: {
+      ...first.fileInfo,
+      fileName: results.map(result => result.fileInfo?.fileName).filter(Boolean).join(', '),
+      pages: pages.length,
+    },
+    confidenceScore: Math.round(sum(result => result.confidenceScore) / results.length),
+    pages,
+    summary: {
+      totalRooms: sum(result => result.summary?.totalRooms),
+      totalCorridors: sum(result => result.summary?.totalCorridors),
+      totalArea: sum(result => result.summary?.totalArea),
+      unit: first.summary?.unit,
+      roomTypes,
+      systemsCoverage: coverage,
+    },
+    recommendations: results.flatMap(result => result.recommendations ?? []),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -445,6 +581,7 @@ export interface SectionRequirementsResult {
 
 export interface SectionRequirementsRequest {
   section: FloorPlanSection;
+  floorPlans?: FloorPlanLabel[];
   projectContext?: FloorPlanProjectContext;
   supplementalDocuments?: SupplementalDocument[];
   analysisOptions?: {
@@ -618,6 +755,7 @@ export interface EstimationSystemsPayload {
 
 export interface EstimationAnalyzeRequest {
   siteInfo: EstimationSiteInfo;
+  floorPlans?: FloorPlanLabel[];
   systems: EstimationSystemsPayload;
   clientContext?: Record<string, unknown>;
   supplementalDocuments?: SupplementalDocument[];
