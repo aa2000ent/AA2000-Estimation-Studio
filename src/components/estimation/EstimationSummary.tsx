@@ -8,6 +8,9 @@ import { useToast } from '../utils/Toast';
 import { getEstimatedItemPricing, searchPricelist } from '../../services/pricelistService';
 import { computeEstimationStats } from '../../services/estimationStats';
 import QuotationModal, { type QuotationHeaderState, type ScopeOfWorkEntry, generateSystemScopeOfWorks } from './QuotationModal';
+import reportHeaderBackground from '../../assets/pdf/PDF_header.png';
+import reportLogo from '../../assets/pdf/aa2000_logo.png';
+import { buildStandardEstimationReportHtml } from '../../utils/standardEstimationReport';
 
 function mapCategoryToOption(cat: string): string {
   const c = cat.toUpperCase();
@@ -906,11 +909,12 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
     setShowEditQuotation(false);
   }, [showQuotationModal]);
 
-  // asBlob=false: download the PDF (Export button). asBlob=true: return it so it can be uploaded.
+  // asBlob=false downloads the PDF; asBlob=true returns the same document for backend upload.
   const generateReportPdf = async (asBlob = false): Promise<Blob | null> => {
-    const exportBtn = asBlob ? null : (document.activeElement as HTMLButtonElement);
-    const originalText = exportBtn ? exportBtn.innerHTML : 'Export PDF';
-    let pdfBlob: Blob | null = null;
+    const exportBtn = asBlob ? null : (document.activeElement as HTMLButtonElement | null);
+    const originalText = exportBtn?.innerHTML || 'Export PDF';
+    let outer: HTMLDivElement | null = null;
+
     if (exportBtn) {
       exportBtn.disabled = true;
       exportBtn.innerText = 'Generating PDF...';
@@ -919,351 +923,166 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
     try {
       if (!(window as any).html2pdf) {
         await new Promise<void>((resolve, reject) => {
+          const existingScript = document.querySelector<HTMLScriptElement>('script[data-aa2000-html2pdf]');
+          // A prior failed CDN request leaves its script element behind. Remove it
+          // so a later export can retry instead of waiting for an event that passed.
+          existingScript?.remove();
+
           const script = document.createElement('script');
+          script.dataset.aa2000Html2pdf = 'true';
           script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
           script.onload = () => resolve();
-          script.onerror = (e) => reject(new Error('Failed to load PDF library'));
+          script.onerror = () => reject(new Error('Failed to load PDF library'));
           document.head.appendChild(script);
         });
       }
 
-      const { totalLabor, totalMaterials, totalFees } = estimationStats;
-      const subtotal = totalLabor + totalMaterials + totalFees;
-      const vat = subtotal * 0.12;
-      const grandTotalWithVAT = subtotal * 1.12;
-
-      const hardwareTotal = consumables
-        .filter(c => c.category !== 'Wires & Cables')
-        .reduce((sum, c) => sum + (c.totalPrice || 0), 0);
-
-      const cablingTotal = consumables
-        .filter(c => c.category === 'Wires & Cables')
-        .reduce((sum, c) => sum + (c.totalPrice || 0), 0);
-
-      const systemLabelsWithBrands = (project.systemTypes || []).map(type => {
-        const brand = getSystemBrand(type);
-        return brand ? `${type} (${brand})` : type;
+      outer = document.createElement('div');
+      Object.assign(outer.style, {
+        position: 'fixed',
+        top: '0',
+        left: '0',
+        width: '794px',
+        height: '1px',
+        overflow: 'hidden',
+        zIndex: '99999',
+        pointerEvents: 'none',
       });
-      const systemLabel = systemLabelsWithBrands.join(' & ') || 'Security & Technology';
-
-      const formattedDate = new Date().toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-      });
-
-      const constraintTexts = [
-        constraints.physical ? `Physical: ${constraints.physical}` : '',
-        constraints.electrical ? `Electrical: ${constraints.electrical}` : '',
-        constraints.installation ? `Cabling/Shift: ${constraints.installation}` : ''
-      ].filter(Boolean).join(' | ');
-
-      const technicianName = project.technicianName || (user?.fullName || 'Demo Technician');
-
-      // Create a 1px hidden outer wrapper to bypass browser paint optimization
-      const outer = document.createElement('div');
-      outer.style.position = 'fixed';
-      outer.style.top = '0';
-      outer.style.left = '0';
-      outer.style.width = '816px';
-      outer.style.height = '1px';
-      outer.style.overflow = 'hidden';
-      outer.style.zIndex = '99999';
-      outer.style.pointerEvents = 'none';
 
       const container = document.createElement('div');
-      container.style.width = '816px';
-      container.style.padding = '0';
-      container.style.boxSizing = 'border-box';
-      container.style.background = '#FFFFFF';
-      container.style.fontFamily = "'Inter', system-ui, -apple-system, sans-serif";
-      container.style.color = '#1E293B';
-
-      const headerHtml = `
-        <!-- HEADER BANNER -->
-        <div style="background: #1E3A8A; color: #FFFFFF; padding: 18px 24px; display: flex; align-items: center; justify-content: space-between; border-radius: 2px;">
-          <div style="display: flex; align-items: center;">
-            <!-- Camera Lens Logo -->
-            <div style="width: 32px; height: 32px; border-radius: 50%; border: 3px solid #FFFFFF; display: flex; align-items: center; justify-content: center; background: radial-gradient(circle, #FFFFFF 30%, transparent 70%); margin-right: 12px; flex-shrink: 0;">
-              <div style="width: 12px; height: 12px; border-radius: 50%; background: #FFFFFF;"></div>
-            </div>
-            <div>
-              <div style="font-size: 26px; font-weight: 900; line-height: 1; letter-spacing: 0.05em; font-family: 'Inter', sans-serif;">AA2000</div>
-              <div style="font-size: 10px; font-weight: 600; opacity: 0.9; margin-top: 1px; font-family: 'Inter', sans-serif; letter-spacing: 0.02em;">Security and Technology Solutions Inc.</div>
-            </div>
-          </div>
-          <div style="text-align: right; font-size: 8px; line-height: 1.45; max-width: 380px; opacity: 0.95; font-family: 'Inter', sans-serif;">
-            <div>Unit 2-C Norkis Building, 11 Calbayog Cor., Domingo M. Guevara St., Mandaluyong City, Philippines 1550</div>
-            <div>T: (02) 8571-5693 &nbsp;|&nbsp; M: 0917-884-8844 &nbsp;|&nbsp; E: aa2000ent@gmail.com &nbsp;|&nbsp; Web: www.aa2000ph.com</div>
-          </div>
-        </div>
-      `;
-
-      const footerHtml = `
-        <!-- FOOTER -->
-        <div style="position: absolute; bottom: 35px; left: 40px; right: 40px; border-top: 1px dashed #CBD5E1; padding-top: 15px;">
-          <div style="display: flex; justify-content: space-between; align-items: center; color: #64748B; font-size: 8px; font-family: 'Inter', sans-serif;">
-            <div>Unit 2-C Norkis Building, 11 Calbayog Cor., Domingo M. Guevara St., Mandaluyong City, Philippines 1550 &nbsp;|&nbsp; T: (02) 8571-5693</div>
-            <div style="font-weight: 700; color: #475569;">Disclaimer: This report is generated for client presentation and reflects finalized project details.</div>
-          </div>
-        </div>
-      `;
-
-      container.innerHTML = `
-        <link rel="preconnect" href="https://fonts.googleapis.com">
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
-        
-        <!-- PAGE 1: SUMMARY & COST SUMMARY -->
-        <div style="box-sizing: border-box; width: 100%; height: 1045px; padding: 40px; position: relative; page-break-after: always; background: #FFFFFF; border: 1px solid #CBD5E1;">
-          ${headerHtml}
-          
-          <!-- REPORT TITLE -->
-          <div style="margin-top: 25px; display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 2px solid #E2E8F0; padding-bottom: 8px;">
-            <div>
-              <h1 style="color: #1E3A8A; font-size: 18px; font-weight: 900; margin: 0; text-transform: uppercase; letter-spacing: -0.01em;">FINALIZED PROJECT REPORT</h1>
-              <p style="font-size: 11px; color: #475569; font-weight: 700; margin: 4px 0 0 0;">Project Name: ${project.name}</p>
-            </div>
-            <div style="font-size: 11px; color: #64748B; font-weight: 700;">${formattedDate}</div>
-          </div>
-
-          <!-- PROJECT SUMMARY -->
-          <h2 style="font-size: 11px; font-weight: 900; color: #1E3A8A; text-transform: uppercase; margin: 20px 0 6px 0; letter-spacing: 0.05em;">Project Summary</h2>
-          <table style="width: 100%; border-collapse: collapse; font-size: 10px; font-family: 'Inter', sans-serif;">
-            <tr>
-              <td style="width: 16%; padding: 8px 10px; border: 1px solid #E2E8F0; background: #F8FAFC; font-weight: 700; color: #475569;">Company Name</td>
-              <td style="width: 34%; padding: 8px 10px; border: 1px solid #E2E8F0; color: #1E293B; font-weight: 600;">${project.clientName}</td>
-              <td style="width: 16%; padding: 8px 10px; border: 1px solid #E2E8F0; background: #F8FAFC; font-weight: 700; color: #475569;">Client Name</td>
-              <td style="width: 34%; padding: 8px 10px; border: 1px solid #E2E8F0; color: #1E293B; font-weight: 600;">${project.clientContactName || 'N/A'}</td>
-            </tr>
-            <tr>
-              <td style="padding: 8px 10px; border: 1px solid #E2E8F0; background: #F8FAFC; font-weight: 700; color: #475569;">Address</td>
-              <td style="padding: 8px 10px; border: 1px solid #E2E8F0; color: #1E293B; font-weight: 600;">${project.location}</td>
-              <td style="padding: 8px 10px; border: 1px solid #E2E8F0; background: #F8FAFC; font-weight: 700; color: #475569;">Client Contact</td>
-              <td style="padding: 8px 10px; border: 1px solid #E2E8F0; color: #1E293B; font-weight: 600;">${project.clientPhone || 'No Contact'}</td>
-            </tr>
-            <tr>
-              <td style="padding: 8px 10px; border: 1px solid #E2E8F0; background: #F8FAFC; font-weight: 700; color: #475569;">Client Email</td>
-              <td style="padding: 8px 10px; border: 1px solid #E2E8F0; color: #1E293B; font-weight: 600;">${project.clientEmail || 'No Email'}</td>
-              <td style="padding: 8px 10px; border: 1px solid #E2E8F0; background: #F8FAFC; font-weight: 700; color: #475569;">Technician</td>
-              <td style="padding: 8px 10px; border: 1px solid #E2E8F0; color: #1E293B; font-weight: 600;">${technicianName}</td>
-            </tr>
-            <tr>
-              <td style="padding: 8px 10px; border: 1px solid #E2E8F0; background: #F8FAFC; font-weight: 700; color: #475569;">Status</td>
-              <td style="padding: 8px 10px; border: 1px solid #E2E8F0; color: #059669; font-weight: 700; text-transform: uppercase; font-size: 9px; letter-spacing: 0.02em;">${project.status === 'Completed' ? 'Finalized - Approved' : project.status}</td>
-              <td style="padding: 8px 10px; border: 1px solid #E2E8F0; background: #F8FAFC; font-weight: 700; color: #475569;">Finalized at</td>
-              <td style="padding: 8px 10px; border: 1px solid #E2E8F0; color: #1E293B; font-weight: 600;">${formattedDate}</td>
-            </tr>
-            <tr>
-              <td style="padding: 8px 10px; border: 1px solid #E2E8F0; background: #F8FAFC; font-weight: 700; color: #475569;">Total Cost</td>
-              <td colspan="3" style="padding: 8px 10px; border: 1px solid #E2E8F0; color: #1E3A8A; font-weight: 900; font-size: 11px;">PHP ${grandTotalWithVAT.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-            </tr>
-          </table>
-
-          <!-- COST BREAKDOWN -->
-          <h2 style="font-size: 11px; font-weight: 900; color: #1E3A8A; text-transform: uppercase; margin: 25px 0 6px 0; letter-spacing: 0.05em;">Cost Breakdown Summary</h2>
-          <table style="width: 100%; border-collapse: collapse; font-size: 10px; font-family: 'Inter', sans-serif;">
-            <thead>
-              <tr style="background: #F8FAFC; text-align: left;">
-                <th style="padding: 8px 10px; border: 1px solid #E2E8F0; color: #475569; font-weight: 700; width: 22%;">Category</th>
-                <th style="padding: 8px 10px; border: 1px solid #E2E8F0; color: #475569; font-weight: 700; width: 44%;">Item/Role</th>
-                <th style="padding: 8px 10px; border: 1px solid #E2E8F0; color: #475569; font-weight: 700; width: 12%; text-align: center;">Qty/Hours</th>
-                <th style="padding: 8px 10px; border: 1px solid #E2E8F0; color: #475569; font-weight: 700; width: 11%; text-align: right;">Unit Cost</th>
-                <th style="padding: 8px 10px; border: 1px solid #E2E8F0; color: #475569; font-weight: 700; width: 11%; text-align: right;">Subtotal</th>
-              </tr>
-            </thead>
-            <tbody>
-              <!-- Hardware Subtotal -->
-              <tr>
-                <td style="padding: 8px 10px; border: 1px solid #E2E8F0; font-weight: 700; color: #64748B;">Cost Summary</td>
-                <td style="padding: 8px 10px; border: 1px solid #E2E8F0; color: #1E293B; font-weight: 600;">${systemLabel}: Hardware</td>
-                <td style="padding: 8px 10px; border: 1px solid #E2E8F0; text-align: center; color: #64748B;">-</td>
-                <td style="padding: 8px 10px; border: 1px solid #E2E8F0; text-align: right; color: #64748B;">-</td>
-                <td style="padding: 8px 10px; border: 1px solid #E2E8F0; text-align: right; color: #1E293B; font-weight: 600;">PHP ${hardwareTotal.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</td>
-              </tr>
-              <!-- Cabling Subtotal -->
-              <tr>
-                <td style="padding: 8px 10px; border: 1px solid #E2E8F0; font-weight: 700; color: #64748B;">Cost Summary</td>
-                <td style="padding: 8px 10px; border: 1px solid #E2E8F0; color: #1E293B; font-weight: 600;">${systemLabel}: Cabling</td>
-                <td style="padding: 8px 10px; border: 1px solid #E2E8F0; text-align: center; color: #64748B;">-</td>
-                <td style="padding: 8px 10px; border: 1px solid #E2E8F0; text-align: right; color: #64748B;">-</td>
-                <td style="padding: 8px 10px; border: 1px solid #E2E8F0; text-align: right; color: #1E293B; font-weight: 600;">PHP ${cablingTotal.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</td>
-              </tr>
-              <!-- Labor Subtotal -->
-              <tr>
-                <td style="padding: 8px 10px; border: 1px solid #E2E8F0; font-weight: 700; color: #64748B;">Cost Summary</td>
-                <td style="padding: 8px 10px; border: 1px solid #E2E8F0; color: #1E293B; font-weight: 600;">${systemLabel}: Labor</td>
-                <td style="padding: 8px 10px; border: 1px solid #E2E8F0; text-align: center; color: #1E293B; font-weight: 600;">${totalManDays}d x ${totalHeadcount} tech</td>
-                <td style="padding: 8px 10px; border: 1px solid #E2E8F0; text-align: right; color: #1E293B; font-weight: 600;">PHP ${(totalManDays > 0 ? totalLabor / totalManDays : 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                <td style="padding: 8px 10px; border: 1px solid #E2E8F0; text-align: right; color: #1E293B; font-weight: 600;">PHP ${totalLabor.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</td>
-              </tr>
-              <!-- Logistics / Fees -->
-              ${totalFees > 0 ? `
-              <tr>
-                <td style="padding: 8px 10px; border: 1px solid #E2E8F0; font-weight: 700; color: #64748B;">Cost Summary</td>
-                <td style="padding: 8px 10px; border: 1px solid #E2E8F0; color: #1E293B; font-weight: 600;">Logistics & Special Fees</td>
-                <td style="padding: 8px 10px; border: 1px solid #E2E8F0; text-align: center; color: #64748B;">-</td>
-                <td style="padding: 8px 10px; border: 1px solid #E2E8F0; text-align: right; color: #64748B;">-</td>
-                <td style="padding: 8px 10px; border: 1px solid #E2E8F0; text-align: right; color: #1E293B; font-weight: 600;">PHP ${totalFees.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</td>
-              </tr>` : ''}
-              <!-- VAT Row -->
-              <tr>
-                <td style="padding: 8px 10px; border: 1px solid #E2E8F0; font-weight: 700; color: #64748B;">Cost Summary</td>
-                <td style="padding: 8px 10px; border: 1px solid #E2E8F0; color: #1E293B; font-weight: 600;">VAT (12%)</td>
-                <td style="padding: 8px 10px; border: 1px solid #E2E8F0; text-align: center; color: #64748B;">-</td>
-                <td style="padding: 8px 10px; border: 1px solid #E2E8F0; text-align: right; color: #64748B;">-</td>
-                <td style="padding: 8px 10px; border: 1px solid #E2E8F0; text-align: right; color: #1E293B; font-weight: 700;">PHP ${vat.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</td>
-              </tr>
-              <!-- Grand Total row -->
-              <tr style="background: #EFF6FF;">
-                <td colspan="4" style="padding: 10px 10px; border: 1px solid #E2E8F0; font-weight: 900; color: #1E3A8A; text-transform: uppercase; text-align: right;">Total Cost (Project, VAT Inc.)</td>
-                <td style="padding: 10px 10px; border: 1px solid #E2E8F0; text-align: right; color: #1E3A8A; font-weight: 900; font-size: 11px;">PHP ${grandTotalWithVAT.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-              </tr>
-            </tbody>
-          </table>
-          
-          ${footerHtml}
-        </div>
-
-        <!-- PAGE 2: TECHNICAL DETAILS, ROLES & CONSUMABLES -->
-        <div style="box-sizing: border-box; width: 100%; height: 1045px; padding: 40px; position: relative; background: #FFFFFF; border: 1px solid #CBD5E1;">
-          ${headerHtml}
-          
-          <!-- TECHNICAL BREAKDOWN -->
-          <h2 style="font-size: 11px; font-weight: 900; color: #1E3A8A; text-transform: uppercase; margin: 25px 0 6px 0; letter-spacing: 0.05em;">Technical Breakdown</h2>
-          <div style="font-size: 10px; font-weight: 700; color: #475569; margin-bottom: 8px;">System: ${systemLabel}</div>
-          
-          <table style="width: 100%; border-collapse: collapse; font-size: 9px; font-family: 'Inter', sans-serif; margin-bottom: 15px;">
-            <thead>
-              <tr style="background: #F8FAFC; text-align: left;">
-                <th style="padding: 6px 8px; border: 1px solid #E2E8F0; color: #475569; font-weight: 700; width: 20%;">Duration</th>
-                <th style="padding: 6px 8px; border: 1px solid #E2E8F0; color: #475569; font-weight: 700; width: 20%;">Technicians</th>
-                <th style="padding: 6px 8px; border: 1px solid #E2E8F0; color: #475569; font-weight: 700; width: 60%;">Site Constraints</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td style="padding: 6px 8px; border: 1px solid #E2E8F0; color: #1E293B; font-weight: 600;">${totalManDays} day(s)</td>
-                <td style="padding: 6px 8px; border: 1px solid #E2E8F0; color: #1E293B; font-weight: 600;">${totalHeadcount} tech(s)</td>
-                <td style="padding: 6px 8px; border: 1px solid #E2E8F0; color: #1E293B; font-weight: 600;">${constraintTexts || 'None recorded'}</td>
-              </tr>
-            </tbody>
-          </table>
-
-          <!-- Manpower & Consumables Details Side-by-side -->
-          <div style="display: flex; gap: 15px; margin-top: 15px;">
-            <!-- Manpower Role Details -->
-            <div style="flex: 1;">
-              <div style="font-size: 9px; font-weight: 900; color: #1E3A8A; text-transform: uppercase; margin-bottom: 4px; letter-spacing: 0.02em;">Manpower Role Breakdown</div>
-              <table style="width: 100%; border-collapse: collapse; font-size: 8.5px; font-family: 'Inter', sans-serif;">
-                <thead>
-                  <tr style="background: #F8FAFC; text-align: left;">
-                    <th style="padding: 5px 6px; border: 1px solid #E2E8F0; color: #475569; font-weight: 700; width: 60%;">Manpower Role</th>
-                    <th style="padding: 5px 6px; border: 1px solid #E2E8F0; color: #475569; font-weight: 700; width: 20%; text-align: center;">Count</th>
-                    <th style="padding: 5px 6px; border: 1px solid #E2E8F0; color: #475569; font-weight: 700; width: 20%; text-align: center;">Hours</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${manpower.length > 0 ? manpower.map(m => `
-                    <tr>
-                      <td style="padding: 5px 6px; border: 1px solid #E2E8F0; color: #1E293B; font-weight: 600;">${m.role}</td>
-                      <td style="padding: 5px 6px; border: 1px solid #E2E8F0; text-align: center; color: #1E293B; font-weight: 600;">${m.headcount}</td>
-                      <td style="padding: 5px 6px; border: 1px solid #E2E8F0; text-align: center; color: #1E293B; font-weight: 600;">${m.hours}</td>
-                    </tr>
-                  `).join('') : `
-                    <tr>
-                      <td colspan="3" style="padding: 8px; border: 1px solid #E2E8F0; text-align: center; color: #94A3B8; font-weight: 600;">No manpower breakdown recorded</td>
-                    </tr>
-                  `}
-                </tbody>
-              </table>
-            </div>
-
-            <!-- Consumables Details -->
-            <div style="flex: 1.2;">
-              <div style="font-size: 9px; font-weight: 900; color: #1E3A8A; text-transform: uppercase; margin-bottom: 4px; letter-spacing: 0.02em;">Consumables & Wires</div>
-              <table style="width: 100%; border-collapse: collapse; font-size: 8.5px; font-family: 'Inter', sans-serif;">
-                <thead>
-                  <tr style="background: #F8FAFC; text-align: left;">
-                    <th style="padding: 5px 6px; border: 1px solid #E2E8F0; color: #475569; font-weight: 700; width: 45%;">Consumable</th>
-                    <th style="padding: 5px 6px; border: 1px solid #E2E8F0; color: #475569; font-weight: 700; width: 20%;">Brand</th>
-                    <th style="padding: 5px 6px; border: 1px solid #E2E8F0; color: #475569; font-weight: 700; width: 15%; text-align: center;">Qty</th>
-                    <th style="padding: 5px 6px; border: 1px solid #E2E8F0; color: #475569; font-weight: 700; width: 20%; text-align: right;">Line Cost</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${consumables.length > 0 ? consumables.map(c => `
-                    <tr>
-                      <td style="padding: 5px 6px; border: 1px solid #E2E8F0; color: #1E293B; font-weight: 600; line-clamp: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 135px;" title="${c.name}">${c.name}</td>
-                      <td style="padding: 5px 6px; border: 1px solid #E2E8F0; color: #1E293B; font-weight: 600; line-clamp: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60px;" title="${c.brand || ''}">${c.brand || '-'}</td>
-                      <td style="padding: 5px 6px; border: 1px solid #E2E8F0; text-align: center; color: #1E293B; font-weight: 600;">${c.quantity} ${c.unit || 'pcs'}</td>
-                      <td style="padding: 5px 6px; border: 1px solid #E2E8F0; text-align: right; color: #1E293B; font-weight: 600;">PHP ${(c.totalPrice || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</td>
-                    </tr>
-                  `).join('') : `
-                    <tr>
-                      <td colspan="4" style="padding: 8px; border: 1px solid #E2E8F0; text-align: center; color: #94A3B8; font-weight: 600;">No consumables recorded</td>
-                    </tr>
-                  `}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          <!-- REMARKS -->
-          <h2 style="font-size: 11px; font-weight: 900; color: #1E3A8A; text-transform: uppercase; margin: 25px 0 6px 0; letter-spacing: 0.05em;">Remarks</h2>
-          <table style="width: 100%; border-collapse: collapse; font-size: 9.5px; font-family: 'Inter', sans-serif;">
-            <thead>
-              <tr style="background: #F8FAFC; text-align: left;">
-                <th style="padding: 6px 8px; border: 1px solid #E2E8F0; color: #475569; font-weight: 700; width: 20%;">Source</th>
-                <th style="padding: 6px 8px; border: 1px solid #E2E8F0; color: #475569; font-weight: 700; width: 80%;">Remarks</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td style="padding: 6px 8px; border: 1px solid #E2E8F0; color: #1E293B; font-weight: 700;">Technician</td>
-                <td style="padding: 6px 8px; border: 1px solid #E2E8F0; color: #475569; font-weight: 600;">${project.surveyScope || 'No technician remarks recorded.'}</td>
-              </tr>
-              <tr>
-                <td style="padding: 6px 8px; border: 1px solid #E2E8F0; color: #1E293B; font-weight: 700;">Department</td>
-                <td style="padding: 6px 8px; border: 1px solid #E2E8F0; color: #475569; font-weight: 600;">No department remarks recorded.</td>
-              </tr>
-            </tbody>
-          </table>
-          
-          ${footerHtml}
-        </div>
-      `;
+      container.innerHTML = buildStandardEstimationReportHtml({
+        project,
+        user,
+        manpower,
+        consumables,
+        fees,
+        scopeOfWorks,
+        constraints,
+        technicianNotes,
+        totals: estimationStats,
+        showPrices,
+        headerBackgroundUrl: reportHeaderBackground,
+        logoUrl: reportLogo,
+      });
 
       outer.appendChild(container);
       document.body.appendChild(outer);
 
-      // Wait 250ms for browser layout & font loading
-      await new Promise(resolve => setTimeout(resolve, 250));
+      const imageUrls = [reportHeaderBackground, reportLogo];
+      await Promise.all(imageUrls.map(src => new Promise<void>((resolve, reject) => {
+        const image = new Image();
+        image.onload = () => resolve();
+        image.onerror = () => reject(new Error(`Failed to load report asset: ${src}`));
+        image.src = src;
+      })));
+      await document.fonts?.ready;
+      await new Promise(resolve => setTimeout(resolve, 100));
 
-      const opt = {
-        margin:       0,
-        filename:     `AA2000_Report_${project.name.replace(/\s+/g, '_')}.pdf`,
-        image:        { type: 'jpeg', quality: 0.98 },
-        html2canvas:  { scale: 2, useCORS: true, logging: false },
-        jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' }
+      const safeProjectName = project.name
+        .trim()
+        .replace(/[^a-z0-9-_]+/gi, '_')
+        .replace(/^_+|_+$/g, '')
+        .slice(0, 80) || 'Project';
+      const filename = `AA2000_Estimation_Report_${safeProjectName}.pdf`;
+      const options = {
+        // Standard A4 pages with a small printable margin on every page.
+        // The larger bottom margin is reserved for the repeated page footer.
+        margin: [10, 0, 40, 0],
+        filename,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: {
+          scale: 2,
+          useCORS: true,
+          logging: false,
+          backgroundColor: '#FFFFFF',
+        },
+        jsPDF: { unit: 'pt', format: 'a4', orientation: 'portrait' },
+        pagebreak: {
+          mode: ['css', 'legacy'],
+          avoid: [
+            'tr',
+            '.proposal-meta',
+            '.client-box',
+            '.summary-strip',
+            '.empty-section',
+            '.compact-section',
+            '.product-section-start',
+            '.product-chunk',
+            '.totals-section',
+            '.signatures',
+            '.confirmation',
+          ],
+        },
       };
 
-      if (asBlob) {
-        pdfBlob = await (window as any).html2pdf().set(opt).from(container).outputPdf('blob');
-      } else {
-        await (window as any).html2pdf().set(opt).from(container).save();
+      const pdfWorker = (window as any)
+        .html2pdf()
+        .set(options)
+        .from(container)
+        .toPdf();
+
+      await pdfWorker.get('pdf').then((pdf: any) => {
+        const pageCount = pdf.internal.getNumberOfPages();
+        const address = 'Unit 2-C Norkis Building, 11 Calbayog Cor., Domingo M. Guevara St., Mandaluyong City, Philippines 1550';
+        const phone = 'T: (02) 8571-5693';
+        const disclaimer = 'Disclaimer: This report is generated for client presentation and reflects finalized project details.';
+
+        for (let pageNumber = 1; pageNumber <= pageCount; pageNumber += 1) {
+          pdf.setPage(pageNumber);
+          const pageWidth = pdf.internal.pageSize.getWidth();
+          const pageHeight = pdf.internal.pageSize.getHeight();
+          const footerTop = pageHeight - 32;
+
+          pdf.setDrawColor(203, 213, 225);
+          pdf.setLineWidth(0.5);
+          pdf.line(36, footerTop, pageWidth - 36, footerTop);
+
+          pdf.setTextColor(100, 116, 139);
+          pdf.setFont('helvetica', 'normal');
+          pdf.setFontSize(5.3);
+          pdf.text(address, 36, footerTop + 9);
+          pdf.text(phone, 36, footerTop + 16);
+
+          pdf.setTextColor(71, 85, 105);
+          pdf.setFont('helvetica', 'bold');
+          const disclaimerLines = pdf.splitTextToSize(disclaimer, 205);
+          pdf.text(disclaimerLines, pageWidth - 36, footerTop + 9, { align: 'right' });
+        }
+      });
+
+      const pdfBlob = await pdfWorker.outputPdf('blob') as Blob;
+
+      if (!(pdfBlob instanceof Blob) || pdfBlob.size < 1000) {
+        throw new Error('The generated PDF is empty or invalid.');
       }
-      document.body.removeChild(outer);
+
+      if (!asBlob) {
+        const downloadUrl = URL.createObjectURL(pdfBlob);
+        const anchor = document.createElement('a');
+        anchor.href = downloadUrl;
+        anchor.download = filename;
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
+      }
+
+      return pdfBlob;
     } catch (error) {
       console.error('PDF Export Error:', error);
-      if (!asBlob) toast.error('An error occurred while generating the PDF. Please try again.');
+      if (!asBlob) {
+        toast.error(error instanceof Error
+          ? `Could not generate the PDF: ${error.message}`
+          : 'Could not generate the PDF. Please try again.');
+      }
+      return null;
     } finally {
+      outer?.remove();
       if (exportBtn) {
         exportBtn.disabled = false;
         exportBtn.innerHTML = originalText;
       }
     }
-    return pdfBlob;
   };
 
   const handleExportPdf = async () => {
