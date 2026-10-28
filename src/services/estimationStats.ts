@@ -63,3 +63,40 @@ export function computeEstimationStats(
     subtotal: totalLabor + totalMaterials + totalFees,
   };
 }
+
+const num = (v: unknown) => (typeof v === 'number' && !isNaN(v) ? v : 0);
+
+export const VAT_RATE = 0.12;
+
+export interface EstimationTotals {
+  materialsTotal: number;
+  laborTotal: number;
+  feesTotal: number;
+  subtotal: number;
+  vat: number;
+  grandTotal: number;
+}
+
+/**
+ * Totals written to the database on submission (`amount` = grandTotal).
+ * The PDF report uses the same function so the document always reconciles
+ * with the stored record.
+ */
+export function computeEstimationTotals(
+  manpower: readonly StatManpowerRow[],
+  consumables: readonly StatConsumableRow[],
+  fees: readonly StatFeeRow[] = []
+): EstimationTotals {
+  const materialsTotal = consumables.reduce((s, c) => s + num(c.totalPrice), 0);
+  const laborTotal = manpower.reduce((s, m) => s + num(m.totalCost), 0);
+  const feesTotal = fees.reduce((s, f) => s + num(f.amount), 0);
+  const subtotal = materialsTotal + laborTotal + feesTotal;
+  return {
+    materialsTotal,
+    laborTotal,
+    feesTotal,
+    subtotal,
+    vat: +(subtotal * VAT_RATE).toFixed(2),
+    grandTotal: +(subtotal * (1 + VAT_RATE)).toFixed(2),
+  };
+}

@@ -6,7 +6,9 @@ import type { FloorPlanEstimation } from '../../services/geminiFloorPlanService'
 import { systemBadgeIcons, Users, StatCalendar, Package as PackageIcon, Plug, Document, User as UserIcon, ArrowRight } from '../../utils/Icons';
 import { useToast } from '../utils/Toast';
 import { getEstimatedItemPricing, searchPricelist } from '../../services/pricelistService';
-import { computeEstimationStats } from '../../services/estimationStats';
+import { computeEstimationStats, computeEstimationTotals } from '../../services/estimationStats';
+import ProductCatalogModal from './ProductCatalogModal';
+import type { CatalogProduct } from '../../services/api/products';
 import QuotationModal, { type QuotationHeaderState, type ScopeOfWorkEntry, generateSystemScopeOfWorks } from './QuotationModal';
 import reportHeaderBackground from '../../assets/pdf/PDF_header.png';
 import reportLogo from '../../assets/pdf/aa2000_logo.png';
@@ -180,6 +182,24 @@ function createConsumable(): EstimationConsumableEntry {
   return { id: crypto.randomUUID(), name: '', brand: '', category: 'Hardware', quantity: 1, unit: 'pcs', unitPrice: undefined as unknown as number, totalPrice: 0 };
 }
 
+function consumableFromCatalog(product: CatalogProduct): EstimationConsumableEntry {
+  const price = Number(product.prod_price) || 0;
+  const name = product.prod_Name || product.item_description || product.model || product.prod_Code || '';
+  return {
+    id: crypto.randomUUID(),
+    name,
+    brand: product.brand || detectBrandFromName(name),
+    category: mapCategoryToOption(product.category || name),
+    quantity: 1,
+    unit: 'pcs',
+    unitPrice: price,
+    // The database carries one price; it stands as SRP and the tier switch keeps it.
+    srp: price,
+    totalPrice: price,
+    productId: product.model || product.prod_Code || undefined,
+  };
+}
+
 function createFee(): EstimationAdditionalFeeEntry {
   return { id: crypto.randomUUID(), type: 'Other', amount: undefined as unknown as number, description: '' };
 }
@@ -310,6 +330,7 @@ import { submitEstimationToDB } from '../../services/estimationSubmission';
 export default function EstimationSummary({ project, user, onBack, onUpdateStatus, isDark }: Props) {
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
   const savedSnapshotRef = useRef<string | null>(null);
   const [isInitialStateLoaded, setIsInitialStateLoaded] = useState(false);
   const showPrices = canViewPrices(user?.role, user);
@@ -356,6 +377,7 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
 
   const [priceTier, setPriceTier] = useState<'srp' | 'contractorPrice' | 'dealerPrice'>('srp');
   const [showQuotationModal, setShowQuotationModal] = useState(false);
+  const [showProductCatalog, setShowProductCatalog] = useState(false);
   const [manpower, setManpower] = useState<EstimationManpowerEntry[]>([]);
   const [consumables, setConsumables] = useState<EstimationConsumableEntry[]>([]);
   const [fees, setFees] = useState<EstimationAdditionalFeeEntry[]>([]);
@@ -382,7 +404,6 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
     quoteDate: '',
     validityPeriod: '30 days from date of this quotation',
   });
-  const [quotDiscount, setQuotDiscount] = useState<number>(0);
   const [showEditQuotation, setShowEditQuotation] = useState(false);
 
   const currentEstimationSnapshot = serializeEstimationSnapshot({
@@ -662,7 +683,16 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
     const items: EstimationConsumableEntry[] = [];
     const constraintsList: string[] = [];
 
+    // Several surveys of one type (e.g. two CCTV areas) are numbered so the report
+    // can show each as its own section.
+    const surveysPerType = surveysList.reduce<Record<string, number>>((acc, s) => {
+      acc[s.type] = (acc[s.type] || 0) + 1;
+      return acc;
+    }, {});
+    const surveySeen: Record<string, number> = {};
+
     surveysList.forEach(s => {
+      const firstItemIndex = items.length;
       if (s.type === 'CCTV') {
         const cameraCount = Number(s.data.cameraCount) || 8;
         const cableLength = Number(s.data.cableLength) || (cameraCount * 45);
@@ -793,6 +823,13 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
 
         items.push(matchDbProduct(s.data.otherSystemType || 'Other', s.data.description || 'Custom Security Hardware', 'Hardware', 'pcs', qty));
       }
+
+      surveySeen[s.type] = (surveySeen[s.type] || 0) + 1;
+      const typeLabel = s.type === 'FIRE_ALARM' ? 'FDAS' : String(s.type || 'OTHER').replace(/_/g, ' ');
+      const systemLabel = surveysPerType[s.type] > 1 ? `${typeLabel} ${surveySeen[s.type]}` : typeLabel;
+      for (let i = firstItemIndex; i < items.length; i += 1) {
+        items[i] = { ...items[i], systemType: s.type, surveyId: s.id, systemLabel };
+      }
     });
 
     const hoursRequired = Math.max(80, totalItemsCount * 3);
@@ -905,20 +942,31 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
       quoteDate: qh?.quoteDate || dateStr,
       validityPeriod: qh?.validityPeriod || '30 days from date of this quotation',
     });
-    setQuotDiscount(aiQuotation?.costBreakdown?.discount || 0);
     setShowEditQuotation(false);
   }, [showQuotationModal]);
 
+  // Single source for the quotation preview and the PDF so the two never differ.
+  const buildReportHtml = (isDraft: boolean) => buildStandardEstimationReportHtml({
+    project,
+    user,
+    manpower,
+    consumables,
+    fees,
+    scopeOfWorks,
+    constraints,
+    technicianNotes,
+    totals: computeEstimationTotals(manpower, consumables, fees),
+    showPrices,
+    isDraft,
+    // Header edits exist only once the quotation preview has been opened.
+    header: quotHeader.referenceCode ? quotHeader : undefined,
+    headerBackgroundUrl: reportHeaderBackground,
+    logoUrl: reportLogo,
+  });
+
   // asBlob=false downloads the PDF; asBlob=true returns the same document for backend upload.
   const generateReportPdf = async (asBlob = false): Promise<Blob | null> => {
-    const exportBtn = asBlob ? null : (document.activeElement as HTMLButtonElement | null);
-    const originalText = exportBtn?.innerHTML || 'Export PDF';
     let outer: HTMLDivElement | null = null;
-
-    if (exportBtn) {
-      exportBtn.disabled = true;
-      exportBtn.innerText = 'Generating PDF...';
-    }
 
     try {
       if (!(window as any).html2pdf) {
@@ -950,20 +998,8 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
       });
 
       const container = document.createElement('div');
-      container.innerHTML = buildStandardEstimationReportHtml({
-        project,
-        user,
-        manpower,
-        consumables,
-        fees,
-        scopeOfWorks,
-        constraints,
-        technicianNotes,
-        totals: estimationStats,
-        showPrices,
-        headerBackgroundUrl: reportHeaderBackground,
-        logoUrl: reportLogo,
-      });
+      // A download taken before saving is marked so it is not mistaken for the saved record.
+      container.innerHTML = buildReportHtml(!asBlob && hasUnsavedChanges);
 
       outer.appendChild(container);
       document.body.appendChild(outer);
@@ -999,19 +1035,7 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
         jsPDF: { unit: 'pt', format: 'a4', orientation: 'portrait' },
         pagebreak: {
           mode: ['css', 'legacy'],
-          avoid: [
-            'tr',
-            '.proposal-meta',
-            '.client-box',
-            '.summary-strip',
-            '.empty-section',
-            '.compact-section',
-            '.product-section-start',
-            '.product-chunk',
-            '.totals-section',
-            '.signatures',
-            '.confirmation',
-          ],
+          avoid: ['tr', '.keep', '.avoid'],
         },
       };
 
@@ -1078,15 +1102,24 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
       return null;
     } finally {
       outer?.remove();
-      if (exportBtn) {
-        exportBtn.disabled = false;
-        exportBtn.innerHTML = originalText;
-      }
     }
   };
 
+  const canExportPdf = isInitialStateLoaded && (consumables.length > 0 || manpower.length > 0);
+
   const handleExportPdf = async () => {
-    await generateReportPdf(false);
+    if (isExportingPdf || isSubmitting) return;
+    if (!canExportPdf) {
+      toast.error('Add estimation items before exporting the PDF report.');
+      return;
+    }
+    setIsExportingPdf(true);
+    try {
+      const pdf = await generateReportPdf(false);
+      if (pdf) toast.success('PDF report downloaded.');
+    } finally {
+      setIsExportingPdf(false);
+    }
   };
 
   const sectionCard: React.CSSProperties = {
@@ -1146,7 +1179,10 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
           <div className="flex items-center gap-3">
             <button
               onClick={handleExportPdf}
-              className={`px-4 py-2 rounded-xl text-xs font-bold border transition-colors flex items-center gap-1.5 cursor-pointer ${
+              disabled={isExportingPdf || isSubmitting || !canExportPdf}
+              aria-busy={isExportingPdf}
+              title={!canExportPdf ? 'No estimation data to export yet.' : hasUnsavedChanges ? 'Exports the current, unsaved estimation as a draft report.' : undefined}
+              className={`px-4 py-2 rounded-xl text-xs font-bold border transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
                 dark
                   ? 'bg-[#131B2E] text-slate-300 border-slate-700 hover:text-blue-400 hover:border-blue-500/50'
                   : 'bg-white text-slate-500 border-slate-200 hover:text-[#1E3A8A]'
@@ -1155,7 +1191,7 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
               <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
               </svg>
-              Export PDF
+              {isExportingPdf ? 'Generating PDF...' : 'Export PDF Report'}
             </button>
           </div>
         </div>
@@ -1497,7 +1533,7 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
                   ))}
                 </div>
               )}
-              {addBtn('Add Item', () => setConsumables(prev => [...prev, createConsumable()]))}
+              {addBtn('Add Item', () => setShowProductCatalog(true))}
             </div>
           </div>
           <div className="overflow-x-auto no-scrollbar">
@@ -1997,21 +2033,25 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
         </div>
 
         {/* ── AA2000 OFFICIAL COMMERCIAL SALES QUOTATION MODAL ── */}
+        {showProductCatalog && (
+          <ProductCatalogModal
+            onSelect={product => setConsumables(prev => [...prev, consumableFromCatalog(product)])}
+            onAddCustom={() => {
+              setConsumables(prev => [...prev, createConsumable()]);
+              setShowProductCatalog(false);
+            }}
+            onClose={() => setShowProductCatalog(false)}
+            isDark={dark}
+          />
+        )}
+
         {showPrices && showQuotationModal && (
           <QuotationModal
-            userRole={user?.role}
-            project={project}
-            aiQuotation={aiQuotation}
-            consumables={consumables}
-            manpower={manpower}
-            fees={fees}
-            scopeOfWorks={scopeOfWorks}
             quotHeader={quotHeader}
             setQuotHeader={setQuotHeader}
-            quotDiscount={quotDiscount}
-            setQuotDiscount={setQuotDiscount}
-            showEditQuotation={showEditQuotation}
-            setShowEditQuotation={setShowEditQuotation}
+            buildReportHtml={() => buildReportHtml(hasUnsavedChanges)}
+            onDownloadPdf={handleExportPdf}
+            isExportingPdf={isExportingPdf}
             onClose={() => setShowQuotationModal(false)}
             isDark={dark}
           />

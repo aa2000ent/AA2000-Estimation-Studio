@@ -73,6 +73,11 @@ type EstimationConsumableEntry = {
   dealerPrice?: number;
   productId?: string;
   notes?: string;
+  // Source survey of a generated row, so reports can keep each system's items apart.
+  // Rows added by hand or saved before this existed have none.
+  systemType?: string;
+  surveyId?: string;
+  systemLabel?: string;
 };
 
 type EstimationAdditionalFeeEntry = {
