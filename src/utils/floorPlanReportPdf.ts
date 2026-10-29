@@ -3,6 +3,7 @@
  * pdfExporter.ts: build the page as HTML and let html2pdf.js turn it into a PDF.
  */
 import type { FloorPlanAnalyzeResult, FloorPlanSection } from '../services/api/estimationFlow';
+import { getHeaderDataUrl, getPdfHeaderHtml } from './pdfHeaderImage';
 
 export interface FloorPlanReportData {
   /** The title the user gave the plan (e.g. "Ground Floor"); falls back to the file name. */
@@ -60,6 +61,8 @@ export async function downloadFloorPlanReport(data: FloorPlanReportData): Promis
   const unit = summary.unit || 'sqm';
   const title = data.title.trim() || data.fileName;
   const date = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+  const headerImg = await getHeaderDataUrl();
+  const headerHtml = getPdfHeaderHtml(headerImg, 'margin-bottom: 0;');
 
   const rows = sections
     .map(
@@ -93,10 +96,7 @@ export async function downloadFloorPlanReport(data: FloorPlanReportData): Promis
   container.style.cssText =
     "width: 816px; box-sizing: border-box; background: #FFFFFF; color: #1E293B; font-family: 'Inter', system-ui, -apple-system, sans-serif;";
   container.innerHTML = `
-    <div style="background: #1E3A8A; color: #FFFFFF; padding: 18px 24px;">
-      <div style="font-size: 24px; font-weight: 900; letter-spacing: 0.05em;">AA2000</div>
-      <div style="font-size: 10px; font-weight: 600; opacity: 0.9; margin-top: 2px;">Security and Technology Solutions Inc.</div>
-    </div>
+    ${headerHtml}
     <div style="padding: 20px 24px;">
       <div style="font-size: 10px; font-weight: 800; color: #2563EB; text-transform: uppercase; letter-spacing: 0.08em;">Floor Plan Analysis Report</div>
       <div style="font-size: 22px; font-weight: 900; margin-top: 4px;">${escapeHtml(title)}</div>
@@ -160,6 +160,7 @@ export async function downloadFloorPlanReport(data: FloorPlanReportData): Promis
   };
 
   try {
+    await new Promise(resolve => setTimeout(resolve, 150));
     await (window as any).html2pdf().set(opt).from(container).save();
   } finally {
     document.body.removeChild(outer);

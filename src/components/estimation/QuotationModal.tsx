@@ -26,6 +26,7 @@ export interface QuotationHeaderState {
 }
 
 import { canViewPrices } from '../../constants/roles';
+import { aa2000HeaderImg } from '../../utils/pdfHeaderImage';
 
 interface QuotationModalProps {
   userRole?: string;
@@ -520,6 +521,10 @@ export default function QuotationModal({
             background-color: #ffffff !important;
             color: #000000 !important;
           }
+          * {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
           .printable-quotation {
             background-color: #ffffff !important;
             color: #000000 !important;
@@ -625,21 +630,14 @@ export default function QuotationModal({
           <div className={`border-2 rounded-lg overflow-hidden ${
             dark ? 'border-[#1E293B] bg-[#0E1626]' : 'border-slate-900 bg-white'
           }`}>
-            <div className={`grid grid-cols-12 p-4 items-start ${
-              dark ? 'bg-[#131B2E] text-white border-b border-[#1E293B]' : 'bg-slate-900 text-white'
+            <div className={`w-full overflow-hidden border-b ${
+              dark ? 'border-[#1E293B] bg-[#131B2E]' : 'border-slate-900 bg-white'
             }`}>
-              <div className="col-span-5 flex items-center gap-3">
-                <div className="w-12 h-12 bg-blue-600 rounded-full flex items-center justify-center font-black text-xl text-white border-2 border-white/80 shadow flex-shrink-0">AA</div>
-                <div>
-                  <h1 className="font-black text-xl tracking-wider text-white">AA2000</h1>
-                  <p className="text-[9px] text-slate-300 font-semibold uppercase tracking-widest leading-tight">Security and Technology Solutions Inc.</p>
-                </div>
-              </div>
-              <div className="col-span-7 text-right text-[10px] leading-snug">
-                <p className="font-bold">Unit 2-C Norkis Building, 11 Calbayog Cor., Domingo M. Guevara St.,</p>
-                <p>Mandaluyong City Philippines 1550</p>
-                <p className="text-slate-300">T: (02) +8 571-5693 &nbsp;|&nbsp; M: 0917-884-8844 &nbsp;|&nbsp; E: aa2000ent@gmail.com &nbsp;|&nbsp; Web: www.aa2000ph.com</p>
-              </div>
+              <img
+                src={aa2000HeaderImg}
+                alt="AA2000 Security and Technology Solutions Inc."
+                className="w-full h-auto block"
+              />
             </div>
 
             {/* Reference, Validity & Date */}

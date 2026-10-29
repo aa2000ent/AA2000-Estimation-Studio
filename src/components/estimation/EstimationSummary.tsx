@@ -8,6 +8,7 @@ import { useToast } from '../utils/Toast';
 import { getEstimatedItemPricing, searchPricelist } from '../../services/pricelistService';
 import { computeEstimationStats } from '../../services/estimationStats';
 import QuotationModal, { type QuotationHeaderState, type ScopeOfWorkEntry, generateSystemScopeOfWorks } from './QuotationModal';
+import { getHeaderDataUrl, getPdfHeaderHtml } from '../../utils/pdfHeaderImage';
 
 function mapCategoryToOption(cat: string): string {
   const c = cat.toUpperCase();
@@ -979,25 +980,8 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
       container.style.fontFamily = "'Inter', system-ui, -apple-system, sans-serif";
       container.style.color = '#1E293B';
 
-      const headerHtml = `
-        <!-- HEADER BANNER -->
-        <div style="background: #1E3A8A; color: #FFFFFF; padding: 18px 24px; display: flex; align-items: center; justify-content: space-between; border-radius: 2px;">
-          <div style="display: flex; align-items: center;">
-            <!-- Camera Lens Logo -->
-            <div style="width: 32px; height: 32px; border-radius: 50%; border: 3px solid #FFFFFF; display: flex; align-items: center; justify-content: center; background: radial-gradient(circle, #FFFFFF 30%, transparent 70%); margin-right: 12px; flex-shrink: 0;">
-              <div style="width: 12px; height: 12px; border-radius: 50%; background: #FFFFFF;"></div>
-            </div>
-            <div>
-              <div style="font-size: 26px; font-weight: 900; line-height: 1; letter-spacing: 0.05em; font-family: 'Inter', sans-serif;">AA2000</div>
-              <div style="font-size: 10px; font-weight: 600; opacity: 0.9; margin-top: 1px; font-family: 'Inter', sans-serif; letter-spacing: 0.02em;">Security and Technology Solutions Inc.</div>
-            </div>
-          </div>
-          <div style="text-align: right; font-size: 8px; line-height: 1.45; max-width: 380px; opacity: 0.95; font-family: 'Inter', sans-serif;">
-            <div>Unit 2-C Norkis Building, 11 Calbayog Cor., Domingo M. Guevara St., Mandaluyong City, Philippines 1550</div>
-            <div>T: (02) 8571-5693 &nbsp;|&nbsp; M: 0917-884-8844 &nbsp;|&nbsp; E: aa2000ent@gmail.com &nbsp;|&nbsp; Web: www.aa2000ph.com</div>
-          </div>
-        </div>
-      `;
+      const headerImg = await getHeaderDataUrl();
+      const headerHtml = getPdfHeaderHtml(headerImg);
 
       const footerHtml = `
         <!-- FOOTER -->
@@ -1015,11 +999,12 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
         
         <!-- PAGE 1: SUMMARY & COST SUMMARY -->
-        <div style="box-sizing: border-box; width: 100%; height: 1045px; padding: 40px; position: relative; page-break-after: always; background: #FFFFFF; border: 1px solid #CBD5E1;">
+        <div style="box-sizing: border-box; width: 100%; height: 1045px; position: relative; page-break-after: always; background: #FFFFFF; margin: 0; padding: 0;">
           ${headerHtml}
           
-          <!-- REPORT TITLE -->
-          <div style="margin-top: 25px; display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 2px solid #E2E8F0; padding-bottom: 8px;">
+          <div style="padding: 20px 40px 60px 40px;">
+            <!-- REPORT TITLE -->
+            <div style="display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 2px solid #E2E8F0; padding-bottom: 8px;">
             <div>
               <h1 style="color: #1E3A8A; font-size: 18px; font-weight: 900; margin: 0; text-transform: uppercase; letter-spacing: -0.01em;">FINALIZED PROJECT REPORT</h1>
               <p style="font-size: 11px; color: #475569; font-weight: 700; margin: 4px 0 0 0;">Project Name: ${project.name}</p>
@@ -1121,16 +1106,18 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
               </tr>
             </tbody>
           </table>
+          </div>
           
           ${footerHtml}
         </div>
 
         <!-- PAGE 2: TECHNICAL DETAILS, ROLES & CONSUMABLES -->
-        <div style="box-sizing: border-box; width: 100%; height: 1045px; padding: 40px; position: relative; background: #FFFFFF; border: 1px solid #CBD5E1;">
+        <div style="box-sizing: border-box; width: 100%; height: 1045px; position: relative; background: #FFFFFF; margin: 0; padding: 0;">
           ${headerHtml}
           
-          <!-- TECHNICAL BREAKDOWN -->
-          <h2 style="font-size: 11px; font-weight: 900; color: #1E3A8A; text-transform: uppercase; margin: 25px 0 6px 0; letter-spacing: 0.05em;">Technical Breakdown</h2>
+          <div style="padding: 20px 40px 60px 40px;">
+            <!-- TECHNICAL BREAKDOWN -->
+            <h2 style="font-size: 11px; font-weight: 900; color: #1E3A8A; text-transform: uppercase; margin: 0 0 6px 0; letter-spacing: 0.05em;">Technical Breakdown</h2>
           <div style="font-size: 10px; font-weight: 700; color: #475569; margin-bottom: 8px;">System: ${systemLabel}</div>
           
           <table style="width: 100%; border-collapse: collapse; font-size: 9px; font-family: 'Inter', sans-serif; margin-bottom: 15px;">
@@ -1229,6 +1216,7 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
               </tr>
             </tbody>
           </table>
+          </div>
           
           ${footerHtml}
         </div>
