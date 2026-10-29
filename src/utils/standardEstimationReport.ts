@@ -1,16 +1,18 @@
-// Estimation report in the AA2000 commercial quotation format (Sales Quotation
-// "full report"): A. General Requirements, B. Scope of Works, C. Active
-// Components, D. Roughing-ins, E. Cable Components, F. Breakdown of Cost.
-// The same HTML feeds the on-screen preview and the downloaded PDF.
+import { groupProposalSections, renderProposalSystem, renderProposalCosts, renderProposalTimeline, renderProposalTerms, renderProposalRemarks, proposalTemplateCss } from './estimationProposalSections';
 import type { Project, User } from '../App';
 import type {
   EstimationAdditionalFeeEntry,
   EstimationConsumableEntry,
   EstimationManpowerEntry,
 } from '../types';
-import type { QuotationHeaderState, ScopeOfWorkEntry } from '../components/estimation/QuotationModal';
-import type { EstimationTotals } from '../services/estimationStats';
+import type { ScopeOfWorkEntry, QuotationHeaderState } from '../components/estimation/QuotationModal';
+import { computeEstimationStats, computeEstimationTotals, materialLineTotal, roundMoney, type EstimationTotals } from '../services/estimationStats';
 
+interface ReportTotals {
+  totalLabor: number;
+  totalMaterials: number;
+  totalFees: number;
+}
 export interface StandardEstimationReportInput {
   project: Project;
   user: User | null;
@@ -20,22 +22,14 @@ export interface StandardEstimationReportInput {
   scopeOfWorks: ScopeOfWorkEntry[];
   constraints: { physical?: string; electrical?: string; installation?: string };
   technicianNotes: string;
-  /** From computeEstimationTotals — the same numbers saved to the database. */
-  totals: EstimationTotals;
+  totals: ReportTotals | EstimationTotals;
   showPrices: boolean;
-  /** Marks a report exported from unsaved edits. */
-  isDraft?: boolean;
-  /** Client/reference details edited in the quotation preview; blanks fall back to the project. */
-  header?: Partial<QuotationHeaderState>;
   headerBackgroundUrl: string;
   logoUrl: string;
+  hasUnsavedChanges?: boolean;
+  isDraft?: boolean;
+  header?: Partial<QuotationHeaderState>;
 }
-
-const money = (value: number | undefined): string =>
-  `PHP ${Number(value || 0).toLocaleString('en-PH', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`;
 
 const escapeHtml = (value: unknown): string => String(value ?? '')
   .replace(/&/g, '&amp;')
@@ -44,31 +38,92 @@ const escapeHtml = (value: unknown): string => String(value ?? '')
   .replace(/"/g, '&quot;')
   .replace(/'/g, '&#039;');
 
-const display = (value: unknown, fallback = ''): string => {
+const display = (value: unknown, fallback = 'Not specified'): string => {
   const text = String(value ?? '').trim();
   return escapeHtml(text || fallback);
 };
 
-const multiline = (value: unknown, fallback = ''): string =>
+const multiline = (value: unknown, fallback = 'None recorded'): string =>
   display(value, fallback).replace(/\r?\n/g, '<br>');
-
-const firstText = (...values: unknown[]): string =>
-  values.map(v => String(v ?? '').trim()).find(Boolean) || '';
 
 const normalizedSystem = (value: string): string => value
   .replace(/_/g, ' ')
   .replace(/\bFIRE ALARM\b/i, 'FDAS')
   .toUpperCase();
 
-const isCableMaterial = (item: EstimationConsumableEntry): boolean =>
-  /cable|wire|utp|rg\s*-?\s*(?:6|59)|fiber|fibre/i.test(`${item.category} ${item.name}`);
-
-const isRoughingMaterial = (item: EstimationConsumableEntry): boolean =>
-  /rough|conduit|pipe|pvc|mould|trunk|junction|utility box|mount|bracket|fastener|anchor|clamp|tape|connector|label|protective|covering/i
-    .test(`${item.category} ${item.name}`);
-
-const sumBy = <T,>(rows: T[], pick: (row: T) => number | undefined): number =>
-  rows.reduce((sum, row) => sum + Number(pick(row) || 0), 0);
+// Measure real content before html2pdf captures it. Long tables continue on a
+// new sheet with their title/column headers, while each sheet repeats the brand.
+export function prepareEstimationReportLayout(container: HTMLElement): void {
+  container.querySelectorAll<HTMLElement>('.logical-sheet').forEach(sheet => {
+    if (sheet.dataset.paginated) return;
+    sheet.dataset.paginated = 'true';
+    const header = sheet.querySelector('.compact-page-header, .client-masthead');
+    const blocks = Array.from(sheet.children).filter(child => child !== header) as HTMLElement[];
+    let content = document.createElement('div');
+    content.className = 'sheet-content';
+    blocks.forEach(block => block.remove());
+    sheet.appendChild(content);
+    let current = sheet;
+    const maxContentHeight = 1013 - (header?.getBoundingClientRect().height || 38);
+    const fits = (): boolean => content.getBoundingClientRect().height <= maxContentHeight;
+    const next = (): void => {
+      const copy = sheet.cloneNode(false) as HTMLElement;
+      copy.dataset.paginated = 'true';
+      if (header) copy.appendChild(header.cloneNode(true));
+      content = document.createElement('div');
+      content.className = 'sheet-content';
+      copy.appendChild(content);
+      current.after(copy);
+      current = copy;
+    };
+    blocks.forEach(block => {
+      content.appendChild(block);
+      if (fits()) return;
+      block.remove();
+      const sourceBody = block.querySelector('tbody');
+      // A large table uses the remaining space instead of moving as one block.
+      if (sourceBody) {
+        content.appendChild(block);
+        const fullHeight = block.getBoundingClientRect().height;
+        block.remove();
+        if (fullHeight > 450) {
+          const rows = Array.from(sourceBody.children) as HTMLElement[];
+          sourceBody.replaceChildren();
+          content.appendChild(block);
+          let fragment = block;
+          let body = sourceBody;
+          for (const row of rows) {
+            body.appendChild(row);
+            if (fits()) continue;
+            row.remove();
+            const carry: HTMLElement[] = [];
+            if (row.classList.contains('group-subtotal') || body.lastElementChild?.classList.contains('brand-row') || body.lastElementChild?.classList.contains('cost-system') || body.lastElementChild?.classList.contains('timeline-group')) {
+              const previous = body.lastElementChild as HTMLElement | null;
+              if (previous) { carry.push(previous); previous.remove(); }
+            }
+            if (!body.children.length) fragment.remove();
+            next();
+            fragment = block.cloneNode(true) as HTMLElement;
+            body = fragment.querySelector('tbody')!;
+            body.replaceChildren(...carry, row);
+            const title = fragment.querySelector('h2');
+            if (title) title.textContent = `${block.querySelector('h2')?.textContent || ''} — CONTINUED`;
+            content.appendChild(fragment);
+          }
+          return;
+        }
+      }
+      if (content.children.length) next();
+      content.appendChild(block);
+    });
+  });
+  const sheets = Array.from(container.querySelectorAll('.logical-sheet'));
+  container.querySelectorAll<HTMLElement>('[data-toc-target]').forEach(entry => {
+    const target = Array.from(container.querySelectorAll<HTMLElement>('[data-report-anchor]')).find(node => node.dataset.reportAnchor === entry.dataset.tocTarget);
+    const sheet = target?.closest('.logical-sheet');
+    if (sheet) entry.textContent = String(sheets.indexOf(sheet) + 2);
+  });
+}
 
 export interface ReportSystemGroup {
   key: string;
@@ -98,7 +153,7 @@ export function groupConsumablesBySystem(
     const key = tagged ? `survey:${item.surveyId || label}` : `label:${label}`;
     const group = groups.get(key) || { key, label, items: [], subtotal: 0 };
     group.items.push(item);
-    group.subtotal += Number(item.totalPrice || 0);
+    group.subtotal = roundMoney(group.subtotal + materialLineTotal(item));
     groups.set(key, group);
   });
 
@@ -128,358 +183,232 @@ export function assertMaterialsReconcile(groups: ReportSystemGroup[], materialsT
   }
 }
 
-const ROWS_PER_CHUNK = 8;
-
-const noneRow = (columns: number): string =>
-  `<tr><td class="none" colspan="${columns}">NONE</td></tr>`;
-
-/** Product tables in the quotation style: one blue bar per system/brand with its own subtotal. */
-const renderProductSection = (
-  title: string,
-  groups: ReportSystemGroup[],
-  matches: (item: EstimationConsumableEntry) => boolean,
-  showPrices: boolean,
-): { html: string; total: number } => {
-  const head = `<thead><tr>
-      <th class="item-col">Item</th><th class="model-col">Model</th><th>Description</th><th class="qty-col">Qty</th>
-      ${showPrices ? '<th class="price-col">Unit Price</th><th class="price-col">Total Price</th>' : ''}
-    </tr></thead>`;
-  const showSystem = groups.length > 1;
-  const blocks: string[] = [];
-  let sectionTotal = 0;
-
-  groups.forEach(group => {
-    const byBrand = group.items.filter(matches).reduce<Record<string, EstimationConsumableEntry[]>>((acc, item) => {
-      const brand = (item.brand?.trim() || 'Other').toUpperCase();
-      (acc[brand] ||= []).push(item);
-      return acc;
-    }, {});
-
-    Object.entries(byBrand).forEach(([brand, items]) => {
-      const brandTotal = sumBy(items, i => i.totalPrice);
-      sectionTotal += brandTotal;
-      const bar = showSystem ? `${escapeHtml(group.label)} &middot; ${escapeHtml(brand)}` : escapeHtml(brand);
-
-      for (let start = 0; start < items.length; start += ROWS_PER_CHUNK) {
-        const chunk = items.slice(start, start + ROWS_PER_CHUNK);
-        const last = start + ROWS_PER_CHUNK >= items.length;
-        const rows = chunk.map((item, index) => `
-          <tr>
-            <td class="center bold">${start + index + 1}</td>
-            <td class="center bold">${display(item.productId, '-')}</td>
-            <td><b>${display(item.name)}</b>${item.notes ? `<span class="sub-note">${display(item.notes)}</span>` : ''}</td>
-            <td class="center bold">${display(item.quantity)}${item.unit && item.unit !== 'pcs' ? ` ${display(item.unit)}` : ''}</td>
-            ${showPrices ? `<td class="number bold">${money(item.unitPrice)}</td><td class="number bold">${money(item.totalPrice)}</td>` : ''}
-          </tr>`).join('');
-        blocks.push(`
-          <div class="keep">
-            <div class="brand-bar">${bar}${start > 0 ? '<span>Continued</span>' : ''}</div>
-            <table>${head}<tbody>${rows}</tbody>
-              ${showPrices && last ? `<tfoot><tr class="subtotal-row"><td colspan="5">Sub. Total (${escapeHtml(brand)}):</td><td class="number">${money(brandTotal)}</td></tr></tfoot>` : ''}
-            </table>
-          </div>`);
-      }
-    });
-  });
-
-  const titleBar = `<div class="yellow-bar">${escapeHtml(title)}</div>`;
-  return {
-    total: sectionTotal,
-    html: blocks.length
-      ? `<section class="box">${titleBar}${blocks.join('')}</section>`
-      : `<section class="box keep">${titleBar}<table>${head}<tbody>${noneRow(showPrices ? 6 : 4)}</tbody></table></section>`,
-  };
-};
-
-const STANDARD_REMARKS = [
-  'Any additional services and materials that are not included in this quotation',
-  'Any additional civil and engineering works. Signed and seale of professional engineer.',
-  'Insurance policy or bonds',
-  'Scaffolding rental, delivery and pullout - if required',
-  'Professional project assistance (safety officer) – as required',
-  'Covid-19 related requirements.',
-];
-
-const STANDARD_TERMS = [
-  'Unless specified, above given prices are VAT EXCLUDED.',
-  'Prices are based on cost and conditions existing on date of quotation and are SUBJECT TO CHANGE BY THE SELLER UPON FINAL ACCEPTANCE.',
-  'Others: Any other materials/equipment/permits/installation/bonds works not stated herein shall be considered as ADDITIONAL COST.',
-  'Warehouse Charges/Penalties: There will be a 500 pesos penalty per day, if devices are not picked up upon notice of availability',
-  'A penalty charge of 40% of the total contract price will be imposed for cancellation of Purchase Order.',
-  'LATE PAYMENT PENALTY CHARGE: Any payments not made within the specified period of time, it will incur an interest charge at the rate of 1% of the total contract/P.O. price.',
-  'Delivery: For client charge or Pick up by Client. (For Supply Only)',
-];
-
-const REPORT_STYLES = `
-  * { box-sizing: border-box; }
-  .estimation-report { width: 794px; background: #fff; color: #111827; font-family: Arial, Helvetica, sans-serif; font-size: 8px; line-height: 1.35; }
-  .report-body { padding: 0 46px 28px; }
-  .brand-header { height: 145px; padding: 7px 42px 7px 35px; display: flex; align-items: center; justify-content: space-between; background-color: #1d3a64; background-size: cover; background-position: 85% center; }
-  .brand-logo { width: 285px; height: 130px; object-fit: contain; }
-  .brand-contact { width: 290px; color: #fff; font-size: 7px; font-weight: 800; line-height: 1.55; }
-  .brand-contact div { margin: 3px 0; }
-  .brand-contact .addr { margin-bottom: 7px; }
-  .meta { display: flex; justify-content: space-between; margin: 14px 0 20px; padding: 6px 0; border-top: 1px solid #111; border-bottom: 1px solid #111; font-size: 8px; font-weight: 900; text-transform: uppercase; }
-  .client-box { margin-bottom: 18px; padding: 8px 10px; border: 1px solid #111; display: grid; grid-template-columns: 1fr 1fr; column-gap: 40px; row-gap: 3px; }
-  .field { display: grid; grid-template-columns: 90px 1fr; align-items: end; gap: 6px; min-height: 18px; }
-  .field b { color: #7a3d0a; font-size: 7px; font-weight: 900; text-transform: uppercase; }
-  .field b.plain { color: #111; }
-  .field span { min-height: 14px; padding: 0 2px 2px; border-bottom: 1px solid #d5d9df; font-weight: 700; overflow-wrap: anywhere; }
-  .intro { margin: 0 0 16px; color: #34465f; font-size: 7.5px; font-style: italic; font-weight: 800; text-transform: uppercase; }
-  .draft-banner { margin-top: 10px; padding: 6px; border: 1px solid #ef172f; color: #ef172f; font-size: 8px; font-weight: 900; text-align: center; text-transform: uppercase; letter-spacing: .6px; }
-  .box { margin-top: 14px; border: 1px solid #111; }
-  .yellow-bar { padding: 6px 8px; background: #ffff00; border-bottom: 1px solid #111; color: #050505; font-size: 9px; font-weight: 900; text-align: center; text-transform: uppercase; break-after: avoid-page; page-break-after: avoid; }
-  .brand-bar { display: flex; justify-content: space-between; padding: 6px 12px; background: #004a8d; color: #fff; border-bottom: 1px solid #111; font-size: 9px; font-weight: 900; letter-spacing: 2px; text-transform: uppercase; }
-  .brand-bar span { color: #dbeafe; font-size: 6.5px; letter-spacing: .8px; }
-  .slate-bar { padding: 6px 8px; background: #c9d6e3; border-bottom: 1px solid #111; font-size: 9px; font-weight: 900; text-align: center; text-transform: uppercase; }
-  .keep, .avoid { break-inside: avoid-page; page-break-inside: avoid; }
-  table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: inherit; }
-  th, td { padding: 6px; border-right: 1px solid #111; border-bottom: 1px solid #e2e6ec; vertical-align: middle; overflow-wrap: anywhere; }
-  th:last-child, td:last-child { border-right: 0; }
-  th { background: #e2e8f0; border-bottom: 1px solid #111; font-size: 7px; font-weight: 900; text-align: center; text-transform: uppercase; }
-  tr { page-break-inside: avoid; }
-  thead { display: table-header-group; }
-  .center { text-align: center; }
-  .number { text-align: right; white-space: nowrap; }
-  .bold { font-weight: 900; }
-  .item-col { width: 44px; } .model-col { width: 96px; } .qty-col { width: 52px; } .unit-col { width: 60px; } .price-col { width: 104px; }
-  .sub-note { display: block; margin-top: 2px; color: #64748b; font-size: 6.5px; font-weight: 400; }
-  .none { padding: 9px; color: #64748b; font-style: italic; font-weight: 900; text-align: center; letter-spacing: 1px; }
-  .subtotal-row td { background: #e2e8f0; border-top: 1px solid #111; font-weight: 900; text-align: right; text-transform: uppercase; }
-  .totals td { font-weight: 900; text-align: right; text-transform: uppercase; background: #f8fafc; border-top: 1px solid #111; }
-  .totals .discount td { color: #dc2626; }
-  .totals .vat td { color: #1d4ed8; }
-  .totals .grand td { background: #e2e8f0; font-size: 9px; }
-  .totals .grand .vat-note { color: #dc2626; text-align: center; font-size: 7.5px; }
-  .list td { border-right: 0; border-bottom: 0; padding: 3px 10px; font-weight: 700; text-transform: uppercase; }
-  .list td:first-child { width: 28px; text-align: center; }
-  .terms td { font-weight: 400; text-transform: none; border-bottom: 1px solid #111; }
-  .terms td:first-child { border-right: 1px solid #111; }
-  .terms tr:last-child td { border-bottom: 0; }
-  .info-box { margin-top: 14px; border: 1px solid #111; }
-  .info-box > div { padding: 8px 10px; border-bottom: 1px solid #111; }
-  .info-box > div:last-child { border-bottom: 0; }
-  .info-box h4 { margin: 0 0 4px; font-size: 7.5px; font-weight: 900; text-transform: uppercase; }
-  .info-row { display: grid; grid-template-columns: 140px 1fr; padding-left: 40px; font-weight: 700; text-transform: uppercase; margin: 2px 0; }
-  .info-line { padding-left: 40px; font-weight: 700; text-transform: uppercase; margin: 2px 0; }
-  .red { color: #dc2626; }
-  .restricted-note { margin-top: 14px; padding: 9px; border: 1px solid #f0c36d; background: #fff8e6; color: #7c5310; font-weight: 700; text-align: center; }
-  .signatures { display: grid; grid-template-columns: 1fr 1fr; gap: 50px; margin-top: 26px; align-items: end; }
-  .sig-label { margin-bottom: 34px; font-weight: 900; text-transform: uppercase; }
-  .sig { border-bottom: 1px solid #111; padding-bottom: 3px; text-align: center; }
-  .sig strong { display: block; font-size: 11px; }
-  .sig-under { text-align: center; }
-  .sig-under b { display: block; margin-top: 6px; font-size: 10px; text-transform: uppercase; }
-  .sig-under i { display: block; color: #475569; }
-  .sig-client { padding-top: 2px; border-top: 2px solid #111; }
-  .sig-client-name { min-height: 15px; margin-bottom: 4px; text-align: center; font-size: 11px; font-weight: 900; text-transform: uppercase; }
-  .confirmation { margin-top: 28px; border-top: 5px solid #004a8d; padding-top: 16px; text-align: center; }
-  .confirmation h2 { margin: 0; padding: 8px; color: #fff; background: #0b3768; font-size: 10px; letter-spacing: 2px; text-transform: uppercase; }
-  .confirmation p { margin: 10px 25px 0; color: #34465f; font-size: 7.5px; font-weight: 800; text-transform: uppercase; }
-`;
 
 export function buildStandardEstimationReportHtml(input: StandardEstimationReportInput): string {
+  const header = input.header;
+  if (header) {
+    input = { ...input, project: { ...input.project,
+      name: header.projectTitle?.trim() || input.project.name,
+      clientName: header.company?.trim() || input.project.clientName,
+      clientContactName: header.attentionTo?.trim() || input.project.clientContactName,
+      clientEmail: header.emailAdd?.trim() || input.project.clientEmail,
+      clientPhone: header.contactNo?.trim() || input.project.clientPhone,
+      location: header.projectSite?.trim() || input.project.location,
+    } };
+  }
   const {
-    project, user, manpower, consumables, fees, scopeOfWorks, constraints, technicianNotes,
-    totals, showPrices, isDraft = false, header = {}, headerBackgroundUrl, logoUrl,
+    project,
+    user,
+    manpower,
+    consumables,
+    fees,
+    scopeOfWorks,
+    constraints,
+    technicianNotes,
+    showPrices,
+    headerBackgroundUrl,
+    logoUrl,
   } = input;
 
-  const systemGroups = groupConsumablesBySystem(consumables, project.systemTypes || []);
-  assertMaterialsReconcile(systemGroups, totals.materialsTotal);
+  const generatedAt = new Date();
+  const dateLabel = header?.quoteDate?.trim() || generatedAt.toLocaleDateString('en-PH', {
+    year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Asia/Manila',
+  });
+  const projectKey = String(project.dbProjId || project.id || 'DRAFT')
+    .replace(/[^a-z0-9]/gi, '')
+    .slice(-8)
+    .toUpperCase() || 'DRAFT';
+  const reference = header?.referenceCode?.trim() || `EST-${generatedAt.getFullYear()}-${projectKey}`;
+  const scopeSystems = scopeOfWorks.flatMap(item => {
+    const match = item.description.match(/^\s*Systems?\s*:\s*(.+)$/im);
+    return match ? match[1].split(/[,;|]/).map(value => value.trim()).filter(Boolean) : [];
+  });
+  const systems = [...new Set((project.systemTypes?.length ? project.systemTypes : scopeSystems).map(normalizedSystem))];
+  const systemLabel = systems.length ? systems.join(', ') : 'Not specified';
+  const proposalSections = groupProposalSections(systems, manpower, consumables, fees);
+  if ('materialsTotal' in input.totals) {
+    const actual = computeEstimationTotals(manpower, consumables, fees);
+    for (const key of Object.keys(actual) as (keyof EstimationTotals)[]) {
+      if (Math.abs(actual[key] - input.totals[key]) > 0.005) throw new Error('Report amounts do not match the estimation total.');
+    }
+  }
+  const pageHeader = `<header class="compact-page-header"><b>AA2000 SECURITY AND TECHNOLOGY SOLUTIONS INC. &nbsp;|&nbsp; PROJECT PROPOSAL</b><span>REF: ${escapeHtml(reference)} &nbsp; | &nbsp; ${display(project.name)}</span></header>`;
+  const preparedBy = project.technicianName || user?.fullName || 'Assigned Technician';
 
-  const now = new Date();
-  const projectKey = String(project.dbProjId || project.id || 'DRAFT').replace(/[^a-z0-9]/gi, '').slice(-8).toUpperCase() || 'DRAFT';
-  const reference = firstText(header.referenceCode, `EST-${now.getFullYear()}-${projectKey}`);
-  const dateLabel = firstText(header.quoteDate, now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })).toUpperCase();
-  const validity = !header.validityPeriod || /^30 days/i.test(header.validityPeriod) ? '30 DAYS' : header.validityPeriod;
-  const preparedBy = firstText(project.technicianName, user?.fullName, 'Assigned Technician');
-  const clientName = firstText(header.attentionTo, project.clientContactName);
-  const priceCols = showPrices ? 2 : 0;
-
-  const tableHead = `<thead><tr>
-      <th class="item-col">Item</th><th>Description</th><th class="qty-col">Qty.</th><th class="unit-col">Unit</th>
-      ${showPrices ? '<th class="price-col">Unit Price</th><th class="price-col">Total Price</th>' : ''}
-    </tr></thead>`;
-  const subtotalFoot = (label: string, amount: number) => showPrices
-    ? `<tfoot><tr class="subtotal-row"><td colspan="5">Sub. Total (${label}):</td><td class="number">${money(amount)}</td></tr></tfoot>`
-    : '';
-
-  // A. General Requirements — additional project fees, each one LOT.
-  const generalRows = fees.map((fee, index) => `
-      <tr>
-        <td class="center bold">${index + 1}</td>
-        <td class="bold">${display(firstText(fee.description, fee.type))}${fee.notes ? `<span class="sub-note">${display(fee.notes)}</span>` : ''}</td>
-        <td class="center bold">1</td><td class="center bold">LOT</td>
-        ${showPrices ? `<td class="number bold">${money(fee.amount)}</td><td class="number bold">${money(fee.amount)}</td>` : ''}
-      </tr>`).join('');
-
-  // B. Scope of Works — priced installation labor, then the descriptive scope items.
-  const laborRows = manpower.map((m, index) => `
-      <tr>
-        <td class="center bold">${index + 1}</td>
-        <td class="bold">${display(m.role)}<span class="sub-note">${display(m.headcount)} pax &middot; ${display(m.hours)} hrs</span></td>
-        <td class="center bold">${display(m.manDays)}</td><td class="center bold">MAN-DAY</td>
-        ${showPrices ? `<td class="number bold">${money(m.dayRate)}</td><td class="number bold">${money(m.totalCost)}</td>` : ''}
-      </tr>`).join('');
-  const scopeRows = scopeOfWorks.map((s, index) => `
-      <tr>
-        <td class="center bold">${manpower.length + index + 1}</td>
-        <td>${multiline(s.description)}</td>
-        <td class="center bold">1</td><td class="center bold">${display(s.unit, 'LOT')}</td>
-        ${showPrices ? '<td class="center" colspan="2"><i>Included in installation labor</i></td>' : ''}
-      </tr>`).join('');
-
-  const sectionC = renderProductSection('C. Active Components', systemGroups, i => !isCableMaterial(i) && !isRoughingMaterial(i), showPrices);
-  const sectionD = renderProductSection('D. Roughing-ins Materials', systemGroups, i => !isCableMaterial(i) && isRoughingMaterial(i), showPrices);
-  const sectionE = renderProductSection('E. Cable Components', systemGroups, isCableMaterial, showPrices);
-
-  const lotRow = (letter: string, label: string, amount: number, hasItems: boolean) => `
-      <tr>
-        <td class="center bold">${letter}.</td><td class="bold">${label}</td>
-        <td class="center bold">${hasItems ? '1' : '-'}</td><td class="center bold">${hasItems ? 'LOT' : '-'}</td>
-        <td class="number bold">${hasItems ? money(amount) : '-'}</td><td class="number bold">${money(amount)}</td>
-      </tr>`;
-
-  const systemSummary = showPrices && systemGroups.length > 1 ? `
-    <section class="box avoid">
-      <div class="yellow-bar">Materials by System (C &ndash; E)</div>
-      <table><tbody>
-        ${systemGroups.map(g => `<tr><td class="bold">Sub. Total (${escapeHtml(g.label)}):</td><td class="number bold price-col">${money(g.subtotal)}</td></tr>`).join('')}
-        <tr class="subtotal-row"><td>Materials Total:</td><td class="number">${money(totals.materialsTotal)}</td></tr>
-      </tbody></table>
-    </section>` : '';
-
-  const breakdown = showPrices ? `
-    <section class="box avoid">
-      <div class="yellow-bar">F. Breakdown of Cost:</div>
-      <table>${tableHead}
-        <tbody>
-          ${lotRow('A', 'GENERAL REQUIREMENTS', totals.feesTotal, fees.length > 0)}
-          ${lotRow('B', 'SCOPE OF WORKS (INSTALLATION LABOR)', totals.laborTotal, manpower.length > 0)}
-          ${lotRow('C', 'ACTIVE COMPONENTS', sectionC.total, sectionC.total > 0)}
-          ${lotRow('D', 'ROUGHING INS MATERIAL', sectionD.total, sectionD.total > 0)}
-          ${lotRow('E', 'CABLE COMPONENT', sectionE.total, sectionE.total > 0)}
-        </tbody>
-        <tbody class="totals">
-          <tr><td colspan="5">Sub. Total:</td><td class="number">${money(totals.subtotal)}</td></tr>
-          <tr class="discount"><td colspan="5">Less Discount:</td><td class="number">${money(0)}</td></tr>
-          <tr class="vat"><td colspan="5">Add 12% VAT:</td><td class="number">${money(totals.vat)}</td></tr>
-          <tr class="grand"><td colspan="3" class="vat-note">The price is 12% VAT inclusive</td><td colspan="2">Total Amount:</td><td class="number">${money(totals.grandTotal)}</td></tr>
-        </tbody>
-      </table>
-    </section>` : '<div class="restricted-note">Commercial rates and totals are intentionally omitted for this user role.</div>';
-
-  const surveyNotes = [
-    constraints.physical && `Physical constraints: ${constraints.physical}`,
-    constraints.electrical && `Electrical constraints: ${constraints.electrical}`,
-    constraints.installation && `Installation constraints: ${constraints.installation}`,
-    technicianNotes && `Technician notes: ${technicianNotes}`,
-  ].filter((n): n is string => Boolean(n && n.trim()));
-
-  const field = (label: string, value: string, plain = false) =>
-    `<div class="field"><b${plain ? ' class="plain"' : ''}>${label}</b><span>${display(value)}</span></div>`;
+  const recordedScope = scopeOfWorks.map(row => row.description).join('\n');
+  const floorArea = project.totalFloorArea ?? recordedScope.match(/([\d,.]+)\s*(?:sq\.?\s*m\.?|sqm|m²)/i)?.[1];
+  const rooms = project.rooms ?? recordedScope.match(/(\d+)\s*rooms?\b/i)?.[1];
+  const projectSummary = project.surveyScope || scopeOfWorks.find(row => /^\s*Scope\s*:/i.test(row.description))?.description.replace(/^\s*Scope\s*:\s*/i, '') || project.name;
+  const sectionAmountsHtml = proposalSections.map((section, index) => {
+    const amount = computeEstimationStats(section.manpower, section.materials, section.fees).subtotal;
+    return `Section ${index + 1} — ${escapeHtml(section.name)}${showPrices ? `: <b>PHP ${amount.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b>` : ''}`;
+  }).join(' &nbsp; | &nbsp; ');
+  const siteConditions = [
+    ['Physical Constraints', constraints.physical],
+    ['Electrical Constraints', constraints.electrical],
+    ['Installation / Cabling Constraints', constraints.installation],
+    ['Technician Notes', technicianNotes],
+  ].filter(([, value]) => value?.trim());
 
   return `
-    <style>${REPORT_STYLES}</style>
+    <style>
+      .estimation-report, .estimation-report * { box-sizing: border-box; }
+      .proposal-cover { height: 1050px; padding: 70px 52px 44px; position: relative; overflow: hidden; page-break-after: always; background: #fff; }
+      .cover-brand { display: flex; align-items: center; gap: 16px; height: 60px; color: #00529b; font-size: 10px; font-weight: bold; line-height: 1.35; position: relative; }
+      .cover-logo { display: block; width: 104px; height: 46px; overflow: hidden; flex-shrink: 0; }
+      .cover-logo img { display: block; width: 104px; height: auto; }
+      .cover-wave { position: absolute; right: -110px; top: -160px; width: 480px; height: 390px; border: 35px double #9bc5ed; border-radius: 50%; transform: rotate(30deg); }
+      .proposal-cover h1 { margin: 170px 0 24px; font-size: 72px; line-height: 1.05; letter-spacing: 7px; color: #050505; }
+      .cover-title { color: #0068c9; font-size: 23px; letter-spacing: 2px; text-transform: uppercase; overflow-wrap: anywhere; }
+      .cover-subtitle { margin-top: 12px; color: #64748b; font-size: 12px; }
+      .cover-author { position: absolute; bottom: 44px; left: 46px; right: 46px; padding: 30px; border-radius: 20px; background: linear-gradient(110deg, #e7f1fb, #0060bc); color: #fff; text-align: right; font-size: 12px; line-height: 1.8; }
+      .proposal-page { page-break-before: auto; }
+      .contents-list { margin: 14px 0 0; padding: 0; list-style: none; }
+      .contents-list li { padding: 12px 8px; border-bottom: 1px dotted #94a3b8; font-size: 11px; }
+      .plan-placeholder { margin: 10px; padding: 12px; border: 1px dashed #94a3b8; background: #f8fafc; color: #64748b; text-align: center; font-size: 10px; }
+      .estimation-report { width: 794px; background: #fff; color: #111827; font-family: Arial, Helvetica, sans-serif; font-size: 8px; line-height: 1.3; }
+      .report-body { padding: 0 46px 28px; }
+      .brand-header { height: 145px; padding: 7px 42px 7px 35px; display: flex; align-items: center; justify-content: space-between; background-color: #1d3a64; background-image: url('${escapeHtml(headerBackgroundUrl)}'); background-size: cover; background-position: 85% center; }
+      .brand-logo { width: 285px; height: 130px; object-fit: contain; }
+      .brand-contact { width: 290px; color: #fff; font-size: 7px; font-weight: 800; line-height: 1.55; text-align: left; }
+      .brand-contact div { margin: 2px 0; }
+      .proposal-meta { display: grid; grid-template-columns: 1fr 1.35fr 1fr; align-items: center; margin-bottom: 20px; padding: 6px 0; border-top: 1px solid #111; border-bottom: 1px solid #111; font-size: 8px; font-weight: 900; text-transform: uppercase; break-inside: avoid-page; page-break-inside: avoid; }
+      .proposal-meta div:nth-child(2) { text-align: center; }
+      .proposal-meta div:last-child { text-align: right; }
+      .proposal-meta span { display: inline-block; min-width: 78px; margin-left: 4px; padding: 0 5px 2px; border-bottom: 1px solid #f3c332; text-align: center; }
+      .client-box { margin: 0 0 18px; padding: 8px 10px; border: 1px solid #111; break-inside: avoid-page; page-break-inside: avoid; }
+      .client-grid { display: grid; grid-template-columns: 1fr 1fr; column-gap: 42px; row-gap: 5px; }
+      .client-field { display: grid; grid-template-columns: 88px 1fr; align-items: end; gap: 6px; min-height: 17px; }
+      .client-field b { font-size: 7px; font-weight: 900; text-transform: uppercase; }
+      .client-field span { min-height: 14px; padding: 0 4px 2px; border-bottom: 1px solid #f3c332; font-weight: 700; }
+      .proposal-intro { margin: 0 0 17px; color: #34465f; font-size: 7.5px; font-style: italic; font-weight: 800; text-transform: uppercase; }
+      .report-section { margin-top: 12px; border: 1px solid #111; page-break-inside: auto; }
+      .report-section h2 { margin: 0; padding: 5px 8px; color: #050505; background: #ffff00; border-bottom: 1px solid #111; font-size: 9px; text-align: center; text-transform: uppercase; letter-spacing: .25px; break-after: avoid-page; page-break-after: avoid; }
+      .system-bar { display: flex; justify-content: space-between; padding: 5px 10px; color: #fff; background: #004a8d; border-bottom: 1px solid #111; font-size: 9px; font-weight: 900; letter-spacing: 1.4px; text-transform: uppercase; break-after: avoid-page; page-break-after: avoid; }
+      .system-bar span { color: #dbeafe; font-size: 6.5px; letter-spacing: .8px; }
+      .product-group + .product-group { border-top: 1px solid #111; }
+      .pdf-keep, .empty-section, .totals-section, .summary-strip { break-inside: avoid-page; page-break-inside: avoid; }
+      table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+      th, td { padding: 5px 6px; border-right: 1px solid #111; border-bottom: 1px solid #aab1bb; vertical-align: top; overflow-wrap: anywhere; }
+      th:last-child, td:last-child { border-right: 0; }
+      tbody tr:last-child td { border-bottom: 0; }
+      th { background: #d9dee5; color: #111; border-bottom: 1px solid #111; font-size: 7px; font-weight: 900; text-align: left; text-transform: uppercase; }
+      tr { page-break-inside: avoid; }
+      thead { display: table-header-group; }
+      .label { width: 17%; color: #111; background: #eef1f4 !important; font-weight: 900; text-transform: uppercase; font-size: 7px; }
+      .center { text-align: center; }
+      .number { text-align: right; white-space: nowrap; font-size: 7px; }
+      .small-col { width: 42px; }
+      .item-col { width: 45px; }
+      .model-col { width: 105px; }
+      .qty-col { width: 62px; }
+      .price-col { width: 92px; }
+      .line-total { font-weight: 900; }
+      .item-note { display: block; margin-top: 2px; color: #5b6472; font-size: 6.5px; font-weight: 400; }
+      .group-subtotal td { background: #dbe3ec; border-top: 1px solid #111; font-weight: 900; text-align: right; text-transform: uppercase; }
+      .empty { padding: 12px; color: #64748b; text-align: center; font-style: italic; font-weight: 800; }
+      .summary-strip { display: grid; grid-template-columns: repeat(4, 1fr); margin-top: 10px; border: 1px solid #111; }
+      .summary-strip div { padding: 7px; border-right: 1px solid #111; }
+      .summary-strip div:last-child { border-right: 0; }
+      .summary-strip b { display: block; color: #475569; font-size: 6.5px; text-transform: uppercase; }
+      .summary-strip span { display: block; margin-top: 2px; color: #004a8d; font-size: 9px; font-weight: 900; }
+      .note-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+      .note-box { min-height: 58px; padding: 7px 8px; border: 1px solid #aeb9c9; background: #f8fafc; }
+      .note-box b { display: block; margin-bottom: 3px; color: #17345f; text-transform: uppercase; font-size: 7.5px; }
+      .totals-table { width: 100%; }
+      .totals-table td:first-child { width: calc(100% - 140px); font-weight: 900; text-align: right; text-transform: uppercase; }
+      .totals-table td:last-child { width: 140px; font-weight: 900; }
+      .subtotal td { border-top: 2px solid #17418f; }
+      .vat-row td { color: #174fc1; }
+      .grand-total td { background: #dbe3ec !important; color: #111; border-top: 1px solid #111; font-size: 9px; font-weight: 900; }
+      .grand-total td:first-child { display: flex; justify-content: space-between; gap: 10px; }
+      .grand-total span { color: #ef172f; font-size: 7px; }
+      .restricted-note { margin-top: 14px; padding: 9px; border: 1px solid #f0c36d; background: #fff8e6; color: #7c5310; font-weight: 700; text-align: center; }
+      .signatures { display: grid; grid-template-columns: 1fr 1fr; gap: 50px; margin-top: 24px; page-break-inside: avoid; }
+      .signature-column > b { display: block; margin-bottom: 30px; text-transform: uppercase; }
+      .signature { padding-top: 5px; border-bottom: 1px solid #111; text-align: center; }
+      .signature strong { display: block; color: #172033; font-size: 12px; text-transform: uppercase; }
+      .signature span { display: block; color: #475569; font-size: 8px; font-style: italic; }
+      .signature-date { margin-top: 6px; text-align: center; font-weight: 700; }
+      .confirmation { margin-top: 30px; border-top: 5px solid #004a8d; padding-top: 18px; text-align: center; page-break-inside: avoid; }
+      .confirmation h2 { margin: 0; padding: 8px; color: #fff; background: #004a8d; font-size: 10px; letter-spacing: 2px; text-transform: uppercase; }
+      .confirmation p { margin: 8px 25px 0; color: #34465f; font-size: 7.5px; font-weight: 800; text-transform: uppercase; }
+      @media print { .estimation-report { width: 100%; } }
+      ${proposalTemplateCss}
+    </style>
     <div class="estimation-report">
-      <header class="brand-header" style="background-image: url('${escapeHtml(headerBackgroundUrl)}')">
-        <img class="brand-logo" src="${escapeHtml(logoUrl)}" alt="AA2000 Security and Technology Solutions Inc.">
-        <div class="brand-contact">
-          <div class="addr">UNIT 2C NORKIS BUILDING 11 CALBAYOG ST. COR. LIBERTAD, HIGHWAY HILLS, MANDALUYONG CITY, PHILIPPINES 1550</div>
-          <div>(02) 8571-56-93; 7155-7010</div>
-          <div>09171557010</div>
-          <div>INFO.AA2000@GMAIL.COM / AA2000ENT@GMAIL.COM</div>
-          <div>WWW.AA2000PH.COM</div>
-        </div>
-      </header>
-
+      <div class="proposal-cover">
+        <div class="cover-wave"></div>
+        <div class="cover-brand"><div class="cover-logo"><img src="${escapeHtml(logoUrl)}" alt="AA2000"></div><span>SECURITY AND TECHNOLOGY<br>SOLUTIONS INC.</span></div>
+        <h1>Project<br>Proposal</h1>
+        <div class="cover-title">${display(project.name)}</div>
+        <div class="cover-subtitle">Estimation Report | ${escapeHtml(systemLabel)} | Prepared for ${display(project.clientName)}</div>
+        <div class="cover-author"><b>${display(preparedBy)}</b><br>Project Estimator, AA2000<br>REF: ${escapeHtml(reference)} | ${escapeHtml(dateLabel)}</div>
+      </div>
       <main class="report-body">
-        ${isDraft ? '<div class="draft-banner">Draft &mdash; contains unsaved changes; figures may differ from the saved estimation.</div>' : ''}
-        <div class="meta avoid">
-          <div>Validity: ${escapeHtml(validity)}</div>
-          <div>Ref: ${escapeHtml(reference)}</div>
-          <div>Date: ${escapeHtml(dateLabel)}</div>
+        <div class="logical-sheet client-details-sheet">
+        <header class="client-masthead" style="background-image:url('${escapeHtml(headerBackgroundUrl)}')">
+          <img src="${escapeHtml(logoUrl)}" alt="AA2000 Security and Technology Solutions Inc.">
+          <div><b>AA2000 SECURITY AND TECHNOLOGY SOLUTIONS INC.</b><br>Unit 2-C Norkis Building, Mandaluyong City<br>T: (02) 8571-5693</div>
+        </header>
+        ${input.hasUnsavedChanges || input.isDraft ? '<p class="draft-notice draft-banner">DRAFT — Contains unsaved changes; figures may differ from the saved estimation.</p>' : ''}
+        <div class="proposal-meta">
+          <div>Validity:<span>${display(header?.validityPeriod, '30 Days')}</span></div>
+          <div>Ref:<span>${escapeHtml(reference)}</span></div>
+          <div>Date:<span>${escapeHtml(dateLabel)}</span></div>
         </div>
 
-        <div class="client-box avoid">
-          ${field('Attention To:', clientName)}
-          ${field('Position:', header.thru && header.thru !== 'Building Manager' ? header.thru : '', true)}
-          ${field('Company:', firstText(header.company, project.clientName))}
-          ${field('Tel/Mobile No.:', firstText(header.contactNo, project.clientPhone))}
-          ${field('Email:', firstText(header.emailAdd, project.clientEmail))}
-          ${field('Address:', firstText(header.address, project.location))}
-          ${field('Project For:', firstText(header.projectTitle, project.name), true)}
-          ${field('Project Site:', firstText(header.projectSite, project.locationName, project.location), true)}
+        <div class="client-box">
+          <div class="client-grid">
+            <div class="client-field"><b>Attention To:</b><span>${display(project.clientContactName)}</span></div>
+            <div class="client-field"><b>Position:</b><span>${display(header?.thru)}</span></div>
+            <div class="client-field"><b>Company:</b><span>${display(project.clientName)}</span></div>
+            <div class="client-field"><b>Tel./Mobile No.:</b><span>${display(project.clientPhone)}</span></div>
+            <div class="client-field"><b>Email:</b><span>${display(project.clientEmail)}</span></div>
+            <div class="client-field"><b>Site Address:</b><span>${display(header?.address, project.location)}</span></div>
+            <div class="client-field"><b>Project For:</b><span>${display(project.name)}</span></div>
+            <div class="client-field"><b>Project Site:</b><span>${display(project.location)}</span></div>
+          </div>
         </div>
 
-        <p class="intro">We respectfully submit our proposal for your requirements. We look forward to the approval of our project estimation, as follows:</p>
+        <p class="proposal-intro">We respectfully submit our project estimation proposal for your requirements. We look forward to the approval of our proposed project scope and cost, as follows:</p>
 
-        <section class="box${fees.length <= 8 ? ' keep' : ''}">
-          <div class="yellow-bar">A. General Requirements</div>
-          <table>${tableHead}<tbody>${generalRows || noneRow(4 + priceCols)}</tbody>${fees.length ? subtotalFoot('General Requirements', totals.feesTotal) : ''}</table>
+        <section class="report-section compact-section template-contents">
+          <h2>Table of Contents</h2>
+          <ol class="contents-list">
+            <li><span>Project Overview &amp; Client Floor Plan</span><i></i><b class="toc-page" data-toc-target="overview"></b></li>
+            ${proposalSections.map((section, index) => `<li><span>Section ${index + 1} — ${escapeHtml(section.name === 'FDAS' ? 'FDAS (FIRE DETECTION & ALARM SYSTEM)' : section.name)}</span><i></i><b class="toc-page" data-toc-target="system-${index}"></b></li>`).join('')}
+            <li><span>Project Timeline (Illustrative)</span><i></i><b class="toc-page" data-toc-target="timeline"></b></li>
+            <li class="toc-subitem"><span>Key Milestones &amp; Payment Schedule</span><i></i><b class="toc-page" data-toc-target="milestones"></b></li>
+            ${showPrices ? '<li><span>F. Breakdown of Cost</span><i></i><b class="toc-page" data-toc-target="cost"></b></li>' : ''}
+            <li class="toc-subitem"><span>Notes and Remarks</span><i></i><b class="toc-page" data-toc-target="remarks"></b></li>
+            <li><span>Terms &amp; Conditions, Payment, Warranty and Signatures</span><i></i><b class="toc-page" data-toc-target="terms"></b></li>
+          </ol>
         </section>
 
-        <section class="box">
-          <div class="yellow-bar">B. Scope of Works</div>
-          <table>${tableHead}<tbody>${laborRows + scopeRows || noneRow(4 + priceCols)}</tbody>${manpower.length ? subtotalFoot('Installation Labor', totals.laborTotal) : ''}</table>
-        </section>
-
-        ${sectionC.html}
-        ${sectionD.html}
-        ${sectionE.html}
-        ${systemSummary}
-        ${breakdown}
-
-        <section class="box avoid">
-          <div class="yellow-bar">Note and Remarks: All indicated below shall be billed separately</div>
-          <table class="list"><tbody>
-            ${[...STANDARD_REMARKS, ...surveyNotes].map((text, i) => `<tr><td>${i + 1}</td><td>${multiline(text)}</td></tr>`).join('')}
+        </div><div class="logical-sheet" data-report-anchor="overview">${pageHeader}
+        <section class="report-section template-overview">
+          <h2>Project Overview</h2>
+          <table><colgroup><col style="width:20%"><col></colgroup><tbody>
+            <tr><td class="overview-label">Project summary</td><td>${multiline(projectSummary)}</td></tr>
+            <tr><td class="overview-label">Systems covered</td><td>${systems.map(system => `<b class="selected-system">[x] ${escapeHtml(system)}</b>`).join(' &nbsp; ')} <small>Selected systems are included in this proposal.</small></td></tr>
+            <tr><td class="overview-label">Floor area / levels</td><td>${display(floorArea)}${floorArea != null ? ' sq.m.' : ''} &nbsp; | &nbsp; ${display(project.floors)} floor(s) &nbsp; | &nbsp; ${display(rooms)} rooms / areas</td></tr>
+            <tr><td class="overview-label">Estimated duration</td><td>To be confirmed from approved scope, manpower and availability. See illustrative Project Timeline.</td></tr>
+            <tr><td class="overview-label">Sections &amp; amounts</td><td>${sectionAmountsHtml}${showPrices ? ' &nbsp; | &nbsp; VAT exclusive; see Breakdown of Cost.' : ''}</td></tr>
           </tbody></table>
         </section>
-
-        <section class="box avoid">
-          <div class="slate-bar">Terms and Conditions</div>
-          <table class="list terms"><tbody>
-            ${STANDARD_TERMS.map((text, i) => `<tr><td>${i + 1}</td><td>${escapeHtml(text)}</td></tr>`).join('')}
-          </tbody></table>
+        <section class="report-section overview-floor-plan">
+          <h2>Client Floor Plan (As Submitted)</h2>
+          <div class="plan-grid overview-plan"><div><b>CLIENT FLOOR PLAN — AS RECEIVED</b><br>Original client plan is not embedded in this report.<br>Refer to the source project attachments.</div></div>
+          <small>Device layouts require a verified client plan. No device positions are assumed.</small>
         </section>
+        ${siteConditions.length ? `<section class="report-section overview-site-conditions"><h2>Site Conditions &amp; Technician Notes</h2><table><colgroup><col style="width:28%"><col></colgroup><tbody>${siteConditions.map(([label, value]) => `<tr><td class="overview-label">${escapeHtml(label)}</td><td>${multiline(value)}</td></tr>`).join('')}</tbody></table></section>` : ''}
 
-        <div class="info-box avoid">
-          <div><h4>Payment Terms:</h4>
-            <div class="info-row"><span>Supply of Devices:</span><span>50% Downpayment ; 50% upon pick up/delivery of the items.</span></div>
-            <div class="info-row"><span>Supply of Labor:</span><span>50% Downpayment ; 50% upon completion.</span></div>
-          </div>
-          <div><h4>Payment Details:</h4>
-            <div class="info-line">Bank deposit payment (<b>BDO account number: 006930089663</b>)</div>
-            <div class="info-line">Check payment must be named under <b>AA2000 Security and Technology Solution Inc.</b></div>
-          </div>
-          <div><h4>Warranty Period:</h4>
-            <div class="info-line">&bull; Product warranty: 1 year</div>
-            <div class="info-line">&bull; 7 days replacement against factory defects.</div>
-          </div>
-          <div><h4>Availability:</h4>
-            <div class="info-line">2-4 working days if on stock upon receipt of P.O and downpayment.</div>
-            <div class="info-line">12-16 weeks if no stock/pre-order basis.</div>
-            <div class="info-line"><span class="red">Note:</span> stocks of goods are subject for confirmation upon order.</div>
-          </div>
         </div>
-
-        <div class="signatures avoid">
-          <div>
-            <div class="sig-label">Prepared by:</div>
-            <div class="sig"><strong>${display(preparedBy)}</strong></div>
-            <div class="sig-under"><i>Project Estimator</i></div>
-          </div>
-          <div>
-            <div class="sig-client-name">${display(clientName)}</div>
-            <div class="sig-client"><div class="sig-under"><b>Client Conforme</b><i>Signature over Printed Name</i>Date: ____________</div></div>
-          </div>
-        </div>
-
-        <div class="confirmation avoid">
-          <h2>Confirmation</h2>
-          <p>This proposal will be regarded as an order confirmation upon acceptance. Kindly acknowledge with your signature accompanied by a purchase order and/or company stamp. Thank you for your trust and confidence.</p>
-        </div>
+        ${proposalSections.map((section, index) => `<div class="logical-sheet">${pageHeader}${renderProposalSystem(section, index, showPrices)}</div>`).join('')}
+        <div class="logical-sheet" data-report-anchor="timeline">${pageHeader}${renderProposalTimeline(systems.length ? systems : ['Project Requirements'])}</div>
+        <div class="logical-sheet" data-report-anchor="cost">${pageHeader}${renderProposalCosts(proposalSections, showPrices)}${renderProposalRemarks()}
+        </div><div class="logical-sheet" data-report-anchor="terms">${pageHeader}${renderProposalTerms(preparedBy)}</div>
       </main>
     </div>`;
 }

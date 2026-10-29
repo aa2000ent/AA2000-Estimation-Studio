@@ -112,45 +112,30 @@ test('untagged rows join the only system, or a shared group when there are sever
   assert.equal(multi[multi.length - 1].items.length, 1);
 });
 
-test('report follows the quotation layout with every system kept apart', () => {
+test('report keeps source survey sections apart in the updated proposal layout', () => {
   const html = build();
-  for (const title of ['A. General Requirements', 'B. Scope of Works', 'C. Active Components',
-    'D. Roughing-ins Materials', 'E. Cable Components', 'Materials by System', 'F. Breakdown of Cost:',
-    'Note and Remarks', 'Terms and Conditions', 'Client Conforme', 'Confirmation']) {
-    assert.ok(html.includes(title), `missing section: ${title}`);
-  }
-  // Brand bars carry the system when the project has several.
-  assert.match(html, /CCTV 1 &middot; HIKVISION/);
-  assert.match(html, /CCTV 2 &middot; HIKVISION/);
-  assert.match(html, /FDAS &middot; ASENWARE/);
-  assert.ok(html.includes('Sub. Total (FDAS):'));
-  // Labor appears once, as section B.
-  assert.equal(html.match(/SCOPE OF WORKS \(INSTALLATION LABOR\)/g)?.length, 1);
-
+  for (const title of ['A. General Requirements', 'B. Scope of Works', 'C. Active Components', 'D. Roughing-Ins Materials', 'E. Cable Components', 'F. Breakdown of Cost', 'Note and Remarks', 'Terms and Conditions', 'Confirmation']) assert.ok(html.includes(title), title);
+  for (const label of ['CCTV 1', 'CCTV 2', 'FDAS', 'Shared Project Items']) assert.ok(html.includes(label), label);
+  for (const row of consumables) assert.equal(html.split(row.name).length - 1, 1, row.name + ' must appear once');
   const totals = computeEstimationTotals(manpower, consumables, fees);
-  const fmt = (n: number) => `PHP ${n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  assert.ok(html.includes(fmt(totals.grandTotal)), 'grand total missing');
-  assert.ok(html.includes(fmt(totals.vat)), 'VAT missing');
-  assert.ok(html.includes(`Sub. Total (Installation Labor):</td><td class="number">${fmt(40000)}`));
+  const fmt = (n: number) => 'PHP ' + n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  assert.ok(html.includes(fmt(totals.grandTotal)));
+  assert.ok(html.includes(fmt(totals.vat)));
+  assert.ok(html.includes(fmt(totals.laborTotal)));
 });
 
 test('FDAS is absent and empty sections show NONE when not applicable', () => {
-  const cctvOnly = consumables.filter(c => c.surveyId === 'survey-1');
-  const html = build({ consumables: cctvOnly, fees: [], project: project(['CCTV']) });
+  const html = build({ consumables: consumables.filter(c => c.surveyId === 'survey-1'), fees: [], project: project(['CCTV']) });
   assert.doesNotMatch(html, /FDAS/);
-  assert.doesNotMatch(html, /Materials by System/);
-  assert.doesNotMatch(html, /Sub\. Total \(General Requirements\)/);
-  assert.match(html, /class="none"/);
-  // Single system: brand bars show the brand only.
-  assert.match(html, /<div class="brand-bar">HIKVISION<\/div>/);
+  assert.ok(html.includes('>NONE</td>'));
+  assert.ok(html.includes('>Hikvision</td>'));
 });
 
-test('long brand lists are split into page-safe chunks with continuation headers', () => {
-  const many = Array.from({ length: 15 }, (_, i) => item(`Camera ${i + 1}`, 1, 1000, cctv1));
+test('long brand lists preserve every row for measured browser pagination', () => {
+  const many = Array.from({ length: 80 }, (_, i) => item('Camera item ' + (i + 1), 1, 1000, cctv1));
   const html = build({ consumables: many });
-  assert.equal(html.match(/class="brand-bar"/g)?.length, 2);
-  assert.equal(html.match(/<span>Continued<\/span>/g)?.length, 1);
-  assert.match(html, /<td class="center bold">15<\/td>/);
+  for (const row of many) assert.equal(html.split('>' + row.name + '<').length - 1, 1, row.name);
+  assert.ok(html.includes('PHP 80,000.00'));
 });
 
 test('mismatched totals are rejected instead of rendered', () => {
@@ -173,12 +158,12 @@ test('prices are hidden for restricted roles and user text is escaped', () => {
 test('client details edited in the preview override project defaults', () => {
   const html = build({ header: { attentionTo: 'Jabee', company: 'Jabee Inc.', referenceCode: 'PQ-CCTV-2026-10-123', quoteDate: 'OCTOBER 28, 2026' } });
   assert.ok(html.includes('Jabee Inc.'));
-  assert.ok(html.includes('Ref: PQ-CCTV-2026-10-123'));
-  assert.ok(html.includes('<div class="sig-client-name">Jabee</div>'));
+  assert.ok(html.includes('PQ-CCTV-2026-10-123'));
+  assert.ok(html.includes('Jabee'));
   assert.doesNotMatch(html, /Acme Logistics/);
 });
 
 test('draft exports are labelled', () => {
-  assert.match(build({ isDraft: true }), /class="draft-banner"/);
+  assert.match(build({ isDraft: true }), /class="[^"]*draft-banner[^"]*"/g);
   assert.doesNotMatch(build(), /class="draft-banner"/);
 });

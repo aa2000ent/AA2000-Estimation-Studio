@@ -1,3 +1,4 @@
+import EstimationReportPreview from './EstimationReportPreview';
 import React from 'react';
 import type { EstimationConsumableEntry } from '../../types';
 
@@ -328,142 +329,13 @@ const HEADER_FIELDS: Array<{ key: keyof QuotationHeaderState; label: string }> =
   { key: 'validityPeriod', label: 'Validity' },
 ];
 
-export default function QuotationModal({
-  quotHeader,
-  setQuotHeader,
-  buildReportHtml,
-  onDownloadPdf,
-  isExportingPdf,
-  onClose,
-  isDark = false,
-}: QuotationModalProps) {
+export default function QuotationModal({ quotHeader, setQuotHeader, buildReportHtml, onDownloadPdf, isExportingPdf, onClose }: QuotationModalProps) {
   const [showDetails, setShowDetails] = React.useState(false);
-  const [scale, setScale] = React.useState(1);
-  const [frameHeight, setFrameHeight] = React.useState(1123);
-  const paneRef = React.useRef<HTMLDivElement>(null);
-  const frameRef = React.useRef<HTMLIFrameElement>(null);
-
-  let reportHtml = '';
-  let reportError = '';
-  try {
-    reportHtml = buildReportHtml();
-  } catch (error) {
-    reportError = error instanceof Error ? error.message : 'The report could not be built.';
-  }
-  // An iframe keeps the report's own CSS from leaking into the app (and vice versa).
-  const srcDoc = `<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:#fff}</style></head><body>${reportHtml}</body></html>`;
-
-  React.useEffect(() => {
-    const pane = paneRef.current;
-    if (!pane) return;
-    const update = () => setScale(Math.min(1, (pane.clientWidth - 32) / REPORT_WIDTH));
-    update();
-    const observer = new ResizeObserver(update);
-    observer.observe(pane);
-    return () => observer.disconnect();
-  }, []);
-
-  const measureFrame = () => {
-    const doc = frameRef.current?.contentDocument;
-    if (!doc) return;
-    setFrameHeight(doc.documentElement.scrollHeight);
-    // Images load after the document; re-measure once they settle.
-    Array.from(doc.images).forEach(img => {
-      if (!img.complete) img.addEventListener('load', () => setFrameHeight(doc.documentElement.scrollHeight), { once: true });
-    });
-  };
-
-  React.useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
-
-  const surface = isDark ? 'bg-[#131B2E] border-slate-800 text-slate-100' : 'bg-white border-slate-200 text-slate-800';
-  const subtle = isDark ? 'text-slate-400' : 'text-slate-500';
-  const inputCls = `w-full px-2.5 py-1.5 rounded-lg text-xs font-semibold border outline-none focus:ring-2 focus:ring-blue-500/30 ${
-    isDark ? 'bg-[#0D1527] border-slate-700 text-slate-100' : 'bg-white border-slate-200 text-slate-800'
-  }`;
-
-  return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-2 sm:p-6" onClick={onClose}>
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label="Quotation preview"
-        className={`w-full max-w-5xl h-full max-h-[96vh] flex flex-col rounded-2xl border shadow-2xl overflow-hidden ${surface}`}
-        onClick={e => e.stopPropagation()}
-      >
-        <header className={`flex flex-wrap items-center justify-between gap-3 px-5 py-4 border-b ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
-          <div>
-            <h2 className="text-lg font-black">Quotation Preview</h2>
-            <p className={`text-xs ${subtle}`}>Exactly what the downloaded PDF will contain</p>
-          </div>
-          <div className="flex items-center gap-2">
-            {quotHeader.referenceCode && (
-              <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold border ${isDark ? 'border-blue-900 text-blue-300' : 'border-blue-200 text-blue-700 bg-blue-50'}`}>
-                {quotHeader.referenceCode}
-              </span>
-            )}
-            <button
-              onClick={() => setShowDetails(v => !v)}
-              aria-expanded={showDetails}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold border cursor-pointer ${isDark ? 'border-slate-700 hover:bg-slate-800' : 'border-slate-200 hover:bg-slate-50'}`}
-            >
-              {showDetails ? 'Done editing' : 'Edit client details'}
-            </button>
-            <button onClick={onClose} aria-label="Close preview" className={`p-1.5 rounded-lg cursor-pointer ${isDark ? 'hover:bg-slate-800' : 'hover:bg-slate-100'}`}>
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
-            </button>
-          </div>
-        </header>
-
-        {showDetails && (
-          <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 px-5 py-4 border-b ${isDark ? 'border-slate-800 bg-[#0F172A]' : 'border-slate-200 bg-slate-50'}`}>
-            {HEADER_FIELDS.map(({ key, label }) => (
-              <label key={key} className="flex flex-col gap-1">
-                <span className={`text-[10px] font-bold uppercase tracking-wider ${subtle}`}>{label}</span>
-                <input
-                  className={inputCls}
-                  value={quotHeader[key]}
-                  onChange={e => setQuotHeader(prev => ({ ...prev, [key]: e.target.value }))}
-                />
-              </label>
-            ))}
-          </div>
-        )}
-
-        <div ref={paneRef} className={`flex-1 overflow-auto p-4 ${isDark ? 'bg-[#0B132B]' : 'bg-slate-100'}`}>
-          {reportError ? (
-            <div className="m-6 p-4 rounded-xl border border-red-300 bg-red-50 text-red-700 text-sm font-semibold">{reportError}</div>
-          ) : (
-            <div className="mx-auto shadow-lg" style={{ width: REPORT_WIDTH * scale, height: frameHeight * scale }}>
-              <iframe
-                ref={frameRef}
-                title="Quotation report preview"
-                srcDoc={srcDoc}
-                onLoad={measureFrame}
-                scrolling="no"
-                style={{ width: REPORT_WIDTH, height: frameHeight, border: 0, background: '#fff', transform: `scale(${scale})`, transformOrigin: 'top left' }}
-              />
-            </div>
-          )}
-        </div>
-
-        <footer className={`flex justify-end gap-2 px-5 py-3 border-t ${isDark ? 'border-slate-800' : 'border-slate-200'}`}>
-          <button onClick={onClose} className={`px-4 py-2 rounded-xl text-xs font-bold border cursor-pointer ${isDark ? 'border-slate-700 hover:bg-slate-800' : 'border-slate-200 hover:bg-slate-50'}`}>
-            Close
-          </button>
-          <button
-            onClick={onDownloadPdf}
-            disabled={isExportingPdf || Boolean(reportError)}
-            aria-busy={isExportingPdf}
-            className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-[#1E3A8A] hover:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-          >
-            {isExportingPdf ? 'Generating PDF...' : 'Download PDF'}
-          </button>
-        </footer>
-      </div>
-    </div>
-  );
+  const controls = <div style={{ padding: '10px 20px', color: '#103861', background: '#f8fafc', borderBottom: '1px solid #cbd5e1' }}>
+    <button type="button" aria-expanded={showDetails} onClick={() => setShowDetails(value => !value)} style={{ fontWeight: 700, cursor: 'pointer' }}>{showDetails ? 'Done editing' : 'Edit client details'}</button>
+    {showDetails && <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10, marginTop: 10, maxHeight: '25vh', overflow: 'auto' }}>
+      {HEADER_FIELDS.map(({key, label}) => <label key={key} style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 11 }}>{label}<input value={quotHeader[key]} onChange={event => setQuotHeader(previous => ({ ...previous, [key]: event.target.value }))} style={{ padding: 6, border: '1px solid #cbd5e1', borderRadius: 5, background: '#fff', color: '#0f172a' }} /></label>)}
+    </div>}
+  </div>;
+  return <EstimationReportPreview html={buildReportHtml()} onDownload={async () => { await onDownloadPdf(); }} onClose={onClose} busy={isExportingPdf} controls={controls} />;
 }

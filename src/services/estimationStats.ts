@@ -12,6 +12,7 @@ type StatManpowerRow = {
 
 type StatConsumableRow = {
   quantity?: number;
+  unitPrice?: number;
   unit?: string;
   category?: string;
   totalPrice?: number;
@@ -30,7 +31,24 @@ export interface EstimationStats {
   totalMaterials: number;
   totalFees: number;
   subtotal: number;
+  vat: number;
+  grandTotal: number;
 }
+
+export const roundMoney = (value: number): number => Math.round((value + Number.EPSILON) * 100) / 100;
+const finite = (value: number | undefined): number => Number.isFinite(value) ? value! : 0;
+
+// Man-days already represent total person-days; do not multiply headcount again.
+export const laborLineTotal = (row: StatManpowerRow): number => roundMoney(
+  row.dayRate != null && Number.isFinite(row.dayRate)
+    ? finite(row.dayRate) * finite(row.manDays)
+    : finite(row.totalCost)
+);
+export const materialLineTotal = (row: StatConsumableRow): number => roundMoney(
+  row.unitPrice != null && Number.isFinite(row.unitPrice)
+    ? finite(row.quantity) * finite(row.unitPrice)
+    : finite(row.totalPrice)
+);
 
 export function computeEstimationStats(
   manpower: readonly StatManpowerRow[],
@@ -46,12 +64,11 @@ export function computeEstimationStats(
       return unit.includes('meter') || unit === 'm' || c.category === 'Wires & Cables';
     })
     .reduce((sum, c) => sum + (c.quantity || 0), 0);
-  const totalLabor = manpower.reduce(
-    (sum, m) => sum + (m.totalCost || ((m.dayRate || 1000) * (m.manDays || 0))),
-    0
-  );
-  const totalMaterials = consumables.reduce((sum, c) => sum + (c.totalPrice || 0), 0);
-  const totalFees = fees.reduce((sum, f) => sum + (f.amount || 0), 0);
+  const totalLabor = roundMoney(manpower.reduce((sum, m) => sum + laborLineTotal(m), 0));
+  const totalMaterials = roundMoney(consumables.reduce((sum, c) => sum + materialLineTotal(c), 0));
+  const totalFees = roundMoney(fees.reduce((sum, f) => sum + roundMoney(finite(f.amount)), 0));
+  const subtotal = roundMoney(totalLabor + totalMaterials + totalFees);
+  const vat = roundMoney(subtotal * 0.12);
   return {
     totalHeadcount,
     totalManDays,
@@ -60,11 +77,11 @@ export function computeEstimationStats(
     totalLabor,
     totalMaterials,
     totalFees,
-    subtotal: totalLabor + totalMaterials + totalFees,
+    subtotal,
+    vat,
+    grandTotal: roundMoney(subtotal + vat),
   };
 }
-
-const num = (v: unknown) => (typeof v === 'number' && !isNaN(v) ? v : 0);
 
 export const VAT_RATE = 0.12;
 
@@ -87,16 +104,13 @@ export function computeEstimationTotals(
   consumables: readonly StatConsumableRow[],
   fees: readonly StatFeeRow[] = []
 ): EstimationTotals {
-  const materialsTotal = consumables.reduce((s, c) => s + num(c.totalPrice), 0);
-  const laborTotal = manpower.reduce((s, m) => s + num(m.totalCost), 0);
-  const feesTotal = fees.reduce((s, f) => s + num(f.amount), 0);
-  const subtotal = materialsTotal + laborTotal + feesTotal;
+  const stats = computeEstimationStats(manpower, consumables, fees);
   return {
-    materialsTotal,
-    laborTotal,
-    feesTotal,
-    subtotal,
-    vat: +(subtotal * VAT_RATE).toFixed(2),
-    grandTotal: +(subtotal * (1 + VAT_RATE)).toFixed(2),
+    materialsTotal: stats.totalMaterials,
+    laborTotal: stats.totalLabor,
+    feesTotal: stats.totalFees,
+    subtotal: stats.subtotal,
+    vat: stats.vat,
+    grandTotal: stats.grandTotal,
   };
 }

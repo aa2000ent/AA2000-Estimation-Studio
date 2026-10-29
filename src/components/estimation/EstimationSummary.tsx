@@ -6,13 +6,13 @@ import type { FloorPlanEstimation } from '../../services/geminiFloorPlanService'
 import { systemBadgeIcons, Users, StatCalendar, Package as PackageIcon, Plug, Document, User as UserIcon, ArrowRight } from '../../utils/Icons';
 import { useToast } from '../utils/Toast';
 import { getEstimatedItemPricing, searchPricelist } from '../../services/pricelistService';
-import { computeEstimationStats, computeEstimationTotals } from '../../services/estimationStats';
+import { computeEstimationStats, computeEstimationTotals, laborLineTotal, materialLineTotal } from '../../services/estimationStats';
 import ProductCatalogModal from './ProductCatalogModal';
 import type { CatalogProduct } from '../../services/api/products';
 import QuotationModal, { type QuotationHeaderState, type ScopeOfWorkEntry, generateSystemScopeOfWorks } from './QuotationModal';
 import reportHeaderBackground from '../../assets/pdf/PDF_header.png';
 import reportLogo from '../../assets/pdf/aa2000_logo.png';
-import { buildStandardEstimationReportHtml } from '../../utils/standardEstimationReport';
+import { buildStandardEstimationReportHtml, prepareEstimationReportLayout } from '../../utils/standardEstimationReport';
 
 function mapCategoryToOption(cat: string): string {
   const c = cat.toUpperCase();
@@ -573,7 +573,7 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
         updated.manDays = Math.ceil(hc * hr / 8);
       }
       // Re-calculate totalCost when manDays or dayRate is modified
-      const rate = field === 'dayRate' ? Number(value) : (m.dayRate || getRoleDefaultDayRate(updated.role));
+      const rate = field === 'dayRate' ? Number(value) : (m.dayRate ?? getRoleDefaultDayRate(updated.role));
       updated.dayRate = rate;
       updated.totalCost = rate * updated.manDays;
       return updated;
@@ -1013,6 +1013,7 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
       })));
       await document.fonts?.ready;
       await new Promise(resolve => setTimeout(resolve, 100));
+      prepareEstimationReportLayout(container);
 
       const safeProjectName = project.name
         .trim()
@@ -1035,7 +1036,6 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
         jsPDF: { unit: 'pt', format: 'a4', orientation: 'portrait' },
         pagebreak: {
           mode: ['css', 'legacy'],
-          avoid: ['tr', '.keep', '.avoid'],
         },
       };
 
@@ -1049,9 +1049,10 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
         const pageCount = pdf.internal.getNumberOfPages();
         const address = 'Unit 2-C Norkis Building, 11 Calbayog Cor., Domingo M. Guevara St., Mandaluyong City, Philippines 1550';
         const phone = 'T: (02) 8571-5693';
-        const disclaimer = 'Disclaimer: This report is generated for client presentation and reflects finalized project details.';
+        const disclaimer = 'This report reflects the estimation at export. Scope, availability and schedule remain subject to approval.';
 
         for (let pageNumber = 1; pageNumber <= pageCount; pageNumber += 1) {
+          if (pageNumber === 1) continue;
           pdf.setPage(pageNumber);
           const pageWidth = pdf.internal.pageSize.getWidth();
           const pageHeight = pdf.internal.pageSize.getHeight();
@@ -1066,6 +1067,7 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
           pdf.setFontSize(5.3);
           pdf.text(address, 36, footerTop + 9);
           pdf.text(phone, 36, footerTop + 16);
+          pdf.text(`Page ${pageNumber} of ${pageCount}`, pageWidth / 2, footerTop + 23, { align: 'center' });
 
           pdf.setTextColor(71, 85, 105);
           pdf.setFont('helvetica', 'bold');
@@ -1470,7 +1472,7 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
                             placeholder="1000" style={{ ...inputStyle, ...getInputChangedStyle(changedFields.has('dayRate')), width: '90px', textAlign: 'right' }} />
                         </td>
                         <td className="py-2.5 pr-2 text-right">
-                          <span className={`text-xs font-black ${dark ? 'text-slate-100' : 'text-slate-900'}`}>₱{((m.totalCost || (m.dayRate || 0) * m.manDays)).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                          <span className={`text-xs font-black ${dark ? 'text-slate-100' : 'text-slate-900'}`}>₱{(laborLineTotal(m)).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                         </td>
                       </>
                     )}
@@ -1483,7 +1485,7 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
                     <td colSpan={5} className={`py-2.5 text-right text-xs font-bold pr-3 ${dark ? 'text-slate-300' : 'text-slate-700'}`}>Total Manpower Cost:</td>
                     <td className="py-2.5 pr-2 text-right">
                       <span className={`text-sm font-black ${dark ? 'text-blue-400' : 'text-blue-700'}`}>
-                        ₱{manpower.reduce((sum, m) => sum + (m.totalCost || ((m.dayRate || 1000) * m.manDays)), 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        ₱{estimationStats.totalLabor.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </span>
                     </td>
                     <td />
@@ -1581,7 +1583,7 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
                             placeholder="0" style={{ ...inputStyle, ...getInputChangedStyle(changedFields.has('unitPrice')), width: '90px', textAlign: 'right' }} />
                         </td>
                         <td className={`py-2.5 pr-2 text-right font-black ${dark ? 'text-slate-100' : 'text-slate-900'}`}>
-                          ₱{(c.totalPrice || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          ₱{materialLineTotal(c).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </td>
                       </>
                     )}
@@ -1594,7 +1596,7 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
                     <td colSpan={5} className={`py-2.5 text-right text-xs font-bold pr-3 ${dark ? 'text-slate-300' : 'text-slate-700'}`}>Total Materials Price:</td>
                     <td className="py-2.5 pr-2 text-right">
                       <span className={`text-sm font-black ${dark ? 'text-emerald-400' : 'text-emerald-700'}`}>
-                        ₱{consumables.reduce((sum, c) => sum + (c.totalPrice || 0), 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        ₱{estimationStats.totalMaterials.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </span>
                     </td>
                     <td />
@@ -1659,7 +1661,7 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
         {/* ── Overall BOQ Estimation Summary ── */}
         {showPrices && (() => {
           const { totalLabor, totalMaterials, totalFees } = estimationStats;
-          const grandTotal = totalLabor + totalMaterials + totalFees;
+          const { subtotal, vat, grandTotal } = estimationStats;
 
           return (
             <div className={`rounded-2xl border-2 p-5 shadow-sm space-y-3 mb-5 ${
@@ -1686,6 +1688,9 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
                 </div>
               </div>
               <div className={`flex items-center justify-between pt-3 border-t ${dark ? 'border-slate-800' : 'border-blue-100'}`}>
+                <span className="text-xs">Subtotal: ₱{subtotal.toLocaleString('en-PH', { minimumFractionDigits: 2 })} · VAT (12%): ₱{vat.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
+              </div>
+              <div className="flex items-center justify-between">
                 <span className={`text-sm font-extrabold ${dark ? 'text-slate-200' : 'text-slate-800'}`}>Grand Total BOQ Estimation:</span>
                 <span className={`text-2xl font-black ${dark ? 'text-blue-400' : 'text-blue-700'}`}>₱{grandTotal.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</span>
               </div>
@@ -2053,7 +2058,6 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
             onDownloadPdf={handleExportPdf}
             isExportingPdf={isExportingPdf}
             onClose={() => setShowQuotationModal(false)}
-            isDark={dark}
           />
         )}
 

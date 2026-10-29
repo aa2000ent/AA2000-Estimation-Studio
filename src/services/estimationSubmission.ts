@@ -9,7 +9,7 @@ import type {
   EstimationAdditionalFeeEntry,
 } from '../types';
 import { restoreSessionToken, getSessionAccountId } from './authService';
-import { computeEstimationTotals } from './estimationStats';
+import { computeEstimationTotals, laborLineTotal, materialLineTotal } from './estimationStats';
 
 const API_BASE: string = (
   import.meta.env.VITE_API_BASE_URL || 'https://aa2000backend-server.onrender.com'
@@ -145,8 +145,8 @@ export function buildEstimationPayload(input: EstimationSubmissionInput, estimat
     clientName: project.clientName,
     locationName: project.locationName,
     hubProjectId: project.id,
-    manpower,
-    consumables,
+    manpower: manpower.map(row => ({ ...row, totalCost: laborLineTotal(row) })),
+    consumables: consumables.map(row => ({ ...row, totalPrice: materialLineTotal(row) })),
     logistics: fees,
     scopeOfWorks: input.scopeOfWorks,
     siteConstraints: {
