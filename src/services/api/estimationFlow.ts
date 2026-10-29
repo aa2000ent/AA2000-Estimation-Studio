@@ -196,65 +196,15 @@ export interface FloorPlanAnalyzeRequest {
   supplementalDocuments?: SupplementalDocument[];
 }
 
-/**
- * Mock mode only: one page per uploaded file, each carrying its title, so the
- * demo shows how titles flow through. The real server tags pages itself.
- */
-function withMockPageTitles(
-  result: FloorPlanAnalyzeResult,
-  files: File[],
-  labels: FloorPlanLabel[]
-): FloorPlanAnalyzeResult {
-  const template = result.pages?.[0];
-  if (!template) return result;
-  return {
-    ...result,
-    pages: files.map((file, index) => {
-      const title = labels.find(label => label.fileName === file.name)?.title;
-      const suffix = `-p${index + 1}`;
-      const tag = (list?: FloorPlanSection[]) =>
-        list?.map(section => ({ ...section, sectionId: `${section.sectionId}${suffix}` }));
-      return {
-        ...template,
-        pageNumber: index + 1,
-        floorNumber: index,
-        ...(title ? { title } : {}),
-        sections: tag(template.sections),
-        corridors: tag(template.corridors),
-      };
-    }),
-  };
-}
-
-export async function analyzeFloorPlan(
-  request: FloorPlanAnalyzeRequest,
-  signal?: AbortSignal
-): Promise<FloorPlanAnalyzeResult> {
-  const files = request.files.slice(0, MAX_FLOORPLAN_FILES);
-  if (files.length === 0) {
-    throw new Error('Attach at least one floor plan file.');
-  }
-
-  const tooLongTitle = (request.labels || []).find(l => l.title.length > MAX_FLOOR_PLAN_TITLE_LENGTH);
-  if (tooLongTitle) {
-    throw new Error(`Floor plan titles must be ${MAX_FLOOR_PLAN_TITLE_LENGTH} characters or fewer.`);
-  }
-
-  const oversized = files.find(f => f.size > MAX_FLOORPLAN_FILE_BYTES);
-  if (oversized) {
-    throw new Error(`"${oversized.name}" exceeds the 12 MB file limit.`);
-  }
-
-  if (isLocalEstimationApiMockEnabled()) {
-    logMockMode();
-    await waitForMockResponse(1800, signal);
-    return withMockPageTitles({
+/** Mock mode only: one fake result for one floor plan, carrying its title. */
+function buildMockFloorPlanResult(file: File, title: string): FloorPlanAnalyzeResult {
+  const base: FloorPlanAnalyzeResult = {
       requestId: 'local-mock-floorplan',
       analyzedAt: new Date().toISOString(),
       processingTimeMs: 1800,
       fileInfo: {
-        fileName: files.map(file => file.name).join(', '),
-        pages: files.length,
+        fileName: file.name,
+        pages: 1,
         scale: { value: 1, unit: 'cm', detected: true },
         orientation: 'landscape',
       },
@@ -334,54 +284,97 @@ export async function analyzeFloorPlan(
         'Use controlled access for the server room.',
         'Provide camera coverage at the lobby entrance and main corridor.',
       ],
-    }, files, request.labels || []);
+    };
+  return {
+    ...base,
+    pages: base.pages?.map(page => ({ ...page, ...(title ? { title } : {}) })),
+  };
+}
+
+export interface FloorPlanFileOptions {
+  /** The title the user gave this plan (e.g. "Ground Floor"). */
+  title?: string;
+  fileType?: string;
+  projectContext?: FloorPlanProjectContext;
+  analysisOptions?: FloorPlanAnalyzeOptions;
+  supplementalDocuments?: SupplementalDocument[];
+}
+
+/**
+ * Analyzes ONE floor plan with ONE request. The queue in the AI Estimation
+ * screen calls this plan by plan, so each plan is read on its own and the AI
+ * never mixes floors together.
+ */
+export async function analyzeFloorPlanFile(
+  file: File,
+  options: FloorPlanFileOptions = {},
+  signal?: AbortSignal
+): Promise<FloorPlanAnalyzeResult> {
+  const title = (options.title || '').trim();
+  if (title.length > MAX_FLOOR_PLAN_TITLE_LENGTH) {
+    throw new Error(`Floor plan titles must be ${MAX_FLOOR_PLAN_TITLE_LENGTH} characters or fewer.`);
+  }
+  if (file.size > MAX_FLOORPLAN_FILE_BYTES) {
+    throw new Error(`"${file.name}" exceeds the 12 MB file limit.`);
+  }
+
+  if (isLocalEstimationApiMockEnabled()) {
+    logMockMode();
+    await waitForMockResponse(1800, signal);
+    return buildMockFloorPlanResult(file, title);
+  }
+
+  const formData = new FormData();
+  // The endpoint takes exactly one drawing per call, in `file`.
+  formData.append('file', file, file.name || 'floorplan');
+
+  const fileType = (options.fileType || fileTypeFromName(file.name) || 'pdf').toLowerCase().replace('.', '');
+  formData.append('fileType', fileType);
+  if (title) formData.append('floorPlanTitle', title);
+  if (options.projectContext) {
+    formData.append('projectContext', JSON.stringify(options.projectContext));
+  }
+  if (options.analysisOptions) {
+    formData.append('analysisOptions', JSON.stringify(options.analysisOptions));
+  }
+  if (options.supplementalDocuments && options.supplementalDocuments.length > 0) {
+    formData.append('supplementalDocuments', JSON.stringify(options.supplementalDocuments));
+  }
+
+  const response = await apiClient.postForm<
+    EstimationFlowBackendResponse<FloorPlanAnalyzeResult>
+  >(FLOORPLAN_ANALYZE_ENDPOINT, formData, { timeoutMs: AI_REQUEST_TIMEOUT_MS, signal });
+
+  if (!response.success || !response.data) {
+    throw new Error(response.error?.message || 'Floor plan analysis failed.');
+  }
+
+  const body = response.data;
+  if (!body.success) {
+    throw new Error(body.error || 'Floor plan analysis failed.');
+  }
+
+  // /api/floorplan/analyze answers with the result itself (api-specs.md); older
+  // servers wrapped it in `data`. Accept both.
+  const result = body.data ?? ((body as unknown as FloorPlanAnalyzeResult).pages ? (body as unknown as FloorPlanAnalyzeResult) : undefined);
+  if (!result) {
+    throw new Error('Floor plan analysis returned an empty response.');
+  }
+  return result;
+}
+
+/** Analyzes every plan, one request after the other, and joins the results. */
+export async function analyzeFloorPlan(
+  request: FloorPlanAnalyzeRequest,
+  signal?: AbortSignal
+): Promise<FloorPlanAnalyzeResult> {
+  const files = request.files.slice(0, MAX_FLOORPLAN_FILES);
+  if (files.length === 0) {
+    throw new Error('Attach at least one floor plan file.');
   }
 
   const titleFor = (file: File) =>
     (request.labels || []).find(label => label.fileName === file.name)?.title.trim() || '';
-
-  const analyzeOne = async (file: File): Promise<FloorPlanAnalyzeResult> => {
-    const formData = new FormData();
-    // The endpoint takes exactly one drawing per call, in `file`.
-    formData.append('file', file, file.name || 'floorplan');
-
-    const fileType = (files.length === 1 && request.fileType ? request.fileType : fileTypeFromName(file.name) || 'pdf')
-      .toLowerCase()
-      .replace('.', '');
-    formData.append('fileType', fileType);
-    const title = titleFor(file);
-    if (title) formData.append('floorPlanTitle', title);
-    if (request.projectContext) {
-      formData.append('projectContext', JSON.stringify(request.projectContext));
-    }
-    if (request.analysisOptions) {
-      formData.append('analysisOptions', JSON.stringify(request.analysisOptions));
-    }
-    if (request.supplementalDocuments && request.supplementalDocuments.length > 0) {
-      formData.append('supplementalDocuments', JSON.stringify(request.supplementalDocuments));
-    }
-
-    const response = await apiClient.postForm<
-      EstimationFlowBackendResponse<FloorPlanAnalyzeResult>
-    >(FLOORPLAN_ANALYZE_ENDPOINT, formData, { timeoutMs: AI_REQUEST_TIMEOUT_MS, signal });
-
-    if (!response.success || !response.data) {
-      throw new Error(response.error?.message || 'Floor plan analysis failed.');
-    }
-
-    const body = response.data;
-    if (!body.success) {
-      throw new Error(body.error || 'Floor plan analysis failed.');
-    }
-    // /api/floorplan/analyze answers with the result itself (api-specs.md); older
-    // servers wrapped it in `data`. Accept both.
-    const result = body.data ?? ((body as unknown as FloorPlanAnalyzeResult).pages ? (body as unknown as FloorPlanAnalyzeResult) : undefined);
-    if (!result) {
-      throw new Error('Floor plan analysis returned an empty response.');
-    }
-
-    return result;
-  };
 
   // One request per floor plan, one after the other. The API allows one request
   // a second, so there is a short pause between plans.
@@ -389,13 +382,30 @@ export async function analyzeFloorPlan(
   for (let index = 0; index < files.length; index += 1) {
     if (index > 0) await waitForMockResponse(1100, signal);
     try {
-      results.push(await analyzeOne(files[index]));
+      results.push(
+        await analyzeFloorPlanFile(
+          files[index],
+          {
+            title: titleFor(files[index]),
+            fileType: files.length === 1 ? request.fileType : undefined,
+            projectContext: request.projectContext,
+            analysisOptions: request.analysisOptions,
+            supplementalDocuments: request.supplementalDocuments,
+          },
+          signal
+        )
+      );
     } catch (error) {
       if (files.length === 1 || (error instanceof DOMException && error.name === 'AbortError')) throw error;
       const message = error instanceof Error ? error.message : 'Floor plan analysis failed.';
       throw new Error(`"${files[index].name}": ${message}`);
     }
   }
+  return combineFloorPlanResults(results);
+}
+
+/** One result as is; several joined into one (see mergeFloorPlanResults). */
+export function combineFloorPlanResults(results: FloorPlanAnalyzeResult[]): FloorPlanAnalyzeResult {
   return results.length === 1 ? results[0] : mergeFloorPlanResults(results);
 }
 
