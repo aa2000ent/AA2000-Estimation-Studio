@@ -3,6 +3,8 @@ import type { User, AIScanGroup, Project, SurveyType } from '../../App';
 import type { SurveyFormData, SystemType } from './CreateSurveyForm';
 import TORComparisonView from '../ai-sidebar/TORComparisonView';
 import SurveyWizard from '../surveys/SurveyWizard';
+import CustomerCombobox from './CustomerCombobox';
+import { getCustomerFullName, getCustomerAddressString, type BackendCustomer } from '../../services/customerService';
 import type { SaveEstimationFn } from '../../services/estimationWizardSnapshot';
 
 interface Props {
@@ -42,6 +44,23 @@ export default function EstimationHub({ user, onCreateProject, onSelectProject, 
   useEffect(() => {
     setSelectedMode(initialMode ?? null);
   }, [initialMode]);
+
+  const handleCustomerSelect = (customer: BackendCustomer) => {
+    const contactName = getCustomerFullName(customer);
+    const company = customer.company_name?.trim() || contactName;
+    const addressStr = getCustomerAddressString(customer);
+
+    setProjectDetails((prev) => ({
+      ...prev,
+      companyName: company || prev.companyName,
+      clientName: contactName || prev.clientName,
+      clientContactNumber: customer.cus_cnum ? customer.cus_cnum.replace(/\D/g, '').slice(0, 11) : prev.clientContactNumber,
+      clientEmail: customer.cus_email || prev.clientEmail,
+      locationName: addressStr || prev.locationName,
+      projectName: prev.projectName || (company ? `${company} - Security Estimation` : prev.projectName),
+    }));
+    setErrorMsg('');
+  };
 
   const updateProjectDetail = (field: keyof typeof projectDetails, value: string) => {
     setProjectDetails(previous => ({
@@ -263,9 +282,14 @@ export default function EstimationHub({ user, onCreateProject, onSelectProject, 
           {/* Inline Form Sections rendered below the progress cards when active */}
           {activeManualStep === 1 && (
             <section className="rounded-2xl border border-blue-100 bg-white p-4 dark:border-slate-800 dark:bg-[#131B2E] sm:p-6 shadow-xs animate-fade-in-up">
-              <h2 className="mb-5 text-[10px] font-bold uppercase tracking-wider text-blue-700 dark:text-blue-400">
+              <h2 className="mb-4 text-[10px] font-bold uppercase tracking-wider text-blue-700 dark:text-blue-400">
                 Step 1: Company &amp; Project Details
               </h2>
+
+              {/* Combobox for Existing Customer (auto-fill) */}
+              <div className="mb-5 p-4 rounded-xl border border-slate-200/90 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/40">
+                <CustomerCombobox onSelectCustomer={handleCustomerSelect} />
+              </div>
               <div className="grid grid-cols-1 gap-x-4 gap-y-5 sm:grid-cols-2">
                 {detailFields.map(field => (
                   <label key={field.key} className={`block min-w-0 ${field.key === 'clientEmail' ? 'sm:col-span-2' : ''}`}>

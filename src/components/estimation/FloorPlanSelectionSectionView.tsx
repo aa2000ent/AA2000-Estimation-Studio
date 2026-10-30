@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import type { Project } from '../../App';
 import {
   extractSectionRequirements,
@@ -26,6 +26,8 @@ interface PlanSection {
   unit?: string;
   confidence?: number;
   selected: boolean;
+  floorTitle?: string;
+  pageNumber?: number;
   /** Original section payload from /api/floorplan/analyze (API #2 input). */
   raw?: FloorPlanSection;
 }
@@ -220,14 +222,25 @@ interface Props {
 }
 
 function buildSections(
-  result: FloorPlanAnalyzeResult | null | undefined
+  result: FloorPlanAnalyzeResult | null | undefined,
+  floorPlans?: FloorPlanLabel[],
+  previewFiles?: File[]
 ): PlanSection[] {
   if (!result?.pages || result.pages.length === 0) {
     return [];
   }
 
   const sections: PlanSection[] = [];
-  result.pages.forEach(page => {
+  result.pages.forEach((page, pageIdx) => {
+    const floorTitle =
+      page.title?.trim() ||
+      floorPlans?.[pageIdx]?.title?.trim() ||
+      floorPlans?.find(fp => fp.fileName === result.fileInfo?.fileName)?.title?.trim() ||
+      (previewFiles?.[pageIdx] ? (floorPlans?.find(f => f.fileName === previewFiles![pageIdx].name)?.title || previewFiles![pageIdx].name.replace(/\.[^/.]+$/, '')) : '') ||
+      (page.floorNumber !== undefined && page.floorNumber > 0
+        ? `Floor ${page.floorNumber}`
+        : `Floor Plan #${page.pageNumber || pageIdx + 1}`);
+
     const groups: [string, typeof page.sections][] = [
       ['Rooms / Sections', page.sections],
       ['Corridors', page.corridors],
@@ -250,6 +263,8 @@ function buildSections(
               : undefined,
           selected: false,
           raw: item,
+          floorTitle,
+          pageNumber: page.pageNumber || pageIdx + 1,
         });
       });
     });
@@ -258,10 +273,10 @@ function buildSections(
 }
 
 const SAMPLE_SECTIONS: PlanSection[] = [
-  { id: 'lobby', name: 'Lobby', category: 'Rooms / Sections', selected: false },
-  { id: 'office', name: 'Office', category: 'Rooms / Sections', selected: false },
-  { id: 'meeting', name: 'Meeting Room', category: 'Rooms / Sections', selected: false },
-  { id: 'storage', name: 'Storage', category: 'Rooms / Sections', selected: false },
+  { id: 'lobby', name: 'Lobby', category: 'Rooms / Sections', selected: false, floorTitle: 'Ground Floor' },
+  { id: 'office', name: 'Office', category: 'Rooms / Sections', selected: false, floorTitle: 'Ground Floor' },
+  { id: 'meeting', name: 'Meeting Room', category: 'Rooms / Sections', selected: false, floorTitle: '2nd Floor' },
+  { id: 'storage', name: 'Storage', category: 'Rooms / Sections', selected: false, floorTitle: '2nd Floor' },
 ];
 
 export default function FloorPlanSelectionSectionView({
@@ -311,15 +326,58 @@ export default function FloorPlanSelectionSectionView({
   // Step 2 State — real sections extracted by /api/floorplan/analyze
   const [sections, setSections] = useState<PlanSection[]>(() =>
     result?.pages && result.pages.length > 0
-      ? buildSections(result)
+      ? buildSections(result, floorPlans, previewFiles)
       : SAMPLE_SECTIONS.map(s => ({ ...s }))
   );
+
+  const lastResultKeyRef = useRef<string | null>(
+    result?.requestId || result?.analyzedAt || (result?.pages?.length ? 'initial-result' : null)
+  );
+
+  useEffect(() => {
+    const currentKey = result?.requestId || result?.analyzedAt || (result?.pages?.length ? 'result-loaded' : null);
+    if (currentKey && currentKey !== lastResultKeyRef.current) {
+      lastResultKeyRef.current = currentKey;
+      if (result?.pages && result.pages.length > 0) {
+        setSections(buildSections(result, floorPlans, previewFiles));
+      }
+    }
+  }, [result?.requestId, result?.analyzedAt, result?.pages?.length]);
+
+  const [selectedFloorFilter, setSelectedFloorFilter] = useState<string>('all');
+
+  // Groups detected sections by floor plan
+  const floorGroups = useMemo(() => {
+    const map = new Map<string, { floorTitle: string; pageNumber?: number; items: PlanSection[] }>();
+    sections.forEach(section => {
+      const title = section.floorTitle || 'Floor Plan';
+      if (!map.has(title)) {
+        map.set(title, {
+          floorTitle: title,
+          pageNumber: section.pageNumber,
+          items: [],
+        });
+      }
+      map.get(title)!.items.push(section);
+    });
+    return Array.from(map.values());
+  }, [sections]);
+
+  const uniqueFloorTitles = useMemo(() => {
+    return floorGroups.map(g => g.floorTitle);
+  }, [floorGroups]);
+
+  const filteredFloorGroups = useMemo(() => {
+    if (selectedFloorFilter === 'all') return floorGroups;
+    return floorGroups.filter(g => g.floorTitle === selectedFloorFilter);
+  }, [floorGroups, selectedFloorFilter]);
 
   // API #2 — POST /service/estimation/ai/section/requirements
   const [reqLoading, setReqLoading] = useState(false);
   const [reqError, setReqError] = useState('');
   const [reqResult, setReqResult] = useState<SectionRequirementsResult | null>(null);
   const [analyzedSectionId, setAnalyzedSectionId] = useState<string | null>(null);
+  const [analyzedPayload, setAnalyzedPayload] = useState<FloorPlanSection | null>(null);
 
   // Save-to-database (wizard client details + system selection, in a modal)
   const [showSaveModal, setShowSaveModal] = useState(false);
@@ -336,11 +394,58 @@ export default function FloorPlanSelectionSectionView({
     return () => URL.revokeObjectURL(summaryPdfUrl);
   }, [summaryPdfUrl]);
 
-  // Single-select: only one section may be analyzed at a time.
+  // Toggle single section (supports multi-selection / checking list)
   const toggleSection = (id: string) => {
     if (reqLoading) return;
     setSections(prev =>
-      prev.map(s => ({ ...s, selected: s.id === id ? !s.selected : false }))
+      prev.map(s => (s.id === id ? { ...s, selected: !s.selected } : s))
+    );
+    setReqError('');
+  };
+
+  // Sections currently visible according to floor filter
+  const visibleSections = useMemo(() => {
+    if (selectedFloorFilter === 'all') return sections;
+    return sections.filter(s => (s.floorTitle || 'Floor Plan') === selectedFloorFilter);
+  }, [sections, selectedFloorFilter]);
+
+  const isAllChecked = useMemo(() => {
+    return visibleSections.length > 0 && visibleSections.every(s => s.selected);
+  }, [visibleSections]);
+
+  // Toggle all sections in the current view
+  const handleToggleAll = (e?: React.MouseEvent) => {
+    e?.preventDefault();
+    e?.stopPropagation();
+    if (reqLoading || sections.length === 0) return;
+    const shouldSelect = !isAllChecked;
+
+    setSections(prev =>
+      prev.map(s => {
+        if (selectedFloorFilter === 'all' || (s.floorTitle || 'Floor Plan') === selectedFloorFilter) {
+          return { ...s, selected: shouldSelect };
+        }
+        return s;
+      })
+    );
+    setReqError('');
+  };
+
+  // Toggle all sections in a specific floor group
+  const handleToggleFloorGroup = (floorTitle: string, e?: React.MouseEvent) => {
+    e?.preventDefault();
+    e?.stopPropagation();
+    if (reqLoading) return;
+    const groupSections = sections.filter(s => (s.floorTitle || 'Floor Plan') === floorTitle);
+    const allInGroupSelected = groupSections.length > 0 && groupSections.every(s => s.selected);
+    const shouldSelect = !allInGroupSelected;
+
+    setSections(prev =>
+      prev.map(s =>
+        (s.floorTitle || 'Floor Plan') === floorTitle
+          ? { ...s, selected: shouldSelect }
+          : s
+      )
     );
     setReqError('');
   };
@@ -349,12 +454,54 @@ export default function FloorPlanSelectionSectionView({
   const selectedCount = selectedSections.length;
   const isSample = !result;
 
-  const handleAnalyzeSections = async () => {
-    const section = selectedSections[0];
-    if (!section || selectedCount !== 1 || reqLoading) return;
+  const totalSelectedArea = useMemo(() => {
+    const sum = selectedSections.reduce((acc, s) => acc + (s.area || 0), 0);
+    return Math.round(sum * 10) / 10;
+  }, [selectedSections]);
 
-    // Already analyzed this section — reopen the results without a new call.
-    if (reqResult && analyzedSectionId === section.id) {
+  const handleAnalyzeSections = async () => {
+    if (selectedCount === 0 || reqLoading) return;
+
+    let targetSection: FloorPlanSection;
+    let sectionCacheKey: string;
+
+    if (selectedSections.length === 1) {
+      const single = selectedSections[0];
+      targetSection = single.raw ?? {
+        sectionId: single.id,
+        type: 'room',
+        label: single.name,
+        area: single.area,
+        unit: single.unit,
+      };
+      sectionCacheKey = single.id;
+    } else {
+      const totalArea = selectedSections.reduce((sum, s) => sum + (s.area || 0), 0);
+      const unit = selectedSections[0]?.unit || 'sqm';
+      const distinctFloors = Array.from(
+        new Set(selectedSections.map(s => s.floorTitle).filter(Boolean))
+      );
+      const isAll = selectedSections.length === sections.length;
+      const combinedLabel = isAll
+        ? `All Detected Sections (${selectedSections.length} areas)`
+        : `${selectedSections.length} Selected Areas (${selectedSections.map(s => s.name).slice(0, 3).join(', ')}${selectedSections.length > 3 ? '…' : ''})`;
+
+      targetSection = {
+        sectionId: `combined-${selectedSections.map(s => s.id).join('-').slice(0, 50)}`,
+        type: 'room',
+        subType: distinctFloors.length === 1 ? `Multi-room (${distinctFloors[0]})` : 'Entire Facility',
+        label: combinedLabel,
+        area: totalArea > 0 ? Math.round(totalArea * 10) / 10 : undefined,
+        unit,
+        annotations: selectedSections.map(
+          s => `${s.floorTitle ? `[${s.floorTitle}] ` : ''}${s.name}${s.area ? ` (${s.area} ${s.unit || 'sqm'})` : ''}`
+        ),
+      };
+      sectionCacheKey = targetSection.sectionId;
+    }
+
+    // Already analyzed this exact section/set — reopen results without extra call
+    if (reqResult && analyzedSectionId === sectionCacheKey) {
       setStep(3);
       return;
     }
@@ -370,15 +517,7 @@ export default function FloorPlanSelectionSectionView({
       ).size;
 
       const requirements = await extractSectionRequirements({
-        section: section.raw ?? {
-          sectionId: section.id,
-          type: 'room',
-          label: section.name,
-          area: section.area,
-          unit: section.unit,
-        },
-        // Scopes the endpoint's recommendation: systemTypes is a strict scope
-        // (prompt + result filter), floors/buildingType tailor quantities.
+        section: targetSection,
         floorPlans,
         projectContext: {
           systemTypes: activeSystemTypes,
@@ -394,7 +533,8 @@ export default function FloorPlanSelectionSectionView({
         },
       });
       setReqResult(requirements);
-      setAnalyzedSectionId(section.id);
+      setAnalyzedSectionId(sectionCacheKey);
+      setAnalyzedPayload(targetSection);
 
       setStep(3);
     } catch (err) {
@@ -413,8 +553,16 @@ export default function FloorPlanSelectionSectionView({
       toast.info('Select at least one additional system.');
       return;
     }
-    const section = sections.find(item => item.id === analyzedSectionId);
-    if (!section || !reqResult) {
+    const targetSection =
+      analyzedPayload ||
+      sections.find(item => item.id === analyzedSectionId)?.raw ||
+      (analyzedSectionId ? {
+        sectionId: analyzedSectionId,
+        type: 'room',
+        label: 'Selected section',
+      } : null);
+
+    if (!targetSection || !reqResult) {
       toast.error('Section requirements are not available. Analyze the section again.');
       return;
     }
@@ -423,13 +571,7 @@ export default function FloorPlanSelectionSectionView({
     setReqError('');
     try {
       const updatedRequirements = await extractSectionRequirements({
-        section: section.raw ?? {
-          sectionId: section.id,
-          type: 'room',
-          label: section.name,
-          area: section.area,
-          unit: section.unit,
-        },
+        section: targetSection,
         floorPlans,
         projectContext: { systemTypes: nextSystems },
         analysisOptions: {
@@ -504,12 +646,28 @@ export default function FloorPlanSelectionSectionView({
 
   // Section that produced the current requirements result (step 3+)
   const analyzedSection = sections.find(s => s.id === analyzedSectionId);
+  const distinctFloors = Array.from(
+    new Set(selectedSections.map(s => s.floorTitle).filter(Boolean))
+  );
+  const floorBadge = distinctFloors.length > 1
+    ? `🏢 ${distinctFloors.length} Floors`
+    : distinctFloors.length === 1
+      ? `🏢 ${distinctFloors[0]}`
+      : analyzedSection?.floorTitle
+        ? `🏢 ${analyzedSection.floorTitle}`
+        : undefined;
+
   const analyzedLabel =
-    reqResult?.sectionLabel || analyzedSection?.name || selectedSections[0]?.name || 'Selected section';
-  const analyzedArea = reqResult?.area ?? analyzedSection?.area;
-  const analyzedUnit = reqResult?.unit || analyzedSection?.unit || 'sqm';
+    reqResult?.sectionLabel ||
+    analyzedPayload?.label ||
+    analyzedSection?.name ||
+    (selectedSections.length > 1 ? `${selectedSections.length} Selected Areas` : selectedSections[0]?.name) ||
+    'Selected section';
+  const analyzedArea = reqResult?.area ?? analyzedPayload?.area ?? analyzedSection?.area;
+  const analyzedUnit = reqResult?.unit || analyzedPayload?.unit || analyzedSection?.unit || 'sqm';
   const analyzedMeta = [
-    reqResult?.sectionType || analyzedSection?.category,
+    reqResult?.sectionType || analyzedPayload?.subType || analyzedSection?.category || (selectedSections.length > 1 ? `${selectedSections.length} areas` : undefined),
+    floorBadge,
     analyzedArea !== undefined ? `${Math.round(analyzedArea * 10) / 10} ${analyzedUnit}` : undefined,
     reqResult?.confidenceScore !== undefined
       ? `${Math.round(reqResult.confidenceScore)}% confidence`
@@ -531,7 +689,7 @@ export default function FloorPlanSelectionSectionView({
   };
 
   return (
-    <div className="max-w-4xl mx-auto p-6 space-y-6">
+    <div className="w-full max-w-[1800px] mx-auto px-2 sm:px-4 lg:px-6 py-4 space-y-6">
       {/* ── STEP 2: SELECT FLOOR-PLAN SECTIONS ── */}
       {step === 2 && (
         <div className="space-y-6 animate-fade-in-up">
@@ -577,23 +735,79 @@ export default function FloorPlanSelectionSectionView({
             </div>
           )}
 
-          {/* Stepper Progress Bar */}
-          <div className="flex items-center gap-4 text-xs font-semibold text-slate-400 dark:text-slate-500 pt-1">
-            <span>1. Documents</span>
-            <span className="px-3.5 py-1 rounded-full bg-blue-100 dark:bg-blue-950 text-blue-600 dark:text-blue-400 font-bold border border-blue-200 dark:border-blue-900">
-              2. Select areas
-            </span>
-            <span>3. Review</span>
-            <span>4. Summary</span>
+          {/* Stepper Progress Bar & Unified Floor Selector at the Top (Position X) */}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-1 pb-1">
+            <div className="flex items-center gap-4 text-xs font-semibold text-slate-400 dark:text-slate-500">
+              <span>1. Documents</span>
+              <span className="px-3.5 py-1 rounded-full bg-blue-100 dark:bg-blue-950 text-blue-600 dark:text-blue-400 font-bold border border-blue-200 dark:border-blue-900">
+                2. Select areas
+              </span>
+              <span>3. Review</span>
+              <span>4. Summary</span>
+            </div>
+
+            {/* Floor Selection Tabs at the Top */}
+            {previewFiles.length > 1 && (
+              <div className="flex flex-wrap items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setSelectedFloorFilter('all')}
+                  className={`rounded-full px-3.5 py-1.5 text-xs font-bold cursor-pointer transition-all ${
+                    selectedFloorFilter === 'all'
+                      ? 'bg-blue-600 text-white shadow-xs'
+                      : 'bg-white text-slate-600 hover:bg-slate-100 dark:bg-[#131B2E] dark:text-slate-300 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
+                  }`}
+                >
+                  All Floors ({sections.length})
+                </button>
+                {previewFiles.map((file, index) => {
+                  const title = titleFor(file);
+                  const group = floorGroups.find(
+                    g => g.floorTitle.toLowerCase() === title.toLowerCase() || g.pageNumber === index + 1
+                  );
+                  const count = group?.items.length ?? sections.filter(s => s.pageNumber === index + 1).length;
+                  const isSelected = selectedFloorFilter === title;
+
+                  return (
+                    <button
+                      key={`${file.name}-${index}`}
+                      type="button"
+                      onClick={() => {
+                        setPreviewIndex(index);
+                        setSelectedFloorFilter(title);
+                      }}
+                      className={`rounded-full px-3.5 py-1.5 text-xs font-bold cursor-pointer transition-all flex items-center gap-1.5 ${
+                        isSelected
+                          ? 'bg-blue-600 text-white shadow-xs'
+                          : 'bg-white text-slate-600 hover:bg-slate-100 dark:bg-[#131B2E] dark:text-slate-300 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
+                      }`}
+                    >
+                      <span>{title}</span>
+                      {count > 0 && (
+                        <span
+                          className={`text-[10px] px-1.5 py-0.2 rounded-full font-extrabold ${
+                            isSelected
+                              ? 'bg-white/25 text-white'
+                              : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-300'
+                          }`}
+                        >
+                          {count}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
-          {/* 2-Column Layout: Blueprint Box Left, Checkbox List Right */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* 2-Column Layout: Blueprint Box Left, Checkbox List Right (Maximized Layout) */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
             {/* Blueprint Diagram Box */}
-            <div className="bg-white dark:bg-[#131B2E] border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-xs flex flex-col justify-between space-y-4">
+            <div className="lg:col-span-7 bg-white dark:bg-[#131B2E] border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-xs flex flex-col justify-between space-y-4">
               <div>
                 <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                  {result?.fileInfo?.fileName || 'Office-floor-plan.pdf'}
+                  {activeFile ? titleFor(activeFile) : result?.fileInfo?.fileName || 'Floor Plan'}
                 </h3>
                 <p className="text-[11px] text-slate-400 font-medium">
                   {isSample
@@ -603,47 +817,31 @@ export default function FloorPlanSelectionSectionView({
               </div>
 
               {activeFile && uploadedFileUrl ? (
-                <div className="my-2 overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 dark:border-slate-700 dark:bg-slate-900">
-                  {previewFiles.length > 1 && (
-                    <div className="flex flex-wrap gap-2 border-b border-slate-200 p-2 dark:border-slate-700">
-                      {previewFiles.map((file, index) => (
-                        <button
-                          key={`${file.name}-${index}`}
-                          type="button"
-                          onClick={() => setPreviewIndex(index)}
-                          className={`rounded-full px-3 py-1 text-[10px] font-bold cursor-pointer ${
-                            index === previewIndex
-                              ? 'bg-blue-600 text-white'
-                              : 'bg-white text-slate-600 dark:bg-slate-800 dark:text-slate-300'
-                          }`}
-                        >
-                          {titleFor(file)}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                  {/\.(png|jpe?g)$/i.test(activeFile.name) ? (
-                    <img
-                      src={uploadedFileUrl}
-                      alt={`Preview of ${activeFile.name}`}
-                      className="max-h-[420px] min-h-64 w-full bg-slate-950 object-contain"
-                    />
-                  ) : (
-                    <iframe
-                      src={`${uploadedFileUrl}#toolbar=0&navpanes=0`}
-                      title={`Preview of ${activeFile.name}`}
-                      className="h-[420px] w-full bg-white"
-                    />
-                  )}
-                  <div className="flex items-center justify-between gap-3 border-t border-slate-200 px-3 py-2 dark:border-slate-700">
-                    <span className="truncate text-[10px] font-semibold text-slate-500 dark:text-slate-400">
-                      Uploaded document preview
+                <div className="my-2 overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 dark:border-slate-700 dark:bg-slate-900 flex flex-col flex-1">
+                  <div className="flex-1 min-h-[500px] max-h-[680px] flex items-center justify-center p-3 bg-slate-950/90 dark:bg-slate-950 overflow-hidden rounded-xl">
+                    {/\.(png|jpe?g|webp|gif)$/i.test(activeFile.name) ? (
+                      <img
+                        src={uploadedFileUrl}
+                        alt={`Preview of ${activeFile.name}`}
+                        className="max-h-[640px] max-w-full mx-auto my-auto object-contain block"
+                      />
+                    ) : (
+                      <iframe
+                        src={`${uploadedFileUrl}#toolbar=0&navpanes=0`}
+                        title={`Preview of ${activeFile.name}`}
+                        className="h-[640px] w-full bg-white mx-auto block rounded-lg border-0"
+                      />
+                    )}
+                  </div>
+                  <div className="flex items-center justify-between gap-3 border-t border-slate-200 px-4 py-2.5 dark:border-slate-700 bg-white dark:bg-[#131B2E]">
+                    <span className="truncate text-xs font-semibold text-slate-500 dark:text-slate-400">
+                      Uploaded document preview ({activeFile.name})
                     </span>
                     <a
                       href={uploadedFileUrl}
                       target="_blank"
                       rel="noreferrer"
-                      className="shrink-0 text-[10px] font-bold text-blue-600 hover:underline dark:text-blue-400"
+                      className="shrink-0 text-xs font-bold text-blue-600 hover:underline dark:text-blue-400"
                     >
                       Open file
                     </a>
@@ -689,61 +887,169 @@ export default function FloorPlanSelectionSectionView({
             </div>
 
             {/* Detected Sections Checkbox List Right */}
-            <div className="bg-white dark:bg-[#131B2E] border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-xs flex flex-col justify-between space-y-6">
+            <div className="lg:col-span-5 bg-white dark:bg-[#131B2E] border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-xs flex flex-col justify-between space-y-4">
               <div>
-                <h3 className="text-lg font-black text-slate-900 dark:text-white mb-1">
-                  Detected sections
-                </h3>
-                <p className="text-xs font-bold text-slate-400 dark:text-slate-500 mb-6">
-                  {selectedCount} of {sections.length} selected — one at a time
-                </p>
-
-                {/* Radio Items (single selection) */}
-                <div className="space-y-4 max-h-[360px] overflow-y-auto pr-1">
-                  {sections.map(section => (
-                    <label
-                      key={section.id}
-                      onClick={() => toggleSection(section.id)}
-                      className="flex items-start gap-3 cursor-pointer select-none group"
-                    >
-                      <input
-                        type="radio"
-                        name="floorplan-section"
-                        checked={section.selected}
-                        onChange={() => {}}
-                        disabled={reqLoading}
-                        className="mt-0.5 w-4 h-4 rounded text-blue-600 border-slate-300 focus:ring-blue-500 cursor-pointer"
-                      />
-                      <span className="min-w-0 flex-1">
-                        <span
-                          className={`text-sm font-bold transition-colors block ${
-                            section.selected
-                              ? 'text-blue-600 dark:text-blue-400 font-extrabold'
-                              : 'text-slate-700 dark:text-slate-300 group-hover:text-slate-900 dark:group-hover:text-white'
-                          }`}
-                        >
-                          {section.name}
-                        </span>
-                        <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500">
-                          {section.category}
-                          {section.area !== undefined
-                            ? ` · ${Math.round(section.area * 10) / 10} ${section.unit || 'sqm'}`
-                            : ''}
-                          {section.confidence !== undefined ? ` · ${section.confidence}%` : ''}
-                        </span>
+                <div className="flex items-center justify-between gap-2 mb-1">
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-lg font-black text-slate-900 dark:text-white">
+                      Detected sections
+                    </h3>
+                    {uniqueFloorTitles.length > 1 && (
+                      <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/80 px-2 py-0.5 rounded-full border border-blue-200 dark:border-blue-900">
+                        {uniqueFloorTitles.length} floor plans
                       </span>
-                    </label>
+                    )}
+                  </div>
+
+                  {sections.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleToggleAll}
+                      disabled={reqLoading}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center gap-2 border select-none ${
+                        isAllChecked
+                          ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                          : 'bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/60 border-blue-200/80 dark:border-blue-800/80'
+                      }`}
+                      title={isAllChecked ? 'Deselect all' : 'Check all'}
+                    >
+                      <span
+                        className={`w-3.5 h-3.5 rounded flex items-center justify-center border text-[10px] font-black transition-colors ${
+                          isAllChecked
+                            ? 'bg-white text-blue-600 border-white'
+                            : 'bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-600 text-transparent'
+                        }`}
+                      >
+                        ✓
+                      </span>
+                      <span>{isAllChecked ? 'Deselect All' : 'Check All'}</span>
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-between text-xs font-bold text-slate-400 dark:text-slate-500 mb-3">
+                  <span>
+                    {selectedFloorFilter === 'all'
+                      ? (selectedCount === sections.length && sections.length > 0
+                          ? `All ${sections.length} sections selected${totalSelectedArea > 0 ? ` (${totalSelectedArea} ${sections[0]?.unit || 'sqm'})` : ''}`
+                          : `${selectedCount} of ${sections.length} selected${totalSelectedArea > 0 && selectedCount > 0 ? ` (${totalSelectedArea} ${sections[0]?.unit || 'sqm'})` : ''}`)
+                      : `Showing ${selectedFloorFilter} (${filteredFloorGroups.reduce((acc, g) => acc + g.items.length, 0)} areas) · ${selectedCount} selected total`}
+                  </span>
+                  {selectedFloorFilter !== 'all' && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedFloorFilter('all')}
+                      className="text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
+                    >
+                      Show all floors
+                    </button>
+                  )}
+                </div>
+
+
+
+                {/* Checkbox Items Grouped by Floor Plan */}
+                <div className="space-y-4 max-h-[560px] overflow-y-auto pr-1">
+                  {filteredFloorGroups.map((group) => (
+                    <div key={group.floorTitle} className="space-y-2">
+                      {/* Floor Plan Category Header with Floor Select All Toggle */}
+                      <div className="flex items-center justify-between px-3 py-1.5 rounded-xl bg-slate-100/90 dark:bg-slate-800/70 border border-slate-200/80 dark:border-slate-700/80">
+                        <button
+                          type="button"
+                          onClick={(e) => handleToggleFloorGroup(group.floorTitle, e)}
+                          disabled={reqLoading}
+                          className="flex items-center gap-2 min-w-0 cursor-pointer select-none text-left"
+                          title={`Toggle all in ${group.floorTitle}`}
+                        >
+                          <span
+                            className={`w-3.5 h-3.5 rounded flex items-center justify-center border text-[10px] font-black transition-colors shrink-0 ${
+                              group.items.length > 0 && group.items.every(s => s.selected)
+                                ? 'bg-blue-600 text-white border-blue-600'
+                                : 'bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-600 text-transparent'
+                            }`}
+                          >
+                            ✓
+                          </span>
+                          <span className="text-xs">🏢</span>
+                          <span className="text-xs font-bold text-slate-800 dark:text-slate-100 truncate">
+                            {group.floorTitle}
+                          </span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => handleToggleFloorGroup(group.floorTitle, e)}
+                          disabled={reqLoading}
+                          className="text-[10px] font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/80 px-2 py-0.5 rounded-full border border-blue-200/60 dark:border-blue-900/60 shrink-0 hover:bg-blue-100 dark:hover:bg-blue-900/80 cursor-pointer transition-colors"
+                          title={`Toggle all in ${group.floorTitle}`}
+                        >
+                          {group.items.filter(s => s.selected).length}/{group.items.length} selected
+                        </button>
+                      </div>
+
+                      {/* Sections under this Floor Plan */}
+                      <div className="space-y-1.5 pl-1.5">
+                        {group.items.map((section) => (
+                          <div
+                            key={section.id}
+                            onClick={() => {
+                              toggleSection(section.id);
+                              if (section.pageNumber && section.pageNumber <= previewFiles.length) {
+                                setPreviewIndex(section.pageNumber - 1);
+                              }
+                            }}
+                            className={`flex items-start gap-3 p-2.5 rounded-xl cursor-pointer select-none group transition-colors ${
+                              section.selected
+                                ? 'bg-blue-50/80 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/80'
+                                : 'hover:bg-slate-50 dark:hover:bg-slate-800/40 border border-transparent'
+                            }`}
+                          >
+                            <span
+                              className={`mt-0.5 w-4 h-4 rounded flex items-center justify-center border text-[11px] font-black transition-colors shrink-0 ${
+                                section.selected
+                                  ? 'bg-blue-600 text-white border-blue-600'
+                                  : 'bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-600 text-transparent group-hover:border-blue-400'
+                              }`}
+                            >
+                              ✓
+                            </span>
+                            <div className="min-w-0 flex-1">
+                              <span
+                                className={`text-sm font-bold transition-colors block ${
+                                  section.selected
+                                    ? 'text-blue-600 dark:text-blue-400 font-extrabold'
+                                    : 'text-slate-700 dark:text-slate-300 group-hover:text-slate-900 dark:group-hover:text-white'
+                                }`}
+                              >
+                                {section.name}
+                              </span>
+                              <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 flex items-center gap-1.5 mt-0.5 flex-wrap">
+                                <span className="px-1.5 py-0.2 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[9px] font-bold">
+                                  {section.floorTitle}
+                                </span>
+                                <span>•</span>
+                                <span>{section.category}</span>
+                                {section.area !== undefined
+                                  ? ` · ${Math.round(section.area * 10) / 10} ${section.unit || 'sqm'}`
+                                  : ''}
+                                {section.confidence !== undefined ? ` · ${section.confidence}%` : ''}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
                   ))}
+
                   {sections.length === 0 && (
-                    <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                    <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 text-center py-6">
                       No sections detected. Try another floor plan.
                     </p>
                   )}
                 </div>
               </div>
 
-              <p className="text-xs font-medium text-slate-400 dark:text-slate-500 pt-4 border-t border-slate-100 dark:border-slate-800">
-                Select one section on the plan or in this list — only one can be analyzed at a time.
+              <p className="text-xs font-medium text-slate-400 dark:text-slate-500 pt-3 border-t border-slate-100 dark:border-slate-800">
+                Select sections to include — check individual areas, select whole floors, or Check All to estimate equipment and labor across the project.
               </p>
             </div>
           </div>
@@ -761,14 +1067,18 @@ export default function FloorPlanSelectionSectionView({
             <button
               type="button"
               onClick={handleAnalyzeSections}
-              disabled={selectedCount !== 1 || reqLoading}
+              disabled={selectedCount === 0 || reqLoading}
               className={`px-6 py-2.5 rounded-full text-xs font-bold transition-all shadow-md ${
-                selectedCount === 1 && !reqLoading
+                selectedCount > 0 && !reqLoading
                   ? 'bg-blue-600 hover:bg-blue-700 text-white cursor-pointer shadow-blue-500/20'
                   : 'bg-slate-200 dark:bg-slate-800 text-slate-400 dark:text-slate-600 cursor-not-allowed shadow-none'
               }`}
             >
-              {reqLoading ? 'Extracting Requirements…' : 'Analyze Section'}
+              {reqLoading
+                ? 'Extracting Requirements…'
+                : selectedCount > 1
+                  ? `Analyze ${selectedCount} Sections`
+                  : 'Analyze Section'}
             </button>
           </div>
 
@@ -995,6 +1305,52 @@ export default function FloorPlanSelectionSectionView({
               )}
             </div>
             {pdfError && !summaryPdfUrl && <p role="alert" className="text-xs font-semibold text-red-600 dark:text-red-400">{pdfError}</p>}
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL LOADING ANIMATION (Transparent Grey Overlay) ── */}
+      {reqLoading && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Analyzing Section Requirements"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 dark:bg-black/75 backdrop-blur-xs p-4 select-none"
+        >
+          <div className="bg-white dark:bg-[#131B2E] border border-slate-200 dark:border-slate-800 rounded-3xl p-8 max-w-sm sm:max-w-md w-full shadow-2xl flex flex-col items-center text-center space-y-5 animate-scale-in">
+            {/* Multi-ring Spinner Animation */}
+            <div className="relative flex items-center justify-center w-20 h-20">
+              <div className="absolute inset-0 rounded-full bg-blue-500/20 dark:bg-blue-500/30 animate-ping opacity-60" />
+              <div className="w-16 h-16 rounded-full border-4 border-slate-100 dark:border-slate-800 border-t-blue-600 dark:border-t-blue-400 border-r-indigo-500 animate-spin" />
+              <div className="absolute inset-0 flex items-center justify-center text-blue-600 dark:text-blue-400">
+                <svg className="w-7 h-7 animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09Z" />
+                </svg>
+              </div>
+            </div>
+
+            {/* Title & Status */}
+            <div className="space-y-1.5">
+              <h3 className="text-lg font-black text-slate-900 dark:text-white tracking-tight">
+                {selectedCount > 1
+                  ? `Analyzing ${selectedCount} Sections...`
+                  : 'Analyzing Section Requirements...'}
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium leading-relaxed max-w-xs mx-auto">
+                Extracting equipment specs, material quantities, labor hours, and building code compliance.
+              </p>
+            </div>
+
+            {/* Animated Loading Bar */}
+            <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-1.5 overflow-hidden relative">
+              <div className="h-full bg-gradient-to-r from-blue-600 via-indigo-500 to-blue-600 rounded-full w-full animate-pulse" />
+            </div>
+
+            {/* Informative Wait Notice */}
+            <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 flex items-center gap-1.5">
+              <span>⏳</span>
+              <span>Please wait while the AI models process your request</span>
+            </p>
           </div>
         </div>
       )}

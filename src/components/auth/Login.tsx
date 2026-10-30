@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { User } from "../../App";
 import logo from "../../images/aa2000 logo.png";
-import { loginWithPin } from "../../services/authService";
+import { loginWithPassword } from "../../services/authService";
 
 interface Props {
   onLogin: (user: User) => void;
@@ -80,18 +80,17 @@ const BRAND = {
 
 export default function Login({ onLogin }: Props) {
   const [employeeId, setEmployeeId] = useState("");
-  const [pin, setPin] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
-  const [showPin, setShowPin] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<{
     employeeId?: boolean;
-    pin?: boolean;
+    password?: boolean;
   }>({});
   const [loading, setLoading] = useState(false);
 
   const handleEmployeeIdChange = (value: string) => {
-    const upper = value.toUpperCase();
-    setEmployeeId(upper);
+    setEmployeeId(value);
     setFieldErrors((prev) => ({ ...prev, employeeId: false }));
     setError("");
   };
@@ -99,16 +98,16 @@ export default function Login({ onLogin }: Props) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
-    const errors: { employeeId?: boolean; pin?: boolean } = {};
+    const errors: { employeeId?: boolean; password?: boolean } = {};
     if (!employeeId.trim()) errors.employeeId = true;
-    if (!pin.trim()) errors.pin = true;
+    if (!password) errors.password = true;
     setFieldErrors(errors);
     if (Object.keys(errors).length > 0) return;
 
     setLoading(true);
     try {
-      // Authenticate directly against the database via backend PIN service
-      const res = await loginWithPin(employeeId, pin);
+      // Authenticate directly against the database via backend password verification
+      const res = await loginWithPassword(employeeId, password);
 
       const fullName = res.employee
         ? `${res.employee.Emp_fname || ""} ${res.employee.Emp_lname || ""}`.trim()
@@ -123,14 +122,14 @@ export default function Login({ onLogin }: Props) {
           : "ACCOUNTING";
 
       onLogin({
-        id: (res.employee?.Emp_IDno || employeeId).toLowerCase(),
+        id: (res.employee?.Emp_IDno || res.account?.username || employeeId).toLowerCase(),
         fullName: fullName || employeeId,
-        employeeId: res.employee?.Emp_IDno || employeeId,
+        employeeId: res.employee?.Emp_IDno || res.account?.username || employeeId,
         role: mappedRole,
       });
     } catch (err: any) {
       setError(
-        err?.message || "Invalid Employee ID / Username or PIN. Please check your credentials."
+        err?.message || "Invalid Username/Employee ID or Password. Please check your credentials."
       );
     } finally {
       setLoading(false);
@@ -269,7 +268,7 @@ export default function Login({ onLogin }: Props) {
               Welcome back
             </h2>
             <p className="text-sm text-slate-400 font-medium">
-              Sign in with your username and PIN
+              Sign in with your username and password
             </p>
           </div>
 
@@ -305,7 +304,7 @@ export default function Login({ onLogin }: Props) {
                     paddingLeft: "2.75rem",
                     ["--tw-ring-color" as string]: `${BRAND.primary}40`,
                   }}
-                  autoComplete="off"
+                  autoComplete="username"
                 />
               </div>
               {fieldErrors.employeeId && (
@@ -317,7 +316,7 @@ export default function Login({ onLogin }: Props) {
 
             <div>
               <label className="block text-[10px] font-bold mb-1.5 uppercase tracking-wider text-slate-400">
-                PIN
+                Password
               </label>
               <div className="relative">
                 <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400">
@@ -336,29 +335,29 @@ export default function Login({ onLogin }: Props) {
                   </svg>
                 </span>
                 <input
-                  type={showPin ? "text" : "password"}
-                  value={pin}
+                  type={showPassword ? "text" : "password"}
+                  value={password}
                   onChange={(e) => {
-                    setPin(e.target.value);
-                    setFieldErrors((prev) => ({ ...prev, pin: false }));
+                    setPassword(e.target.value);
+                    setFieldErrors((prev) => ({ ...prev, password: false }));
                     setError("");
                   }}
-                  placeholder="Enter PIN"
+                  placeholder="Enter password"
                   className="search-input w-full pl-11 pr-10 py-3.5 rounded-xl text-sm font-medium bg-slate-50 border outline-none text-slate-700 focus:bg-white focus:ring-2 transition-all"
                   style={{
-                    borderColor: fieldErrors.pin ? "#EF4444" : "#E2E8F0",
+                    borderColor: fieldErrors.password ? "#EF4444" : "#E2E8F0",
                     paddingLeft: "2.75rem",
-                    letterSpacing: (pin && !showPin) ? "0.25em" : "normal",
                     ["--tw-ring-color" as string]: `${BRAND.primary}40`,
                   }}
+                  autoComplete="current-password"
                 />
                 <button
                   type="button"
-                  onClick={() => setShowPin((v) => !v)}
+                  onClick={() => setShowPassword((v) => !v)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 transition-colors"
-                  aria-label={showPin ? "Hide PIN" : "Show PIN"}
+                  aria-label={showPassword ? "Hide password" : "Show password"}
                 >
-                  {showPin ? (
+                  {showPassword ? (
                     <svg
                       className="w-4 h-4"
                       fill="none"
@@ -394,9 +393,9 @@ export default function Login({ onLogin }: Props) {
                   )}
                 </button>
               </div>
-              {fieldErrors.pin && (
+              {fieldErrors.password && (
                 <p className="text-[10px] text-red-500 font-bold mt-1">
-                  PIN is required
+                  Password is required
                 </p>
               )}
             </div>
