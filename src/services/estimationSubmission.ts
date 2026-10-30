@@ -9,6 +9,7 @@ import type {
   EstimationAdditionalFeeEntry,
 } from '../types';
 import { restoreSessionToken, getSessionAccountId } from './authService';
+import { computeEstimationTotals, laborLineTotal, materialLineTotal } from './estimationStats';
 
 const API_BASE: string = (
   import.meta.env.VITE_API_BASE_URL || 'https://aa2000backend-server.onrender.com'
@@ -111,7 +112,6 @@ export function sweepSubmittedProjects(): string[] {
   return submitted.map((p) => String(p.id));
 }
 
-const num = (v: unknown) => (typeof v === 'number' && !isNaN(v) ? v : 0);
 
 function readProjectSurveys(projectId: string) {
   try {
@@ -131,11 +131,8 @@ function toDbStatus(hubStatus: string): string {
 
 export function buildEstimationPayload(input: EstimationSubmissionInput, estimationFileName?: string) {
   const { project, user, manpower, consumables, fees } = input;
-  const materialsTotal = consumables.reduce((s, c) => s + num(c.totalPrice), 0);
-  const laborTotal = manpower.reduce((s, m) => s + num(m.totalCost), 0);
-  const feesTotal = fees.reduce((s, f) => s + num(f.amount), 0);
-  const subtotal = materialsTotal + laborTotal + feesTotal;
-  const grandTotal = +(subtotal * 1.12).toFixed(2);
+  const totals = computeEstimationTotals(manpower, consumables, fees);
+  const { grandTotal } = totals;
   const now = new Date().toISOString();
 
   // JSON round-trip drops `undefined` (unitPrice/amount start as undefined) and guarantees plain JSON,
@@ -148,8 +145,8 @@ export function buildEstimationPayload(input: EstimationSubmissionInput, estimat
     clientName: project.clientName,
     locationName: project.locationName,
     hubProjectId: project.id,
-    manpower,
-    consumables,
+    manpower: manpower.map(row => ({ ...row, totalCost: laborLineTotal(row) })),
+    consumables: consumables.map(row => ({ ...row, totalPrice: materialLineTotal(row) })),
     logistics: fees,
     scopeOfWorks: input.scopeOfWorks,
     siteConstraints: {
@@ -161,7 +158,7 @@ export function buildEstimationPayload(input: EstimationSubmissionInput, estimat
     discrepancyJustifications: input.discrepancyJustifications ?? null,
     aiBaseline: input.aiBaseline ?? null,
     aiQuotation: input.aiQuotation ?? null,
-    totals: { materialsTotal, laborTotal, feesTotal, subtotal, vat: +(subtotal * 0.12).toFixed(2), grandTotal },
+    totals,
     surveys: readProjectSurveys(project.id),
     submittedBy: user ? { id: user.id, fullName: user.fullName } : null,
     submittedAt: now,

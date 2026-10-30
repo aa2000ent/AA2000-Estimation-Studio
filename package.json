@@ -9,6 +9,7 @@
     "build:pricelist": "node scripts/buildPricelist.js",
     "build": "npm run build:pricelist && vite build",
     "lint": "tsc --noEmit",
+    "test": "node scripts/runTests.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

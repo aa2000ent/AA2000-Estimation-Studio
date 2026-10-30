@@ -1,7 +1,6 @@
+import EstimationReportPreview from './EstimationReportPreview';
 import React from 'react';
-import type { Project } from '../../App';
-import type { EstimationManpowerEntry, EstimationConsumableEntry, EstimationAdditionalFeeEntry } from '../../types';
-import type { FloorPlanEstimation } from '../../services/geminiFloorPlanService';
+import type { EstimationConsumableEntry } from '../../types';
 
 export interface ScopeOfWorkEntry {
   id: string;
@@ -1171,9 +1170,40 @@ export default function QuotationModal({
               This proposal will be regarded as an order confirmation upon acceptance. Kindly acknowledge with your signature accompanied by a Purchase Order and/or company stamp. Thank you for your trust and confidence.
             </div>
           </div>
+interface QuotationModalProps {
+  quotHeader: QuotationHeaderState;
+  setQuotHeader: React.Dispatch<React.SetStateAction<QuotationHeaderState>>;
+  /** Builds the same report HTML the PDF export renders, so preview and PDF cannot drift. */
+  buildReportHtml: () => string;
+  onDownloadPdf: () => void;
+  isExportingPdf: boolean;
+  onClose: () => void;
+  isDark?: boolean;
+}
 
-        </div>
-      </div>
-    </div>
-  );
+const REPORT_WIDTH = 794;
+
+const HEADER_FIELDS: Array<{ key: keyof QuotationHeaderState; label: string }> = [
+  { key: 'attentionTo', label: 'Attention To' },
+  { key: 'thru', label: 'Position' },
+  { key: 'company', label: 'Company' },
+  { key: 'contactNo', label: 'Tel/Mobile No.' },
+  { key: 'emailAdd', label: 'Email' },
+  { key: 'address', label: 'Address' },
+  { key: 'projectTitle', label: 'Project For' },
+  { key: 'projectSite', label: 'Project Site' },
+  { key: 'referenceCode', label: 'Reference No.' },
+  { key: 'quoteDate', label: 'Date' },
+  { key: 'validityPeriod', label: 'Validity' },
+];
+
+export default function QuotationModal({ quotHeader, setQuotHeader, buildReportHtml, onDownloadPdf, isExportingPdf, onClose }: QuotationModalProps) {
+  const [showDetails, setShowDetails] = React.useState(false);
+  const controls = <div style={{ padding: '10px 20px', color: '#103861', background: '#f8fafc', borderBottom: '1px solid #cbd5e1' }}>
+    <button type="button" aria-expanded={showDetails} onClick={() => setShowDetails(value => !value)} style={{ fontWeight: 700, cursor: 'pointer' }}>{showDetails ? 'Done editing' : 'Edit client details'}</button>
+    {showDetails && <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10, marginTop: 10, maxHeight: '25vh', overflow: 'auto' }}>
+      {HEADER_FIELDS.map(({key, label}) => <label key={key} style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 11 }}>{label}<input value={quotHeader[key]} onChange={event => setQuotHeader(previous => ({ ...previous, [key]: event.target.value }))} style={{ padding: 6, border: '1px solid #cbd5e1', borderRadius: 5, background: '#fff', color: '#0f172a' }} /></label>)}
+    </div>}
+  </div>;
+  return <EstimationReportPreview html={buildReportHtml()} onDownload={async () => { await onDownloadPdf(); }} onClose={onClose} busy={isExportingPdf} controls={controls} />;
 }
