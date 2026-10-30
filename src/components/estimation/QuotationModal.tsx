@@ -24,6 +24,26 @@ export interface QuotationHeaderState {
   validityPeriod: string;
 }
 
+import { canViewPrices } from '../../constants/roles';
+import { aa2000HeaderImg } from '../../utils/pdfHeaderImage';
+
+interface QuotationModalProps {
+  userRole?: string;
+  project: Project;
+  aiQuotation: FloorPlanEstimation | null;
+  consumables: EstimationConsumableEntry[];
+  manpower: EstimationManpowerEntry[];
+  fees: EstimationAdditionalFeeEntry[];
+  scopeOfWorks?: ScopeOfWorkEntry[];
+  quotHeader: QuotationHeaderState;
+  setQuotHeader: React.Dispatch<React.SetStateAction<QuotationHeaderState>>;
+  quotDiscount: number;
+  setQuotDiscount: (d: number) => void;
+  showEditQuotation: boolean;
+  setShowEditQuotation: React.Dispatch<React.SetStateAction<boolean>>;
+  onClose: () => void;
+  isDark?: boolean;
+}
 
 export function generateSystemScopeOfWorks(
   systemTypes: string[],
@@ -302,6 +322,854 @@ export function generateSystemScopeOfWorks(
   }
 }
 
+export default function QuotationModal({
+  userRole,
+  project,
+  aiQuotation,
+  consumables,
+  manpower,
+  fees,
+  scopeOfWorks,
+  quotHeader,
+  setQuotHeader,
+  quotDiscount,
+  setQuotDiscount,
+  showEditQuotation,
+  setShowEditQuotation,
+  onClose,
+  isDark,
+}: QuotationModalProps) {
+  // Theme state synced with DOM and localStorage
+  const [themeDark, setThemeDark] = React.useState<boolean>(() => {
+    if (typeof isDark === 'boolean') return isDark;
+    if (typeof document !== 'undefined') {
+      return document.documentElement.classList.contains('dark') ||
+        document.documentElement.getAttribute('data-theme') === 'dark' ||
+        localStorage.getItem('aa2000_theme') === 'dark';
+    }
+    return false;
+  });
+
+  React.useEffect(() => {
+    if (typeof isDark === 'boolean') {
+      setThemeDark(isDark);
+    }
+  }, [isDark]);
+
+  React.useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const updateTheme = () => {
+      const isDocDark = document.documentElement.classList.contains('dark') ||
+        document.documentElement.getAttribute('data-theme') === 'dark' ||
+        localStorage.getItem('aa2000_theme') === 'dark';
+      setThemeDark(isDocDark);
+    };
+
+    updateTheme();
+    const observer = new MutationObserver(updateTheme);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'data-theme'] });
+    window.addEventListener('storage', updateTheme);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('storage', updateTheme);
+    };
+  }, []);
+
+  const dark = themeDark;
+
+  if (!canViewPrices(userRole)) return null;
+  // ── Compute dynamic values for the quotation document ─────────────────────
+  const primarySys = (project.systemTypes?.[0] || 'CCTV').toUpperCase();
+  const sysLabel = (project.systemTypes && project.systemTypes.length > 0)
+    ? project.systemTypes.map(s => s.replace(/_/g, ' ')).join(' / ')
+    : 'SECURITY AND TECHNOLOGY';
+
+  const defaultSectionA = [
+    { itemNumber: 1, description: 'Mobilization/Demobilization/Delivery of Equipment & Materials', qty: 1, unit: 'LOT', unitPrice: 12500, totalPrice: 12500 },
+    { itemNumber: 2, description: 'CGL Insurance and Performance Bonds and other insurance\n(not included)', qty: 1, unit: 'LOT', unitPrice: 0, totalPrice: 0 },
+    { itemNumber: 3, description: 'Daily Housekeeping and Proper Disposal of Waste', qty: 1, unit: 'LOT', unitPrice: 2000, totalPrice: 2000 },
+    { itemNumber: 4, description: 'Safety, signs & barriers ( PPE,fire ext,etc.)& Safety Officer\n(not required, not included)', qty: 1, unit: 'LOT', unitPrice: 0, totalPrice: 0 },
+    { itemNumber: 5, description: 'Administrative and Regular Coordination Works', qty: 1, unit: 'LOT', unitPrice: 3000, totalPrice: 3000 },
+    { itemNumber: 6, description: 'Annual Professional Electronics Engineer (PECE) Certification\n(not required, not included)', qty: 1, unit: 'LOT', unitPrice: 0, totalPrice: 0 },
+    { itemNumber: 7, description: 'Manpower Accomodation N/A', qty: 1, unit: 'LOT', unitPrice: 0, totalPrice: 0 },
+    { itemNumber: 8, description: 'Site management and Supervision.', qty: 1, unit: 'LOT', unitPrice: 10000, totalPrice: 10000 },
+    { itemNumber: 9, description: 'Temfacil / Staging Area PROVIDED BY THE CLIENT', qty: 1, unit: 'LOT', unitPrice: 0, totalPrice: 0 },
+    { itemNumber: 10, description: `Certificate of Safety and Reliability\nCertificate of ${sysLabel} Testing and Completion\nwith sign and seal of PECE (not included)`, qty: 1, unit: 'LOT', unitPrice: 0, totalPrice: 0 },
+  ];
+  const sectionAItems = (aiQuotation?.generalRequirements && aiQuotation.generalRequirements.length > 0)
+    ? aiQuotation.generalRequirements
+    : defaultSectionA;
+  const sectionATotal = sectionAItems.reduce((s, r) => s + (r.totalPrice || 0), 0);
+
+  const consumablesCost = consumables.reduce((s, c) => s + (c.totalPrice || 0), 0);
+  const manpowerCost = manpower.reduce((s, m) => s + (m.totalCost || 0), 0);
+  const feesCost = fees.reduce((s, f) => s + (f.amount || 0), 0);
+  const dynamicBaseCost = (consumablesCost + manpowerCost + feesCost) > 0
+    ? (consumablesCost + manpowerCost + feesCost)
+    : 168390;
+
+  const defaultSectionB = generateSystemScopeOfWorks(
+    project.systemTypes || ['CCTV'],
+    consumables,
+    project.name,
+    dynamicBaseCost
+  );
+
+  const sectionBItems = (scopeOfWorks && scopeOfWorks.length > 0)
+    ? scopeOfWorks
+    : (aiQuotation?.scopeOfWorks && aiQuotation.scopeOfWorks.length > 0)
+    ? aiQuotation.scopeOfWorks
+    : defaultSectionB;
+
+  const sectionBComputed = sectionBItems.reduce((s, r) => s + (r.totalPrice || 0), 0)
+    || (consumablesCost + manpowerCost + feesCost);
+
+  const sectionBTotal = (aiQuotation?.costBreakdown?.itemBTotal != null && aiQuotation.costBreakdown.itemBTotal > 0)
+    ? aiQuotation.costBreakdown.itemBTotal
+    : (sectionBComputed > 0 ? sectionBComputed : 168390);
+
+  const grandSubtotal = sectionATotal + sectionBTotal;
+  const discountAmt = quotDiscount > 0
+    ? quotDiscount
+    : (aiQuotation?.costBreakdown?.discount != null ? aiQuotation.costBreakdown.discount : Math.min(8390, Math.round(grandSubtotal * 0.04)));
+  const subWithDiscount = Math.max(0, grandSubtotal - discountAmt);
+  const vatAmount = Math.round(subWithDiscount * 0.12);
+  const grandTotal = subWithDiscount + vatAmount;
+
+  const defaultPaySchedule = [
+    { itemCode: 'A', milestone: '1st QUARTER / Mobilization Downpayment (40%)', qty: 1, unit: 'LOT', unitPrice: Math.round(grandTotal * 0.4), totalPrice: Math.round(grandTotal * 0.4) },
+    { itemCode: 'B', milestone: '2nd QUARTER / Progress Payment (20%)', qty: 1, unit: 'LOT', unitPrice: Math.round(grandTotal * 0.2), totalPrice: Math.round(grandTotal * 0.2) },
+    { itemCode: 'C', milestone: '3rd QUARTER / Progress Payment (20%)', qty: 1, unit: 'LOT', unitPrice: Math.round(grandTotal * 0.2), totalPrice: Math.round(grandTotal * 0.2) },
+    { itemCode: 'D', milestone: '4th QUARTER / Final Testing & Turnover (20%)', qty: 1, unit: 'LOT', unitPrice: Math.round(grandTotal * 0.2), totalPrice: Math.round(grandTotal * 0.2) },
+  ];
+  const paySchedule = (aiQuotation?.scheduleOfPayment && aiQuotation.scheduleOfPayment.length > 0)
+    ? aiQuotation.scheduleOfPayment
+    : defaultPaySchedule;
+
+  const defaultTerms = [
+    'Unless specified, above given prices are still subject for EVAT computation.',
+    'Prices are based on cost and conditions existing on date of quotation and are subject to change by the Seller upon final acceptance.',
+    'Internal or External Local or wide area Network cabling for the purpose of remote monitoring is not included in this quotation, and shall be paid separately.',
+    'If the Client opted to use their existing CPU/ Server which is bundled with Operating systems and/or Software Programs related to their daily operations, it must be compliant to the remote monitoring system purchased, otherwise, it would disable the intended normal function, and a separately price quotation for System Evaluation and Re-programming compatibility is needed to correct it.',
+    'Government permits and approvals which might be needed to complete the above work are not included in the scope of works unless specified in this quotation.',
+    'Circuit Breakers, temporarily or permanent electrical source shall be provided by client.',
+    'The company guarantees the original user that the equipment and devices will be free of defects in material and workmanship for a period as stated below from the date of delivery provided the products has not been abused, misused or improperly maintained and /or repaired by unauthorized service personnel; or such defect on the product is the result of voltage surges / brownouts, lightning, water damage, flooding, fire, earthquakes, acts of aggression/ war or other similar phenomenon w/c the company has no control of, will such void the warranty.',
+    'Others: Any other materials/equipment/permits/installation works not stated herein shall be considered as ADDITIONAL COST.',
+    'Bonds: Unless otherwise stipulated in the investment summary, all premium costs for surety bonds, performance bonds, Contractors all-risk insurance, Warranty Bond for the account of the client.',
+    'Warehouse Charges/Penalties: There will be a 500 pesos penalty per day, if devices are not picked up upon notice of availability',
+    'A penalty charge of 40% of the total contract price will be imposed for cancellation of Purchase Order.',
+    'Late Payment Penalty Charge: Any payments not made within the specified period of time for payment will incur an interest charge at the rate of 1% of the total contract price.',
+  ];
+  const termsItems = (aiQuotation?.termsAndConditions && aiQuotation.termsAndConditions.length > 0)
+    ? aiQuotation.termsAndConditions
+    : defaultTerms;
+
+  const ds = aiQuotation?.deviceSummary;
+  const totalDeviceCount = consumables.reduce((a, b) => a + b.quantity, 0);
+
+  const fmt = (n: number) => n > 0 ? n.toLocaleString('en-PH', { minimumFractionDigits: 2 }) : '-';
+
+  const renderDesc = (description: string) => {
+    const lines = description.split('\n');
+    const nonHeaderPrefixes = [
+      'Should', 'Reprogramm', 'Relocation', 'Issuance', 'Submission',
+      'Cleaning', 'Inspection', 'Functional', 'Allocation', 'Testing',
+      'Replacement', 'Provision', 'Polish', 'Spray', 'Air', 'Re-',
+      'Use', 'Check', 'Tighten', 'For the', '2.', '3.'
+    ];
+
+    return lines.map((line, li) => {
+      const t = line.trim();
+      if (!t) return null;
+      const isHeader = li === 0;
+      const startsWithNumber = /^\d+\./.test(t);
+      const startsWithBullet = t.startsWith('•') || t.startsWith('-');
+      const startsWithKnownAction = nonHeaderPrefixes.some(pfx => t.toLowerCase().startsWith(pfx.toLowerCase()));
+      const isSubHeader = !isHeader && !startsWithNumber && !startsWithBullet && t.length < 60 && !startsWithKnownAction;
+
+      if (isHeader) {
+        return <strong key={li} className={`block font-black uppercase text-[11px] mb-0.5 ${dark ? 'text-blue-400' : 'text-indigo-950'}`}>{t}</strong>;
+      }
+      if (isSubHeader) {
+        return <span key={li} className={`block font-bold text-[11px] ${dark ? 'text-slate-100' : 'text-slate-800'}`}>{t}</span>;
+      }
+      return <span key={li} className={`block text-[11px] leading-relaxed ${dark ? 'text-slate-300' : 'text-slate-600'}`}>{t}</span>;
+    });
+  };
+
+  const editFields: { key: keyof QuotationHeaderState; label: string }[] = [
+    { key: 'referenceCode', label: 'Reference Code' },
+    { key: 'quoteDate', label: 'Quote Date' },
+    { key: 'validityPeriod', label: 'Validity Period' },
+    { key: 'attentionTo', label: 'Attention To' },
+    { key: 'company', label: 'Company Name' },
+    { key: 'thru', label: 'Thru (Dept / Title)' },
+    { key: 'address', label: 'Full Address' },
+    { key: 'emailAdd', label: 'Email Address' },
+    { key: 'contactNo', label: 'Contact No.' },
+    { key: 'projectSite', label: 'Project Site' },
+    { key: 'projectTitle', label: 'Project Title' },
+  ];
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center p-3 bg-slate-950/80 backdrop-blur-md overflow-y-auto">
+      {/* Scoped print override to make sure paper prints remain clean black/white */}
+      <style>{`
+        @media print {
+          body, html {
+            background-color: #ffffff !important;
+            color: #000000 !important;
+          }
+          * {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          .printable-quotation {
+            background-color: #ffffff !important;
+            color: #000000 !important;
+          }
+          .printable-quotation * {
+            border-color: #0f172a !important;
+            color: inherit !important;
+          }
+          .no-print {
+            display: none !important;
+          }
+        }
+      `}</style>
+
+      <div className={`w-full max-w-4xl rounded-2xl border shadow-2xl overflow-hidden my-6 font-sans text-xs transition-colors duration-200 ${
+        dark ? 'bg-[#0B0F19] border-[#1E293B] text-slate-100' : 'bg-white border-slate-300 text-slate-900'
+      }`}>
+
+        {/* ── Modal Control Bar ── */}
+        <div className={`px-5 py-3 flex items-center justify-between sticky top-0 z-20 no-print border-b ${
+          dark ? 'bg-[#131B2E] border-[#1E293B] text-white' : 'bg-slate-900 border-slate-800 text-white'
+        }`}>
+          <div className="flex items-center gap-2">
+            <span className="px-2 py-0.5 text-[10px] font-bold bg-blue-600 text-white rounded">{quotHeader.referenceCode || 'PQ-FDAS-2026-08-013'}</span>
+            <span className="font-bold tracking-wide">AA2000 Commercial Sales Quotation</span>
+            {aiQuotation && <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-emerald-700/80 text-emerald-200 border border-emerald-500/30">AI-Generated</span>}
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowEditQuotation(v => !v)}
+              className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 cursor-pointer ${
+                dark
+                  ? 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700'
+                  : 'bg-slate-700 hover:bg-slate-600 text-white'
+              }`}
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" /></svg>
+              {showEditQuotation ? 'Done Editing' : 'Edit Details'}
+            </button>
+            <button
+              onClick={() => window.print()}
+              className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 shadow-sm cursor-pointer"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>
+              Print / PDF
+            </button>
+            <button onClick={onClose} className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors cursor-pointer">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+            </button>
+          </div>
+        </div>
+
+        {/* ── Editable Details Panel ── */}
+        {showEditQuotation && (
+          <div className={`p-4 no-print border-b transition-colors ${
+            dark ? 'bg-[#101726] border-[#1E293B]' : 'bg-indigo-50 border-indigo-200'
+          }`}>
+            <p className={`text-[9px] font-black uppercase mb-3 tracking-wider ${
+              dark ? 'text-blue-400' : 'text-indigo-600'
+            }`}>Edit Quotation Details — changes apply to the printed document immediately</p>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+              {editFields.map(({ key, label }) => (
+                <div key={key}>
+                  <label className={`text-[9px] font-black uppercase block mb-1 ${
+                    dark ? 'text-blue-300' : 'text-indigo-500'
+                  }`}>{label}</label>
+                  <input
+                    className={`w-full text-xs border rounded-lg px-2.5 py-1.5 outline-none transition-all ${
+                      dark
+                        ? 'bg-[#162032] border-[#1E293B] text-slate-100 focus:border-blue-500'
+                        : 'border-indigo-200 rounded-lg bg-white focus:border-indigo-400'
+                    }`}
+                    value={quotHeader[key]}
+                    onChange={e => setQuotHeader(p => ({ ...p, [key]: e.target.value }))}
+                  />
+                </div>
+              ))}
+              <div>
+                <label className={`text-[9px] font-black uppercase block mb-1 ${
+                  dark ? 'text-blue-300' : 'text-indigo-500'
+                }`}>Discount Amount (₱)</label>
+                <input
+                  type="number" min={0}
+                  className={`w-full text-xs border rounded-lg px-2.5 py-1.5 outline-none transition-all ${
+                    dark
+                      ? 'bg-[#162032] border-[#1E293B] text-slate-100 focus:border-blue-500'
+                      : 'border-indigo-200 rounded-lg bg-white focus:border-indigo-400'
+                  }`}
+                  value={quotDiscount}
+                  onChange={e => setQuotDiscount(Number(e.target.value))}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── Printable Quotation Document ── */}
+        <div className={`p-6 space-y-4 printable-quotation ${
+          dark ? 'bg-[#0B0F19] text-slate-100' : 'bg-white text-slate-900'
+        }`}>
+
+          {/* 1 ▸ Header Banner */}
+          <div className={`border-2 rounded-lg overflow-hidden ${
+            dark ? 'border-[#1E293B] bg-[#0E1626]' : 'border-slate-900 bg-white'
+          }`}>
+            <div className={`w-full overflow-hidden border-b ${
+              dark ? 'border-[#1E293B] bg-[#131B2E]' : 'border-slate-900 bg-white'
+            }`}>
+              <img
+                src={aa2000HeaderImg}
+                alt="AA2000 Security and Technology Solutions Inc."
+                className="w-full h-auto block"
+              />
+            </div>
+
+            {/* Reference, Validity & Date */}
+            <div className="grid grid-cols-12 text-xs">
+              <div className={`col-span-4 p-2.5 border-r border-b ${
+                dark ? 'bg-[#131B2E] border-[#1E293B]' : 'bg-slate-100 border-slate-300'
+              }`}>
+                <div className={`font-black uppercase tracking-wider ${dark ? 'text-slate-200' : 'text-slate-800'}`}>QUOTATION</div>
+                <div className={`text-[10px] ${dark ? 'text-slate-400' : 'text-slate-600'}`}>Validity of Quote:</div>
+                <div className={`font-bold text-[10px] ${dark ? 'text-blue-300' : 'text-slate-900'}`}>{quotHeader.validityPeriod}</div>
+              </div>
+              <div className={`col-span-4 p-2.5 text-center border-r border-b ${
+                dark ? 'bg-[#162032] border-[#1E293B] text-white' : 'bg-slate-800 text-white border-slate-900'
+              }`}>
+                <div className="text-[9px] text-slate-400 uppercase tracking-wider">REFERENCE CODE:</div>
+                <div className="font-black text-base mt-0.5 text-blue-400 tracking-wide">{quotHeader.referenceCode || 'PQ-FDAS-2026-08-013'}</div>
+              </div>
+              <div className={`col-span-4 p-2.5 border-b text-right ${
+                dark ? 'bg-[#131B2E] border-[#1E293B]' : 'bg-slate-100 border-slate-300'
+              }`}>
+                <div className={`text-[9px] uppercase tracking-wider ${dark ? 'text-slate-400' : 'text-slate-500'}`}>DATE:</div>
+                <div className={`font-black ${dark ? 'text-slate-100' : 'text-slate-900'}`}>{quotHeader.quoteDate}</div>
+              </div>
+            </div>
+
+            {/* Client Info Grid */}
+            <div className="grid grid-cols-12 text-xs">
+              <div className={`col-span-6 p-2 border-r border-b ${
+                dark ? 'border-[#1E293B] bg-[#0E1626]' : 'border-slate-200 bg-white'
+              }`}>
+                <strong className={`text-[9px] uppercase ${dark ? 'text-slate-400' : 'text-slate-500'}`}>ATTENTION TO:</strong>{' '}
+                <span className={dark ? 'text-slate-100 font-semibold' : ''}>{quotHeader.attentionTo || 'Mr. Jon Carlo A. Castronuevo'}</span>
+              </div>
+              <div className={`col-span-6 p-2 border-b ${
+                dark ? 'border-[#1E293B] bg-[#0E1626]' : 'border-slate-200 bg-white'
+              }`}>
+                <strong className={`text-[9px] uppercase ${dark ? 'text-slate-400' : 'text-slate-500'}`}>COMPANY:</strong>{' '}
+                <span className={dark ? 'text-slate-100 font-semibold' : ''}>{quotHeader.company || 'JOLLIBEE CENTER CONDOMINIUM CORPORATION'}</span>
+              </div>
+              <div className={`col-span-6 p-2 border-r border-b ${
+                dark ? 'border-[#1E293B] bg-[#0E1626]' : 'border-slate-200 bg-white'
+              }`}>
+                <strong className={`text-[9px] uppercase ${dark ? 'text-slate-400' : 'text-slate-500'}`}>THRU:</strong>{' '}
+                <span className={dark ? 'text-slate-100 font-semibold' : ''}>{quotHeader.thru || 'Building Manager'}</span>
+              </div>
+              <div className={`col-span-6 p-2 border-b ${
+                dark ? 'border-[#1E293B] bg-[#0E1626]' : 'border-slate-200 bg-white'
+              }`}>
+                <strong className={`text-[9px] uppercase ${dark ? 'text-slate-400' : 'text-slate-500'}`}>ADDRESS:</strong>{' '}
+                <span className={dark ? 'text-slate-100 font-semibold' : ''}>{quotHeader.address || 'San Miguel Ave., Ortigas Center, Brgy. San Antonio'}</span>
+              </div>
+              <div className={`col-span-6 p-2 border-r border-b ${
+                dark ? 'border-[#1E293B] bg-[#0E1626]' : 'border-slate-200 bg-white'
+              }`}>
+                <strong className={`text-[9px] uppercase ${dark ? 'text-slate-400' : 'text-slate-500'}`}>EMAIL ADD:</strong>{' '}
+                <span className={dark ? 'text-slate-100 font-semibold' : ''}>{quotHeader.emailAdd || 'jollibee_center@yahoo.com'}</span>
+              </div>
+              <div className={`col-span-6 p-2 border-b ${
+                dark ? 'border-[#1E293B] bg-blue-950/30' : 'border-slate-200 bg-amber-50'
+              }`}>
+                <strong className={`text-[9px] uppercase ${dark ? 'text-blue-300' : 'text-slate-500'}`}>PROJECT SITE:</strong>{' '}
+                <span className={dark ? 'text-blue-100 font-semibold' : ''}>{quotHeader.projectSite || 'Pasig City'}</span>
+              </div>
+              <div className={`col-span-6 p-2 border-r border-b ${
+                dark ? 'border-[#1E293B] bg-[#0E1626]' : 'border-slate-200 bg-white'
+              }`}>
+                <strong className={`text-[9px] uppercase ${dark ? 'text-slate-400' : 'text-slate-500'}`}>CONTACT NO.:</strong>{' '}
+                <span className={dark ? 'text-slate-100 font-semibold' : ''}>{quotHeader.contactNo || '0917 709 1015'}</span>
+              </div>
+              <div className={`col-span-6 p-2 ${
+                dark ? 'bg-indigo-950/40 border-b border-[#1E293B]' : 'bg-amber-200/60'
+              }`}>
+                <strong className={`text-[9px] uppercase ${dark ? 'text-indigo-300' : 'text-slate-600'}`}>PROJECT FOR:</strong>{' '}
+                <span className={`font-black ${dark ? 'text-indigo-200' : ''}`}>{quotHeader.projectTitle || 'FDAS PREVENTIVE MAINTENANCE FY: 2026 (QUARTERLY)'}</span>
+              </div>
+            </div>
+
+            {/* Intro text */}
+            <div className={`p-2.5 text-center text-[10px] border-t leading-relaxed ${
+              dark ? 'bg-[#101726] border-[#1E293B] text-slate-300' : 'border-slate-200 text-slate-600 bg-white'
+            }`}>
+              We respectfully submit our proposal for your <strong className={dark ? 'text-blue-400' : ''}>{sysLabel}</strong> System requirements. We look forward to the approval of our product sales quotation, as follows:
+            </div>
+          </div>
+
+          {/* 2 ▸ Summary of Devices & Equipment */}
+          <div className={`border-2 rounded-lg overflow-hidden ${
+            dark ? 'border-[#1E293B] bg-[#0E1626]' : 'border-slate-900 bg-white'
+          }`}>
+            <div className={`font-black text-center py-1.5 uppercase tracking-wider text-xs border-b ${
+              dark
+                ? 'bg-[#1E293B] text-amber-300 border-[#1E293B]'
+                : 'bg-amber-400 text-slate-900 border-slate-900'
+            }`}>
+              SUMMARY OF DEVICES AND OTHER {(project.systemTypes?.[0] || 'FDAS').replace(/_/g,' ').toUpperCase()} EQUIPMENT
+            </div>
+            <div className="grid grid-cols-12 text-xs">
+              <div className={`col-span-7 p-2 border-r border-b font-bold ${
+                dark ? 'border-[#1E293B] text-slate-200' : 'border-slate-300'
+              }`}>
+                FACP BRAND : {ds?.facpBrand || (consumables[0]?.brand?.toUpperCase() || 'ASENWARE')}
+              </div>
+              <div className={`col-span-5 p-2 border-b font-bold text-[10px] ${
+                dark ? 'border-[#1E293B] text-amber-400' : 'border-slate-300 text-red-700'
+              }`}>
+                OTHER REMARKS: HIGH CEILING: NONE, ORDINARY HEIGHT | INTEGRATION: NOT DECLARED
+              </div>
+              <div className={`col-span-7 p-2 border-r border-b font-bold ${
+                dark ? 'border-[#1E293B] text-slate-200' : 'border-slate-300'
+              }`}>
+                {(project.systemTypes?.[0] || 'FDAS').replace(/_/g, ' ')} SYSTEM : {ds?.systemType || 'ADDRESSABLE FDAS'}
+              </div>
+              <div className={`col-span-5 p-2 border-b font-bold text-[10px] ${
+                dark ? 'border-[#1E293B] text-amber-400' : 'border-slate-300 text-red-700'
+              }`}>
+                WORKING SCHEDULES: DAY SHIFT 8AM-5PM ONLY | MONDAY TO SATURDAY SCHEDULE
+              </div>
+              <div className={`col-span-7 p-2 border-r border-b font-semibold text-[10px] ${
+                dark ? 'border-[#1E293B] text-slate-300' : 'border-slate-300'
+              }`}>
+                ESTIMATED NO. DEVICES: {ds?.totalUnitsText || (consumables.length > 0 ? `1-FACP, ${consumables.map(c => `${c.quantity}-${c.name.slice(0, 8)}`).join(', ')} (TOTAL: ${totalDeviceCount} UNITS)` : '1- FACP, 457-SD, 18-HD, 36-H/S, 36-MPS, 19 sets of modules for WF/TS (TOTAL: 567 UNITS)')}
+              </div>
+              <div className={`col-span-5 p-2 border-b font-semibold text-[10px] ${
+                dark ? 'border-[#1E293B] text-slate-300' : 'border-slate-300'
+              }`}>
+                STOREY BUILDING : {ds?.buildingProfile || `${project.floors || 16} FLOORS WITH ${project.floors ? Math.min(3, Math.floor(project.floors/5)) : 3} BASEMENT`}
+              </div>
+            </div>
+            <div className={`p-2 text-[11px] font-bold ${
+              dark ? 'bg-rose-950/40 text-rose-300 border-t border-rose-900/40' : 'bg-red-100 text-red-800'
+            }`}>
+              NOTE: MAKE SURE THAT THE ROOMS/AREAS ARE ACCESSIBLE PRIOR BEFORE MOBILIZATION
+            </div>
+          </div>
+
+          {/* 3 ▸ Section A: General Requirements */}
+          <div className={`border-2 rounded-lg overflow-hidden ${
+            dark ? 'border-[#1E293B] bg-[#0E1626]' : 'border-slate-900 bg-white'
+          }`}>
+            <div className={`font-bold px-3 py-1.5 text-xs ${
+              dark ? 'bg-[#131B2E] text-white border-b border-[#1E293B]' : 'bg-slate-900 text-white'
+            }`}>A.&nbsp;&nbsp;&nbsp;GENERAL REQUIREMENTS</div>
+            <table className="w-full text-xs border-collapse">
+              <thead>
+                <tr className={`font-bold ${
+                  dark ? 'bg-[#162032] text-slate-200' : 'bg-slate-200 text-slate-800'
+                }`}>
+                  <th className={`p-2 border w-10 text-center ${dark ? 'border-[#1E293B]' : 'border-slate-300'}`}>ITEM</th>
+                  <th className={`p-2 border text-left ${dark ? 'border-[#1E293B]' : 'border-slate-300'}`}>DESCRIPTION</th>
+                  <th className={`p-2 border w-12 text-center ${dark ? 'border-[#1E293B]' : 'border-slate-300'}`}>QTY.</th>
+                  <th className={`p-2 border w-14 text-center ${dark ? 'border-[#1E293B]' : 'border-slate-300'}`}>UNIT</th>
+                  <th className={`p-2 border w-24 text-right ${dark ? 'border-[#1E293B]' : 'border-slate-300'}`}>UNIT PRICE</th>
+                  <th className={`p-2 border w-28 text-right ${dark ? 'border-[#1E293B]' : 'border-slate-300'}`}>TOTAL PRICE</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sectionAItems.map((r, i) => {
+                  const isFree = r.unitPrice === 0 && (r.description.toLowerCase().includes('safety officer') || r.description.toLowerCase().includes('free'));
+                  return (
+                    <tr key={i} className={`border-b transition-colors ${
+                      dark ? 'border-[#1E293B] hover:bg-[#162032]/60' : 'border-slate-200 hover:bg-slate-50'
+                    }`}>
+                      <td className={`p-2 border-r text-center font-semibold align-top ${dark ? 'border-[#1E293B] text-slate-300' : 'border-slate-200'}`}>{r.itemNumber}</td>
+                      <td className={`p-2 border-r align-top ${dark ? 'border-[#1E293B]' : 'border-slate-200'}`}>
+                        {r.description.split('\n').map((line, li) => (
+                          <span key={li} className={`block ${
+                            li === 0
+                              ? (dark ? 'font-semibold text-slate-100' : 'font-semibold text-slate-800')
+                              : (dark ? 'text-[10px] italic text-rose-400' : 'text-[10px] italic text-red-700')
+                          }`}>{line}</span>
+                        ))}
+                      </td>
+                      <td className={`p-2 border-r text-center align-top ${dark ? 'border-[#1E293B] text-slate-300' : 'border-slate-200'}`}>{r.qty || 1}</td>
+                      <td className={`p-2 border-r text-center align-top ${dark ? 'border-[#1E293B] text-slate-300' : 'border-slate-200'}`}>{r.unit}</td>
+                      <td className={`p-2 border-r text-right align-top ${dark ? 'border-[#1E293B] text-slate-200' : 'border-slate-200'}`}>
+                        {isFree ? <span className={dark ? 'text-blue-400 font-bold' : 'text-slate-800 font-bold'}>FREE</span> : (r.unitPrice ? fmt(r.unitPrice) : '-')}
+                      </td>
+                      <td className={`p-2 text-right font-bold align-top ${dark ? 'text-slate-100' : ''}`}>{r.totalPrice ? fmt(r.totalPrice) : '-'}</td>
+                    </tr>
+                  );
+                })}
+                {/* Note row matching reference image 1 */}
+                <tr className={`border-b ${
+                  dark ? 'border-[#1E293B] bg-amber-950/20' : 'border-slate-200 bg-amber-50/40'
+                }`}>
+                  <td className={`p-2 border-r text-center font-bold align-top ${
+                    dark ? 'border-[#1E293B] text-amber-400' : 'border-slate-200 text-red-600'
+                  }`}>NOTE:</td>
+                  <td className={`p-2 border-r align-top text-[10.5px] ${dark ? 'border-[#1E293B]' : 'border-slate-200'}`}>
+                    <p className={dark ? 'text-slate-200' : 'text-slate-800'}>1. Electric Power Supply for testing purposes shall be bare by the client.</p>
+                    <p className={dark ? 'text-slate-200' : 'text-slate-800'}>2. Assistance from other service provider of integrated system of FDAS (Elevator and PA system) if needed</p>
+                  </td>
+                  <td className={`p-2 border-r text-center align-top ${dark ? 'border-[#1E293B] text-slate-400' : 'border-slate-200'}`}>1</td>
+                  <td className={`p-2 border-r text-center align-top ${dark ? 'border-[#1E293B] text-slate-400' : 'border-slate-200'}`}>LOT</td>
+                  <td className={`p-2 border-r text-right align-top ${dark ? 'border-[#1E293B] text-slate-400' : 'border-slate-200'}`}>-</td>
+                  <td className={`p-2 text-right font-bold align-top ${dark ? 'text-slate-400' : ''}`}>-</td>
+                </tr>
+                <tr className={`font-bold border-t-2 ${
+                  dark
+                    ? 'bg-[#101726] border-[#1E293B] text-slate-100'
+                    : 'bg-slate-100 border-slate-900 text-slate-900'
+                }`}>
+                  <td colSpan={5} className={`p-2 text-right border-r uppercase text-[11px] pr-4 ${
+                    dark ? 'border-[#1E293B] text-slate-300' : 'border-slate-300 text-slate-800'
+                  }`}>SUB. TOTAL: ITEM A (1 TO {sectionAItems.length}):</td>
+                  <td className="p-2 text-right font-black">{fmt(sectionATotal)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          {/* 4 ▸ Section B: Scope of Works */}
+          <div className={`border-2 rounded-lg overflow-hidden ${
+            dark ? 'border-[#1E293B] bg-[#0E1626]' : 'border-slate-900 bg-white'
+          }`}>
+            <div className={`font-bold px-3 py-1.5 text-xs ${
+              dark ? 'bg-[#131B2E] text-white border-b border-[#1E293B]' : 'bg-slate-900 text-white'
+            }`}>B.&nbsp;&nbsp;&nbsp;SCOPE OF WORKS</div>
+            <table className="w-full text-xs border-collapse">
+              <thead>
+                <tr className={`font-bold ${
+                  dark ? 'bg-[#162032] text-slate-200' : 'bg-slate-200 text-slate-800'
+                }`}>
+                  <th className={`p-2 border w-10 text-center ${dark ? 'border-[#1E293B]' : 'border-slate-300'}`}>ITEM</th>
+                  <th className={`p-2 border text-left ${dark ? 'border-[#1E293B]' : 'border-slate-300'}`}>DESCRIPTION</th>
+                  <th className={`p-2 border w-20 text-center ${dark ? 'border-[#1E293B]' : 'border-slate-300'}`}>UNIT</th>
+                  <th className={`p-2 border w-28 text-right ${dark ? 'border-[#1E293B]' : 'border-slate-300'}`}>TOTAL PRICE</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sectionBItems.map((item, i) => {
+                  const desc = item.description || '';
+                  const isFreqRow = desc.toLowerCase().includes('frequency') || desc.toLowerCase().includes('pms activity');
+                  const isFreeRow = item.totalPrice === 0 && (desc.toLowerCase().includes('free') || desc.toLowerCase().includes('rental of tools') || desc.toLowerCase().includes('freebies'));
+                  return (
+                    <tr key={i} className={`border-b transition-colors ${
+                      isFreqRow
+                        ? (dark ? 'bg-amber-950/40 text-amber-200 font-bold border-[#1E293B]' : 'bg-amber-300/80 font-bold border-slate-200')
+                        : (dark ? 'border-[#1E293B] hover:bg-[#162032]/60' : 'border-slate-200 hover:bg-slate-50')
+                    }`}>
+                      <td className={`p-2 border-r text-center font-semibold align-top ${
+                        dark ? 'border-[#1E293B] text-slate-300' : 'border-slate-200'
+                      }`}>{item.itemNumber}</td>
+                      <td className={`p-2 border-r leading-relaxed align-top ${
+                        dark ? 'border-[#1E293B]' : 'border-slate-200'
+                      } ${isFreqRow ? (dark ? 'text-amber-200 font-bold' : 'text-slate-950 font-bold') : ''}`}>
+                        {renderDesc(desc)}
+                      </td>
+                      <td className={`p-2 border-r text-center font-semibold align-top ${
+                        dark ? 'border-[#1E293B] text-slate-300' : 'border-slate-200'
+                      }`}>{item.unit || '1 LOT'}</td>
+                      <td className="p-2 text-right font-bold align-top">
+                        {isFreeRow
+                          ? <span className={dark ? 'text-rose-400 font-black' : 'text-red-600 font-black'}>FREE</span>
+                          : item.totalPrice ? fmt(item.totalPrice)
+                          : <span className={dark ? 'text-slate-500' : 'text-slate-400'}>-</span>}
+                      </td>
+                    </tr>
+                  );
+                })}
+                <tr className={`font-bold border-t-2 ${
+                  dark
+                    ? 'bg-[#101726] border-[#1E293B] text-slate-100'
+                    : 'bg-slate-100 border-slate-900 text-slate-900'
+                }`}>
+                  <td colSpan={3} className={`p-2 text-right border-r uppercase text-[11px] pr-4 ${
+                    dark ? 'border-[#1E293B] text-slate-300' : 'border-slate-300 text-slate-800'
+                  }`}>SUB. TOTAL:</td>
+                  <td className="p-2 text-right font-black">{fmt(sectionBTotal)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          {/* 5 ▸ Section C: Breakdown of Cost */}
+          <div className={`border-2 rounded-lg overflow-hidden ${
+            dark ? 'border-[#1E293B] bg-[#0E1626]' : 'border-slate-900 bg-white'
+          }`}>
+            <div className={`font-bold px-3 py-1.5 text-xs ${
+              dark ? 'bg-[#131B2E] text-white border-b border-[#1E293B]' : 'bg-slate-900 text-white'
+            }`}>C.&nbsp;&nbsp;&nbsp;BREAKDOWN OF COST:</div>
+            <table className="w-full text-xs border-collapse">
+              <thead>
+                <tr className={`font-bold ${
+                  dark ? 'bg-[#162032] text-slate-200' : 'bg-slate-200 text-slate-800'
+                }`}>
+                  <th className={`p-2 border w-10 text-center ${dark ? 'border-[#1E293B]' : 'border-slate-300'}`}>ITEM</th>
+                  <th className={`p-2 border text-left ${dark ? 'border-[#1E293B]' : 'border-slate-300'}`}>DESCRIPTION</th>
+                  <th className={`p-2 border w-12 text-center ${dark ? 'border-[#1E293B]' : 'border-slate-300'}`}>QTY.</th>
+                  <th className={`p-2 border w-14 text-center ${dark ? 'border-[#1E293B]' : 'border-slate-300'}`}>UNIT</th>
+                  <th className={`p-2 border w-28 text-right ${dark ? 'border-[#1E293B]' : 'border-slate-300'}`}>UNIT PRICE</th>
+                  <th className={`p-2 border w-32 text-right ${dark ? 'border-[#1E293B]' : 'border-slate-300'}`}>TOTAL PRICE</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr className={`border-b ${dark ? 'border-[#1E293B]' : 'border-slate-200'}`}>
+                  <td className={`p-2 border-r text-center font-bold ${dark ? 'border-[#1E293B] text-slate-300' : 'border-slate-200'}`}>A.</td>
+                  <td className={`p-2 border-r font-bold ${dark ? 'border-[#1E293B] text-slate-200' : 'border-slate-200'}`}>GENERAL REQUIREMENTS</td>
+                  <td className={`p-2 border-r text-center ${dark ? 'border-[#1E293B] text-slate-300' : 'border-slate-200'}`}>1</td>
+                  <td className={`p-2 border-r text-center ${dark ? 'border-[#1E293B] text-slate-300' : 'border-slate-200'}`}>LOT</td>
+                  <td className={`p-2 border-r text-right ${dark ? 'border-[#1E293B] text-slate-200' : 'border-slate-200'}`}>{fmt(sectionATotal)}</td>
+                  <td className="p-2 text-right font-bold">{fmt(sectionATotal)}</td>
+                </tr>
+                <tr className={`border-b ${dark ? 'border-[#1E293B]' : 'border-slate-200'}`}>
+                  <td className={`p-2 border-r text-center font-bold ${dark ? 'border-[#1E293B] text-slate-300' : 'border-slate-200'}`}>B.</td>
+                  <td className={`p-2 border-r font-bold ${dark ? 'border-[#1E293B] text-slate-200' : 'border-slate-200'}`}>SCOPE OF WORKS</td>
+                  <td className={`p-2 border-r text-center ${dark ? 'border-[#1E293B] text-slate-300' : 'border-slate-200'}`}>1</td>
+                  <td className={`p-2 border-r text-center ${dark ? 'border-[#1E293B] text-slate-300' : 'border-slate-200'}`}>LOT</td>
+                  <td className={`p-2 border-r text-right ${dark ? 'border-[#1E293B] text-slate-200' : 'border-slate-200'}`}>{fmt(sectionBTotal)}</td>
+                  <td className="p-2 text-right font-bold">{fmt(sectionBTotal)}</td>
+                </tr>
+                <tr className={`border-b font-bold ${
+                  dark ? 'bg-[#101726] border-[#1E293B] text-slate-100' : 'bg-slate-100 border-slate-200'
+                }`}>
+                  <td colSpan={5} className={`p-2 text-right border-r uppercase text-[11px] pr-4 ${
+                    dark ? 'border-[#1E293B] text-slate-300' : 'border-slate-200'
+                  }`}>SUB. TOTAL:</td>
+                  <td className="p-2 text-right font-black">{fmt(grandSubtotal)}</td>
+                </tr>
+                {discountAmt > 0 && (
+                  <tr className={`border-b ${
+                    dark ? 'bg-rose-950/30 border-[#1E293B]' : 'bg-red-50 border-slate-200'
+                  }`}>
+                    <td colSpan={5} className={`p-2 text-right border-r font-bold uppercase text-[11px] pr-4 ${
+                      dark ? 'border-[#1E293B] text-rose-300' : 'border-slate-200 text-red-700'
+                    }`}>LESS DISCOUNT:</td>
+                    <td className={`p-2 text-right font-black ${
+                      dark ? 'text-rose-400' : 'text-red-700'
+                    }`}>{fmt(discountAmt)}</td>
+                  </tr>
+                )}
+                {discountAmt > 0 && (
+                  <tr className={`border-b font-bold ${
+                    dark ? 'bg-[#131B2E] border-[#1E293B] text-slate-100' : 'bg-slate-200 border-slate-200'
+                  }`}>
+                    <td colSpan={5} className={`p-2 text-right border-r uppercase text-[11px] pr-4 ${
+                      dark ? 'border-[#1E293B] text-slate-300' : 'border-slate-200'
+                    }`}>SUB. TOTAL W/ DISCOUNT:</td>
+                    <td className="p-2 text-right font-black">{fmt(subWithDiscount)}</td>
+                  </tr>
+                )}
+                <tr className={`border-b ${
+                  dark ? 'bg-amber-950/20 border-[#1E293B]' : 'bg-amber-100 border-amber-200'
+                }`}>
+                  <td colSpan={5} className={`p-2 text-right border-r font-bold uppercase text-[11px] pr-4 ${
+                    dark ? 'border-[#1E293B] text-amber-300' : 'border-amber-200 text-red-600'
+                  }`}>12% VAT</td>
+                  <td className={`p-2 text-right font-black ${
+                    dark ? 'text-amber-300' : 'text-red-600'
+                  }`}>{fmt(vatAmount)}</td>
+                </tr>
+                <tr className={dark ? 'bg-[#131B2E] text-white border-t border-[#1E293B]' : 'bg-slate-900 text-white'}>
+                  <td colSpan={4} className={`p-3 text-right border-r font-black uppercase tracking-wide text-[11px] ${
+                    dark ? 'border-[#1E293B]' : 'border-slate-700'
+                  }`}>
+                    {(project.systemTypes?.[0] || 'FDAS').replace(/_/g, ' ')} PMS PRICE PER YEAR
+                  </td>
+                  <td className={`p-3 border-r text-right font-black uppercase text-[11px] ${
+                    dark ? 'border-[#1E293B]' : 'border-slate-700'
+                  }`}>TOTAL AMOUNT:</td>
+                  <td className="p-3 text-right font-black text-emerald-400 text-base">{fmt(grandTotal)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          {/* 6 ▸ Section D: Schedule of Payment */}
+          <div className={`border-2 rounded-lg overflow-hidden ${
+            dark ? 'border-[#1E293B] bg-[#0E1626]' : 'border-slate-900 bg-white'
+          }`}>
+            <div className={`font-bold px-3 py-1.5 text-xs ${
+              dark ? 'bg-[#131B2E] text-white border-b border-[#1E293B]' : 'bg-slate-900 text-white'
+            }`}>D.&nbsp;&nbsp;&nbsp;SCHEDULE OF PAYMENT</div>
+            <table className="w-full text-xs border-collapse">
+              <thead>
+                <tr className={`font-bold ${
+                  dark ? 'bg-[#162032] text-slate-200' : 'bg-slate-200 text-slate-800'
+                }`}>
+                  <th className={`p-2 border w-10 text-center ${dark ? 'border-[#1E293B]' : 'border-slate-300'}`}>ITEM</th>
+                  <th className={`p-2 border text-left ${dark ? 'border-[#1E293B]' : 'border-slate-300'}`}>DESCRIPTION</th>
+                  <th className={`p-2 border w-12 text-center ${dark ? 'border-[#1E293B]' : 'border-slate-300'}`}>QTY.</th>
+                  <th className={`p-2 border w-14 text-center ${dark ? 'border-[#1E293B]' : 'border-slate-300'}`}>UNIT</th>
+                  <th className={`p-2 border w-28 text-right ${dark ? 'border-[#1E293B]' : 'border-slate-300'}`}>UNIT PRICE</th>
+                  <th className={`p-2 border w-32 text-right ${dark ? 'border-[#1E293B]' : 'border-slate-300'}`}>TOTAL PRICE</th>
+                </tr>
+              </thead>
+              <tbody>
+                {paySchedule.map((pay, i) => (
+                  <tr key={i} className={`border-b transition-colors ${
+                    dark ? 'border-[#1E293B] hover:bg-[#162032]/60' : 'border-slate-200 hover:bg-slate-50'
+                  }`}>
+                    <td className={`p-2 border-r text-center font-bold ${
+                      dark ? 'border-[#1E293B] text-slate-300' : 'border-slate-200'
+                    }`}>{pay.itemCode}</td>
+                    <td className={`p-2 border-r font-semibold ${
+                      dark ? 'border-[#1E293B] text-slate-200' : 'border-slate-200'
+                    }`}>{pay.milestone}</td>
+                    <td className={`p-2 border-r text-center ${
+                      dark ? 'border-[#1E293B] text-slate-300' : 'border-slate-200'
+                    }`}>{pay.qty}</td>
+                    <td className={`p-2 border-r text-center ${
+                      dark ? 'border-[#1E293B] text-slate-300' : 'border-slate-200'
+                    }`}>{pay.unit}</td>
+                    <td className={`p-2 border-r text-right ${
+                      dark ? 'border-[#1E293B] text-slate-200' : 'border-slate-200'
+                    }`}>{fmt(pay.unitPrice)}</td>
+                    <td className={`p-2 text-right font-bold ${
+                      dark ? 'text-slate-100' : ''
+                    }`}>{fmt(pay.totalPrice)}</td>
+                  </tr>
+                ))}
+                <tr className={`font-bold border-t-2 ${
+                  dark
+                    ? 'bg-[#101726] border-[#1E293B] text-slate-100'
+                    : 'bg-slate-100 border-slate-900 text-slate-900'
+                }`}>
+                  <td colSpan={5} className={`p-2 text-right border-r uppercase font-bold text-[11px] pr-4 ${
+                    dark ? 'border-[#1E293B] text-slate-300' : 'border-slate-300'
+                  }`}>SUB. TOTAL:</td>
+                  <td className="p-2 text-right font-black">{fmt(paySchedule.reduce((a, b) => a + (b.totalPrice || 0), 0))}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          {/* 7 ▸ Notes & Remarks */}
+          <div className={`border-2 rounded-lg overflow-hidden ${
+            dark ? 'border-[#1E293B] bg-[#0E1626]' : 'border-slate-900 bg-white'
+          }`}>
+            <div className={`font-black text-center py-1.5 uppercase text-[11px] tracking-wide border-b ${
+              dark
+                ? 'bg-[#1E293B] text-amber-300 border-[#1E293B]'
+                : 'bg-amber-400 text-slate-900 border-slate-900'
+            }`}>
+              NOTE AND REMARKS:&nbsp;&nbsp;ALL INDICATED BELOW SHALL BE BILLED SEPARATELY
+            </div>
+            <table className="w-full text-xs border-collapse">
+              <tbody>
+                {[
+                  'Any additional services and materials that are not included in this quotation',
+                  'Replacement of FACP, Annunciator, backup batteries, other supply of devices and equipment, and spare parts',
+                  'Any additional civil and engineering works.',
+                ].map((note, i) => (
+                  <tr key={i} className={`border-b ${dark ? 'border-[#1E293B]' : 'border-slate-200'}`}>
+                    <td className={`p-2 border-r text-center font-bold w-10 ${
+                      dark ? 'border-[#1E293B] text-slate-400' : 'border-slate-200'
+                    }`}>{i + 1}</td>
+                    <td className={`p-2 font-medium ${
+                      dark ? 'text-slate-300' : 'text-slate-700'
+                    }`}>{note}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* 8 ▸ Terms & Conditions */}
+          <div className={`border-2 rounded-lg p-4 ${
+            dark ? 'border-[#1E293B] bg-[#0E1626]' : 'border-slate-900 bg-slate-50'
+          }`}>
+            <h4 className={`font-black text-xs uppercase tracking-wider border-b pb-1.5 mb-3 text-center ${
+              dark ? 'text-slate-100 border-[#1E293B]' : 'text-slate-900 border-slate-300'
+            }`}>TERMS AND CONDITIONS</h4>
+            <div className="space-y-2">
+              {termsItems.map((term, i) => (
+                <div key={i} className="flex gap-2 text-[10.5px]">
+                  <span className={`font-black shrink-0 w-6 ${
+                    dark ? 'text-blue-400' : 'text-slate-700'
+                  }`}>{String.fromCharCode(65 + i)}</span>
+                  <span className={`font-medium leading-relaxed ${
+                    dark ? 'text-slate-300' : 'text-slate-700'
+                  }`}>{term}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* 9 ▸ Payment Terms & Sign-off Block */}
+          <div className={`border-2 rounded-lg overflow-hidden ${
+            dark ? 'border-[#1E293B] bg-[#0E1626]' : 'border-slate-900 bg-white'
+          }`}>
+            <div className={`font-black text-center py-1.5 uppercase text-[11px] tracking-wide border-b ${
+              dark
+                ? 'bg-[#1E293B] text-amber-300 border-[#1E293B]'
+                : 'bg-amber-400 text-slate-900 border-slate-900'
+            }`}>
+              PAYMENT TERMS: QUARTERLY FEE: FULL PAYMENT AFTER SUBMISSION OF ACCOMPLISHMENT REPORT.
+            </div>
+
+            <div className={`p-4 space-y-4 ${dark ? 'bg-[#0E1626]' : 'bg-white'}`}>
+              <div className={`flex items-center gap-2 text-xs border-b pb-2 ${
+                dark ? 'border-[#1E293B]' : 'border-slate-200'
+              }`}>
+                <span className={`font-black uppercase ${dark ? 'text-slate-100' : 'text-slate-900'}`}>PAYEE</span>
+                <span className={dark ? 'text-slate-400' : 'text-slate-600'}>PO and payment issued in favor of:</span>
+                <span className={`font-black ${dark ? 'text-blue-400' : 'text-indigo-900'}`}>AA2000 Security and Technology Solution Inc.</span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-12 pt-2">
+                <div>
+                  <p className={`font-bold text-[11px] mb-1 ${dark ? 'text-slate-300' : 'text-slate-700'}`}>SUBMITTED BY:</p>
+                  <div className="h-12 flex items-end">
+                    <svg className={`w-32 h-10 ${dark ? 'text-blue-400' : 'text-slate-800'}`} viewBox="0 0 120 40" fill="none" stroke="currentColor" strokeWidth="1.5">
+                      <path d="M10,25 Q30,5 50,20 T90,15 T110,25" />
+                      <path d="M20,30 Q45,15 70,25" />
+                    </svg>
+                  </div>
+                  <div className={`border-t-2 pt-1 ${dark ? 'border-[#1E293B]' : 'border-slate-900'}`}>
+                    <p className={`font-black text-xs ${dark ? 'text-slate-100' : 'text-slate-900'}`}>PRINCESS ALGABRE</p>
+                    <p className={`font-bold text-[10px] ${dark ? 'text-slate-400' : 'text-slate-600'}`}>GENERAL MANAGER</p>
+                  </div>
+                </div>
+
+                <div className="text-right">
+                  <p className={`font-bold text-[11px] mb-1 ${dark ? 'text-slate-300' : 'text-slate-700'}`}>Client&apos;s / Customer Conforme:</p>
+                  <div className="h-12"></div>
+                  <div className={`border-t-2 pt-1 ${dark ? 'border-[#1E293B]' : 'border-slate-900'}`}>
+                    <p className={`font-bold text-[10px] ${dark ? 'text-slate-400' : 'text-slate-600'}`}>Authorized Representative (Printed Name/Signature/Date)</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Dark Notice Bar */}
+            <div className={`p-3 text-center text-[10px] font-semibold border-t-2 ${
+              dark
+                ? 'bg-[#131B2E] text-slate-300 border-[#1E293B]'
+                : 'bg-slate-800 text-white border-slate-900'
+            }`}>
+              <span className={`font-bold uppercase tracking-wider block mb-0.5 ${dark ? 'text-blue-400' : 'text-slate-300'}`}>NOTICE</span>
+              This proposal will be regarded as an order confirmation upon acceptance. Kindly acknowledge with your signature accompanied by a Purchase Order and/or company stamp. Thank you for your trust and confidence.
+            </div>
+          </div>
 interface QuotationModalProps {
   quotHeader: QuotationHeaderState;
   setQuotHeader: React.Dispatch<React.SetStateAction<QuotationHeaderState>>;

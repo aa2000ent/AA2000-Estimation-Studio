@@ -10,6 +10,7 @@ import { computeEstimationStats, computeEstimationTotals, laborLineTotal, materi
 import ProductCatalogModal from './ProductCatalogModal';
 import type { CatalogProduct } from '../../services/api/products';
 import QuotationModal, { type QuotationHeaderState, type ScopeOfWorkEntry, generateSystemScopeOfWorks } from './QuotationModal';
+import { getHeaderDataUrl, getPdfHeaderHtml } from '../../utils/pdfHeaderImage';
 import reportHeaderBackground from '../../assets/pdf/PDF_header.png';
 import reportLogo from '../../assets/pdf/aa2000_logo.png';
 import { buildStandardEstimationReportHtml, prepareEstimationReportLayout } from '../../utils/standardEstimationReport';
@@ -998,6 +999,254 @@ export default function EstimationSummary({ project, user, onBack, onUpdateStatu
       });
 
       const container = document.createElement('div');
+      container.style.width = '816px';
+      container.style.padding = '0';
+      container.style.boxSizing = 'border-box';
+      container.style.background = '#FFFFFF';
+      container.style.fontFamily = "'Inter', system-ui, -apple-system, sans-serif";
+      container.style.color = '#1E293B';
+
+      const headerImg = await getHeaderDataUrl();
+      const headerHtml = getPdfHeaderHtml(headerImg);
+
+      const footerHtml = `
+        <!-- FOOTER -->
+        <div style="position: absolute; bottom: 35px; left: 40px; right: 40px; border-top: 1px dashed #CBD5E1; padding-top: 15px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; color: #64748B; font-size: 8px; font-family: 'Inter', sans-serif;">
+            <div>Unit 2-C Norkis Building, 11 Calbayog Cor., Domingo M. Guevara St., Mandaluyong City, Philippines 1550 &nbsp;|&nbsp; T: (02) 8571-5693</div>
+            <div style="font-weight: 700; color: #475569;">Disclaimer: This report is generated for client presentation and reflects finalized project details.</div>
+          </div>
+        </div>
+      `;
+
+      container.innerHTML = `
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
+        
+        <!-- PAGE 1: SUMMARY & COST SUMMARY -->
+        <div style="box-sizing: border-box; width: 100%; height: 1045px; position: relative; page-break-after: always; background: #FFFFFF; margin: 0; padding: 0;">
+          ${headerHtml}
+          
+          <div style="padding: 20px 40px 60px 40px;">
+            <!-- REPORT TITLE -->
+            <div style="display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 2px solid #E2E8F0; padding-bottom: 8px;">
+            <div>
+              <h1 style="color: #1E3A8A; font-size: 18px; font-weight: 900; margin: 0; text-transform: uppercase; letter-spacing: -0.01em;">FINALIZED PROJECT REPORT</h1>
+              <p style="font-size: 11px; color: #475569; font-weight: 700; margin: 4px 0 0 0;">Project Name: ${project.name}</p>
+            </div>
+            <div style="font-size: 11px; color: #64748B; font-weight: 700;">${formattedDate}</div>
+          </div>
+
+          <!-- PROJECT SUMMARY -->
+          <h2 style="font-size: 11px; font-weight: 900; color: #1E3A8A; text-transform: uppercase; margin: 20px 0 6px 0; letter-spacing: 0.05em;">Project Summary</h2>
+          <table style="width: 100%; border-collapse: collapse; font-size: 10px; font-family: 'Inter', sans-serif;">
+            <tr>
+              <td style="width: 16%; padding: 8px 10px; border: 1px solid #E2E8F0; background: #F8FAFC; font-weight: 700; color: #475569;">Company Name</td>
+              <td style="width: 34%; padding: 8px 10px; border: 1px solid #E2E8F0; color: #1E293B; font-weight: 600;">${project.clientName}</td>
+              <td style="width: 16%; padding: 8px 10px; border: 1px solid #E2E8F0; background: #F8FAFC; font-weight: 700; color: #475569;">Client Name</td>
+              <td style="width: 34%; padding: 8px 10px; border: 1px solid #E2E8F0; color: #1E293B; font-weight: 600;">${project.clientContactName || 'N/A'}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 10px; border: 1px solid #E2E8F0; background: #F8FAFC; font-weight: 700; color: #475569;">Address</td>
+              <td style="padding: 8px 10px; border: 1px solid #E2E8F0; color: #1E293B; font-weight: 600;">${project.location}</td>
+              <td style="padding: 8px 10px; border: 1px solid #E2E8F0; background: #F8FAFC; font-weight: 700; color: #475569;">Client Contact</td>
+              <td style="padding: 8px 10px; border: 1px solid #E2E8F0; color: #1E293B; font-weight: 600;">${project.clientPhone || 'No Contact'}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 10px; border: 1px solid #E2E8F0; background: #F8FAFC; font-weight: 700; color: #475569;">Client Email</td>
+              <td style="padding: 8px 10px; border: 1px solid #E2E8F0; color: #1E293B; font-weight: 600;">${project.clientEmail || 'No Email'}</td>
+              <td style="padding: 8px 10px; border: 1px solid #E2E8F0; background: #F8FAFC; font-weight: 700; color: #475569;">Technician</td>
+              <td style="padding: 8px 10px; border: 1px solid #E2E8F0; color: #1E293B; font-weight: 600;">${technicianName}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 10px; border: 1px solid #E2E8F0; background: #F8FAFC; font-weight: 700; color: #475569;">Status</td>
+              <td style="padding: 8px 10px; border: 1px solid #E2E8F0; color: #059669; font-weight: 700; text-transform: uppercase; font-size: 9px; letter-spacing: 0.02em;">${project.status === 'Completed' ? 'Finalized - Approved' : project.status}</td>
+              <td style="padding: 8px 10px; border: 1px solid #E2E8F0; background: #F8FAFC; font-weight: 700; color: #475569;">Finalized at</td>
+              <td style="padding: 8px 10px; border: 1px solid #E2E8F0; color: #1E293B; font-weight: 600;">${formattedDate}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px 10px; border: 1px solid #E2E8F0; background: #F8FAFC; font-weight: 700; color: #475569;">Total Cost</td>
+              <td colspan="3" style="padding: 8px 10px; border: 1px solid #E2E8F0; color: #1E3A8A; font-weight: 900; font-size: 11px;">PHP ${grandTotalWithVAT.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+            </tr>
+          </table>
+
+          <!-- COST BREAKDOWN -->
+          <h2 style="font-size: 11px; font-weight: 900; color: #1E3A8A; text-transform: uppercase; margin: 25px 0 6px 0; letter-spacing: 0.05em;">Cost Breakdown Summary</h2>
+          <table style="width: 100%; border-collapse: collapse; font-size: 10px; font-family: 'Inter', sans-serif;">
+            <thead>
+              <tr style="background: #F8FAFC; text-align: left;">
+                <th style="padding: 8px 10px; border: 1px solid #E2E8F0; color: #475569; font-weight: 700; width: 22%;">Category</th>
+                <th style="padding: 8px 10px; border: 1px solid #E2E8F0; color: #475569; font-weight: 700; width: 44%;">Item/Role</th>
+                <th style="padding: 8px 10px; border: 1px solid #E2E8F0; color: #475569; font-weight: 700; width: 12%; text-align: center;">Qty/Hours</th>
+                <th style="padding: 8px 10px; border: 1px solid #E2E8F0; color: #475569; font-weight: 700; width: 11%; text-align: right;">Unit Cost</th>
+                <th style="padding: 8px 10px; border: 1px solid #E2E8F0; color: #475569; font-weight: 700; width: 11%; text-align: right;">Subtotal</th>
+              </tr>
+            </thead>
+            <tbody>
+              <!-- Hardware Subtotal -->
+              <tr>
+                <td style="padding: 8px 10px; border: 1px solid #E2E8F0; font-weight: 700; color: #64748B;">Cost Summary</td>
+                <td style="padding: 8px 10px; border: 1px solid #E2E8F0; color: #1E293B; font-weight: 600;">${systemLabel}: Hardware</td>
+                <td style="padding: 8px 10px; border: 1px solid #E2E8F0; text-align: center; color: #64748B;">-</td>
+                <td style="padding: 8px 10px; border: 1px solid #E2E8F0; text-align: right; color: #64748B;">-</td>
+                <td style="padding: 8px 10px; border: 1px solid #E2E8F0; text-align: right; color: #1E293B; font-weight: 600;">PHP ${hardwareTotal.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</td>
+              </tr>
+              <!-- Cabling Subtotal -->
+              <tr>
+                <td style="padding: 8px 10px; border: 1px solid #E2E8F0; font-weight: 700; color: #64748B;">Cost Summary</td>
+                <td style="padding: 8px 10px; border: 1px solid #E2E8F0; color: #1E293B; font-weight: 600;">${systemLabel}: Cabling</td>
+                <td style="padding: 8px 10px; border: 1px solid #E2E8F0; text-align: center; color: #64748B;">-</td>
+                <td style="padding: 8px 10px; border: 1px solid #E2E8F0; text-align: right; color: #64748B;">-</td>
+                <td style="padding: 8px 10px; border: 1px solid #E2E8F0; text-align: right; color: #1E293B; font-weight: 600;">PHP ${cablingTotal.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</td>
+              </tr>
+              <!-- Labor Subtotal -->
+              <tr>
+                <td style="padding: 8px 10px; border: 1px solid #E2E8F0; font-weight: 700; color: #64748B;">Cost Summary</td>
+                <td style="padding: 8px 10px; border: 1px solid #E2E8F0; color: #1E293B; font-weight: 600;">${systemLabel}: Labor</td>
+                <td style="padding: 8px 10px; border: 1px solid #E2E8F0; text-align: center; color: #1E293B; font-weight: 600;">${totalManDays}d x ${totalHeadcount} tech</td>
+                <td style="padding: 8px 10px; border: 1px solid #E2E8F0; text-align: right; color: #1E293B; font-weight: 600;">PHP ${(totalManDays > 0 ? totalLabor / totalManDays : 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                <td style="padding: 8px 10px; border: 1px solid #E2E8F0; text-align: right; color: #1E293B; font-weight: 600;">PHP ${totalLabor.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</td>
+              </tr>
+              <!-- Logistics / Fees -->
+              ${totalFees > 0 ? `
+              <tr>
+                <td style="padding: 8px 10px; border: 1px solid #E2E8F0; font-weight: 700; color: #64748B;">Cost Summary</td>
+                <td style="padding: 8px 10px; border: 1px solid #E2E8F0; color: #1E293B; font-weight: 600;">Logistics & Special Fees</td>
+                <td style="padding: 8px 10px; border: 1px solid #E2E8F0; text-align: center; color: #64748B;">-</td>
+                <td style="padding: 8px 10px; border: 1px solid #E2E8F0; text-align: right; color: #64748B;">-</td>
+                <td style="padding: 8px 10px; border: 1px solid #E2E8F0; text-align: right; color: #1E293B; font-weight: 600;">PHP ${totalFees.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</td>
+              </tr>` : ''}
+              <!-- VAT Row -->
+              <tr>
+                <td style="padding: 8px 10px; border: 1px solid #E2E8F0; font-weight: 700; color: #64748B;">Cost Summary</td>
+                <td style="padding: 8px 10px; border: 1px solid #E2E8F0; color: #1E293B; font-weight: 600;">VAT (12%)</td>
+                <td style="padding: 8px 10px; border: 1px solid #E2E8F0; text-align: center; color: #64748B;">-</td>
+                <td style="padding: 8px 10px; border: 1px solid #E2E8F0; text-align: right; color: #64748B;">-</td>
+                <td style="padding: 8px 10px; border: 1px solid #E2E8F0; text-align: right; color: #1E293B; font-weight: 700;">PHP ${vat.toLocaleString('en-PH', { minimumFractionDigits: 2 })}</td>
+              </tr>
+              <!-- Grand Total row -->
+              <tr style="background: #EFF6FF;">
+                <td colspan="4" style="padding: 10px 10px; border: 1px solid #E2E8F0; font-weight: 900; color: #1E3A8A; text-transform: uppercase; text-align: right;">Total Cost (Project, VAT Inc.)</td>
+                <td style="padding: 10px 10px; border: 1px solid #E2E8F0; text-align: right; color: #1E3A8A; font-weight: 900; font-size: 11px;">PHP ${grandTotalWithVAT.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+              </tr>
+            </tbody>
+          </table>
+          </div>
+          
+          ${footerHtml}
+        </div>
+
+        <!-- PAGE 2: TECHNICAL DETAILS, ROLES & CONSUMABLES -->
+        <div style="box-sizing: border-box; width: 100%; height: 1045px; position: relative; background: #FFFFFF; margin: 0; padding: 0;">
+          ${headerHtml}
+          
+          <div style="padding: 20px 40px 60px 40px;">
+            <!-- TECHNICAL BREAKDOWN -->
+            <h2 style="font-size: 11px; font-weight: 900; color: #1E3A8A; text-transform: uppercase; margin: 0 0 6px 0; letter-spacing: 0.05em;">Technical Breakdown</h2>
+          <div style="font-size: 10px; font-weight: 700; color: #475569; margin-bottom: 8px;">System: ${systemLabel}</div>
+          
+          <table style="width: 100%; border-collapse: collapse; font-size: 9px; font-family: 'Inter', sans-serif; margin-bottom: 15px;">
+            <thead>
+              <tr style="background: #F8FAFC; text-align: left;">
+                <th style="padding: 6px 8px; border: 1px solid #E2E8F0; color: #475569; font-weight: 700; width: 20%;">Duration</th>
+                <th style="padding: 6px 8px; border: 1px solid #E2E8F0; color: #475569; font-weight: 700; width: 20%;">Technicians</th>
+                <th style="padding: 6px 8px; border: 1px solid #E2E8F0; color: #475569; font-weight: 700; width: 60%;">Site Constraints</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td style="padding: 6px 8px; border: 1px solid #E2E8F0; color: #1E293B; font-weight: 600;">${totalManDays} day(s)</td>
+                <td style="padding: 6px 8px; border: 1px solid #E2E8F0; color: #1E293B; font-weight: 600;">${totalHeadcount} tech(s)</td>
+                <td style="padding: 6px 8px; border: 1px solid #E2E8F0; color: #1E293B; font-weight: 600;">${constraintTexts || 'None recorded'}</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <!-- Manpower & Consumables Details Side-by-side -->
+          <div style="display: flex; gap: 15px; margin-top: 15px;">
+            <!-- Manpower Role Details -->
+            <div style="flex: 1;">
+              <div style="font-size: 9px; font-weight: 900; color: #1E3A8A; text-transform: uppercase; margin-bottom: 4px; letter-spacing: 0.02em;">Manpower Role Breakdown</div>
+              <table style="width: 100%; border-collapse: collapse; font-size: 8.5px; font-family: 'Inter', sans-serif;">
+                <thead>
+                  <tr style="background: #F8FAFC; text-align: left;">
+                    <th style="padding: 5px 6px; border: 1px solid #E2E8F0; color: #475569; font-weight: 700; width: 60%;">Manpower Role</th>
+                    <th style="padding: 5px 6px; border: 1px solid #E2E8F0; color: #475569; font-weight: 700; width: 20%; text-align: center;">Count</th>
+                    <th style="padding: 5px 6px; border: 1px solid #E2E8F0; color: #475569; font-weight: 700; width: 20%; text-align: center;">Hours</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${manpower.length > 0 ? manpower.map(m => `
+                    <tr>
+                      <td style="padding: 5px 6px; border: 1px solid #E2E8F0; color: #1E293B; font-weight: 600;">${m.role}</td>
+                      <td style="padding: 5px 6px; border: 1px solid #E2E8F0; text-align: center; color: #1E293B; font-weight: 600;">${m.headcount}</td>
+                      <td style="padding: 5px 6px; border: 1px solid #E2E8F0; text-align: center; color: #1E293B; font-weight: 600;">${m.hours}</td>
+                    </tr>
+                  `).join('') : `
+                    <tr>
+                      <td colspan="3" style="padding: 8px; border: 1px solid #E2E8F0; text-align: center; color: #94A3B8; font-weight: 600;">No manpower breakdown recorded</td>
+                    </tr>
+                  `}
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Consumables Details -->
+            <div style="flex: 1.2;">
+              <div style="font-size: 9px; font-weight: 900; color: #1E3A8A; text-transform: uppercase; margin-bottom: 4px; letter-spacing: 0.02em;">Consumables & Wires</div>
+              <table style="width: 100%; border-collapse: collapse; font-size: 8.5px; font-family: 'Inter', sans-serif;">
+                <thead>
+                  <tr style="background: #F8FAFC; text-align: left;">
+                    <th style="padding: 5px 6px; border: 1px solid #E2E8F0; color: #475569; font-weight: 700; width: 45%;">Consumable</th>
+                    <th style="padding: 5px 6px; border: 1px solid #E2E8F0; color: #475569; font-weight: 700; width: 20%;">Brand</th>
+                    <th style="padding: 5px 6px; border: 1px solid #E2E8F0; color: #475569; font-weight: 700; width: 15%; text-align: center;">Qty</th>
+                    <th style="padding: 5px 6px; border: 1px solid #E2E8F0; color: #475569; font-weight: 700; width: 20%; text-align: right;">Line Cost</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${consumables.length > 0 ? consumables.map(c => `
+                    <tr>
+                      <td style="padding: 5px 6px; border: 1px solid #E2E8F0; color: #1E293B; font-weight: 600; line-clamp: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 135px;" title="${c.name}">${c.name}</td>
+                      <td style="padding: 5px 6px; border: 1px solid #E2E8F0; color: #1E293B; font-weight: 600; line-clamp: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60px;" title="${c.brand || ''}">${c.brand || '-'}</td>
+                      <td style="padding: 5px 6px; border: 1px solid #E2E8F0; text-align: center; color: #1E293B; font-weight: 600;">${c.quantity} ${c.unit || 'pcs'}</td>
+                      <td style="padding: 5px 6px; border: 1px solid #E2E8F0; text-align: right; color: #1E293B; font-weight: 600;">PHP ${(c.totalPrice || 0).toLocaleString('en-PH', { minimumFractionDigits: 2 })}</td>
+                    </tr>
+                  `).join('') : `
+                    <tr>
+                      <td colspan="4" style="padding: 8px; border: 1px solid #E2E8F0; text-align: center; color: #94A3B8; font-weight: 600;">No consumables recorded</td>
+                    </tr>
+                  `}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- REMARKS -->
+          <h2 style="font-size: 11px; font-weight: 900; color: #1E3A8A; text-transform: uppercase; margin: 25px 0 6px 0; letter-spacing: 0.05em;">Remarks</h2>
+          <table style="width: 100%; border-collapse: collapse; font-size: 9.5px; font-family: 'Inter', sans-serif;">
+            <thead>
+              <tr style="background: #F8FAFC; text-align: left;">
+                <th style="padding: 6px 8px; border: 1px solid #E2E8F0; color: #475569; font-weight: 700; width: 20%;">Source</th>
+                <th style="padding: 6px 8px; border: 1px solid #E2E8F0; color: #475569; font-weight: 700; width: 80%;">Remarks</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td style="padding: 6px 8px; border: 1px solid #E2E8F0; color: #1E293B; font-weight: 700;">Technician</td>
+                <td style="padding: 6px 8px; border: 1px solid #E2E8F0; color: #475569; font-weight: 600;">${project.surveyScope || 'No technician remarks recorded.'}</td>
+              </tr>
+              <tr>
+                <td style="padding: 6px 8px; border: 1px solid #E2E8F0; color: #1E293B; font-weight: 700;">Department</td>
+                <td style="padding: 6px 8px; border: 1px solid #E2E8F0; color: #475569; font-weight: 600;">No department remarks recorded.</td>
+              </tr>
+            </tbody>
+          </table>
+          </div>
+          
+          ${footerHtml}
+        </div>
+      `;
       // A download taken before saving is marked so it is not mistaken for the saved record.
       container.innerHTML = buildReportHtml(!asBlob && hasUnsavedChanges);
 

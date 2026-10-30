@@ -14,17 +14,63 @@ import {
   isReferenceDocument,
 } from '../../utils/uploadFileTypes';
 import {
-  analyzeFloorPlan,
+  analyzeFloorPlanFile,
+  combineFloorPlanResults,
   analyzeEstimation,
+  MAX_FLOORPLAN_FILES,
+  MAX_FLOORPLAN_FILE_BYTES,
+  MAX_FLOOR_PLAN_TITLE_LENGTH,
   type FloorPlanAnalyzeResult,
   type EstimationAnalyzeResult,
 } from '../../services/api/estimationFlow';
+import { downloadFloorPlanReport, sectionsOfResult } from '../../utils/floorPlanReportPdf';
 
 interface FileWithContent {
   file: File;
   parsed: ParsedFile;
   loading: boolean;
   error: string | null;
+}
+
+/** One uploaded floor plan plus the title the user gives it (e.g. "Ground Floor"). */
+interface FloorPlanUpload {
+  file: File;
+  title: string;
+}
+
+type QueueStatus = 'waiting' | 'analyzing' | 'done' | 'failed' | 'cancelled';
+
+/** One floor plan in the analysis queue: it is analyzed on its own, in order. */
+interface QueueItem {
+  id: string;
+  fileName: string;
+  title: string;
+  status: QueueStatus;
+  result?: FloorPlanAnalyzeResult;
+  error?: string;
+  /** Shown instead of the status text, e.g. while waiting for the rate limit. */
+  note?: string;
+}
+
+const queueId = (file: File) => `${file.name}:${file.size}`;
+
+/** Waits, but stops right away when the queue is cancelled. */
+function pause(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) {
+      reject(new DOMException('Cancelled', 'AbortError'));
+      return;
+    }
+    const timer = setTimeout(() => {
+      signal.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(new DOMException('Cancelled', 'AbortError'));
+    };
+    signal.addEventListener('abort', onAbort, { once: true });
+  });
 }
 
 interface Props {
@@ -107,9 +153,18 @@ export default function TORComparisonView({ onScanningChange, onSaveEstimation }
   const [showFloorPlanSelection, setShowFloorPlanSelection] = useState(false);
   const [torFile, setTorFile] = useState<FileWithContent | null>(null);
   const [proposalFile, setProposalFile] = useState<FileWithContent | null>(null);
-  const [floorPlanFile, setFloorPlanFile] = useState<FileWithContent | null>(null);
+  const [floorPlanUploads, setFloorPlanUploads] = useState<FloorPlanUpload[]>([]);
+  const hasFloorPlans = floorPlanUploads.length > 0;
   const [floorPlanResult, setFloorPlanResult] = useState<FloorPlanAnalyzeResult | null>(null);
   const [floorPlanLoading, setFloorPlanLoading] = useState(false);
+  const [queue, setQueue] = useState<QueueItem[]>([]);
+  // Which result cards are flipped to show their sections.
+  const [flipped, setFlipped] = useState<Record<string, boolean>>({});
+  // The results are a deck of cards: swipe, scroll, drag or use the arrows to move between floor plans.
+  const deckRef = useRef<HTMLDivElement | null>(null);
+  const [deckIndex, setDeckIndex] = useState(0);
+  const [deckDragging, setDeckDragging] = useState(false);
+  const dragRef = useRef({ startY: 0, startTop: 0, moved: false, active: false });
   const [estResult, setEstResult] = useState<EstimationAnalyzeResult | null>(null);
   const [estError, setEstError] = useState('');
   const [showDocResults, setShowDocResults] = useState(false);
@@ -164,25 +219,37 @@ export default function TORComparisonView({ onScanningChange, onSaveEstimation }
     }
   }, [toast]);
 
-  const handleFloorPlanFiles = useCallback(async (files: FileList | File[]) => {
-    const fileArray = Array.from(files);
-    if (fileArray.length === 0) return;
-    const file = fileArray[0];
-    if (!isFloorPlanFile(file)) {
-      toast.error('Unsupported floor plan. Upload a PDF, PNG, or JPG image.');
-      return;
+  const handleFloorPlanFiles = useCallback((files: FileList | File[]) => {
+    const incoming = Array.from(files);
+    if (incoming.length === 0) return;
+    const next = [...floorPlanUploads];
+    for (const file of incoming) {
+      if (next.length >= MAX_FLOORPLAN_FILES) {
+        toast.error(`You can upload up to ${MAX_FLOORPLAN_FILES} floor plans. Remove one to add another.`);
+        break;
+      }
+      if (!isFloorPlanFile(file)) {
+        toast.error(`"${file.name}" is not a supported floor plan. Upload a PDF, PNG, or JPG.`);
+        continue;
+      }
+      if (file.size > MAX_FLOORPLAN_FILE_BYTES) {
+        toast.error(`"${file.name}" exceeds the 12 MB file limit.`);
+        continue;
+      }
+      if (next.some(item => item.file.name === file.name && item.file.size === file.size)) {
+        toast.error(`"${file.name}" is already uploaded.`);
+        continue;
+      }
+      next.push({ file, title: '' });
     }
-    setFloorPlanFile({ file, parsed: { fileName: file.name, fileType: '', content: '', size: file.size }, loading: true, error: null });
+    setFloorPlanUploads(next);
     setFloorPlanResult(null);
-    try {
-      const parsed = await parseFile(file);
-      setFloorPlanFile({ file, parsed, loading: false, error: null });
-      toast.success(`Floor plan "${file.name}" loaded successfully`);
-    } catch (err) {
-      setFloorPlanFile({ file, parsed: { fileName: file.name, fileType: '', content: '', size: file.size }, loading: false, error: 'Failed to parse file' });
-      toast.error(`Failed to parse floor plan: ${err}`);
-    }
-  }, [toast]);
+    setQueue([]);
+  }, [floorPlanUploads, toast]);
+
+  const updateFloorPlanTitle = useCallback((index: number, title: string) => {
+    setFloorPlanUploads(prev => prev.map((item, i) => (i === index ? { ...item, title } : item)));
+  }, []);
 
   const removeTorFile = useCallback(() => {
     setTorFile(null);
@@ -196,55 +263,109 @@ export default function TORComparisonView({ onScanningChange, onSaveEstimation }
     setEstError('');
     setShowDocResults(false);
   }, []);
-  const removeFloorPlanFile = useCallback(() => {
-    setFloorPlanFile(null);
+  const removeFloorPlanFile = useCallback((index: number) => {
+    const removed = floorPlanUploads[index];
+    setFloorPlanUploads(prev => prev.filter((_, i) => i !== index));
+    if (removed) setQueue(prev => prev.filter(item => item.id !== queueId(removed.file)));
     setFloorPlanResult(null);
-  }, []);
+  }, [floorPlanUploads]);
+
+  // Floor plans are analyzed one at a time, in order, so each plan is read on its
+  // own. Every item shows its progress live, and a finished item can be opened
+  // while the next ones are still running.
+  const runFloorPlanQueue = useCallback(async (ids: string[]) => {
+    setFloorPlanLoading(true);
+    onScanningChange?.(true);
+    const controller = new AbortController();
+    analysisControllerRef.current = controller;
+    const patch = (id: string, change: Partial<QueueItem>) =>
+      setQueue(prev => prev.map(item => (item.id === id ? { ...item, ...change } : item)));
+    let analyzed = 0;
+    try {
+      for (let index = 0; index < ids.length; index += 1) {
+        const id = ids[index];
+        const upload = floorPlanUploads.find(item => queueId(item.file) === id);
+        if (!upload) continue;
+        // The API allows one request a second.
+        if (index > 0) await pause(1100, controller.signal);
+        patch(id, { status: 'analyzing', error: undefined, note: undefined });
+        for (let attempt = 0; ; attempt += 1) {
+          try {
+            const result = await analyzeFloorPlanFile(upload.file, {
+              title: upload.title,
+              // Selected systems reach the prompt as "System types of interest".
+              projectContext: { systemTypes },
+              analysisOptions: {
+                extractDimensions: true,
+                extractAnnotations: true,
+                detectSystems: true,
+                classifyRooms: true,
+                outputFormat: 'structured',
+                coordinateSystem: 'meters',
+              },
+            }, controller.signal);
+            patch(id, { status: 'done', result, note: undefined });
+            analyzed += 1;
+            break;
+          } catch (err) {
+            if (controller.signal.aborted) throw err;
+            const message = err instanceof Error ? err.message : 'Floor plan analysis failed';
+            if (attempt < 3 && /too many requests|rate limit/i.test(message)) {
+              patch(id, { note: 'Rate limit reached. Waiting a moment, then trying again…' });
+              await pause(20000, controller.signal);
+              continue;
+            }
+            patch(id, { status: 'failed', error: message, note: undefined });
+            break;
+          }
+        }
+      }
+      if (analyzed > 0) {
+        toast.success(analyzed === 1 ? 'Floor plan analyzed.' : `${analyzed} floor plans analyzed.`);
+      } else {
+        toast.error('No floor plan could be analyzed.');
+      }
+    } catch {
+      // Cancelled: cancelAnalysis already marked the items that were still waiting.
+    } finally {
+      if (analysisControllerRef.current === controller) {
+        analysisControllerRef.current = null;
+        setFloorPlanLoading(false);
+        onScanningChange?.(false);
+      }
+    }
+  }, [floorPlanUploads, systemTypes, toast, onScanningChange]);
 
   const handleRunComparison = useCallback(async () => {
     if (selectedDocType === 'floor_plan') {
-      if (!floorPlanFile) {
+      if (!hasFloorPlans) {
         toast.error('Please upload a floor plan to analyze.');
         return;
+      }
+      const seenTitles = new Set<string>();
+      for (const item of floorPlanUploads) {
+        const key = item.title.trim().toLowerCase();
+        if (!key) continue;
+        if (seenTitles.has(key)) {
+          toast.error(`Two floor plans are titled "${item.title.trim()}". Give each plan its own title.`);
+          return;
+        }
+        seenTitles.add(key);
       }
       if (systemTypes.length === 0) {
         setShowSystemModal(true);
         return;
       }
 
-      setFloorPlanLoading(true);
+      const items: QueueItem[] = floorPlanUploads.map(upload => ({
+        id: queueId(upload.file),
+        fileName: upload.file.name,
+        title: upload.title.trim(),
+        status: 'waiting',
+      }));
+      setQueue(items);
       setFloorPlanResult(null);
-      onScanningChange?.(true);
-      const controller = new AbortController();
-      analysisControllerRef.current = controller;
-      try {
-        const result = await analyzeFloorPlan({
-          files: [floorPlanFile.file],
-          // Selected systems reach the prompt as "System types of interest".
-          projectContext: { systemTypes },
-          analysisOptions: {
-            extractDimensions: true,
-            extractAnnotations: true,
-            detectSystems: true,
-            classifyRooms: true,
-            outputFormat: 'structured',
-            coordinateSystem: 'meters',
-          },
-        }, controller.signal);
-        setFloorPlanResult(result);
-        setShowFloorPlanSelection(true);
-        toast.success('Floor plan analyzed — sections extracted!');
-      } catch (err) {
-        if (!controller.signal.aborted) {
-          toast.error(err instanceof Error ? err.message : 'Floor plan analysis failed');
-        }
-      } finally {
-        if (analysisControllerRef.current === controller) {
-          analysisControllerRef.current = null;
-          setFloorPlanLoading(false);
-          onScanningChange?.(false);
-        }
-      }
+      void runFloorPlanQueue(items.map(item => item.id));
       return;
     }
 
@@ -325,28 +446,114 @@ export default function TORComparisonView({ onScanningChange, onSaveEstimation }
         onScanningChange?.(false);
       }
     }
-  }, [selectedDocType, torFile, proposalFile, floorPlanFile, systemTypes, toast, onScanningChange]);
+  }, [selectedDocType, torFile, proposalFile, floorPlanUploads, hasFloorPlans, runFloorPlanQueue, systemTypes, toast, onScanningChange]);
 
   const cancelAnalysis = () => {
     analysisControllerRef.current?.abort();
     analysisControllerRef.current = null;
     setFloorPlanLoading(false);
     setAnalyzing(false);
+    setQueue(prev => prev.map(item =>
+      item.status === 'waiting' || item.status === 'analyzing'
+        ? { ...item, status: 'cancelled', note: undefined }
+        : item
+    ));
     onScanningChange?.(false);
   };
 
-  const currentFile =
-    selectedDocType === 'proposal'
-      ? proposalFile
-      : selectedDocType === 'floor_plan'
-        ? floorPlanFile
-        : torFile;
+  const doneItems = queue.filter(item => item.status === 'done' && item.result);
+  const doneUploads = floorPlanUploads.filter(upload => doneItems.some(item => item.id === queueId(upload.file)));
+  const analyzingItem = queue.find(item => item.status === 'analyzing');
+  const finishedCount = queue.filter(item => item.status === 'done' || item.status === 'failed').length;
+
+  const goToCard = (index: number) => {
+    const count = doneItems.length;
+    const el = deckRef.current;
+    if (count === 0 || !el) return;
+    const next = Math.max(0, Math.min(count - 1, index));
+    el.scrollTo({ top: next * el.clientHeight, behavior: 'smooth' });
+    setDeckIndex(next);
+  };
+
+  const onDeckScroll = () => {
+    const el = deckRef.current;
+    if (!el || deckDragging) return;
+    setDeckIndex(Math.round(el.scrollTop / Math.max(el.clientHeight, 1)));
+  };
+
+  const onDeckKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      goToCard(deckIndex + 1);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      goToCard(deckIndex - 1);
+    }
+  };
+
+  // Touch and trackpads scroll the deck natively; a mouse can drag it.
+  const onDeckPointerDown = (e: React.PointerEvent) => {
+    const el = deckRef.current;
+    if (e.pointerType !== 'mouse' || !el || (e.target as HTMLElement).closest('button')) return;
+    dragRef.current = { startY: e.clientY, startTop: el.scrollTop, moved: false, active: true };
+  };
+
+  const onDeckPointerMove = (e: React.PointerEvent) => {
+    const drag = dragRef.current;
+    const el = deckRef.current;
+    if (!drag.active || !el) return;
+    const delta = drag.startY - e.clientY;
+    if (!drag.moved && Math.abs(delta) > 6) {
+      drag.moved = true;
+      setDeckDragging(true);
+    }
+    if (drag.moved) el.scrollTop = drag.startTop + delta;
+  };
+
+  const endDeckDrag = () => {
+    const drag = dragRef.current;
+    const el = deckRef.current;
+    if (!drag.active) return;
+    drag.active = false;
+    setDeckDragging(false);
+    if (drag.moved && el) goToCard(Math.round(el.scrollTop / Math.max(el.clientHeight, 1)));
+    // Let the click that ends a drag pass before cards can flip again.
+    setTimeout(() => { dragRef.current.moved = false; }, 0);
+  };
+
+  // Continue with every plan that finished: their results are joined for the
+  // section-selection step.
+  const continueToSections = () => {
+    const results = doneItems.map(item => item.result!).filter(Boolean);
+    if (results.length === 0) return;
+    setFloorPlanResult(combineFloorPlanResults(results));
+    setShowFloorPlanSelection(true);
+  };
+
+  const downloadReport = async (item: QueueItem) => {
+    if (!item.result) return;
+    try {
+      await downloadFloorPlanReport({
+        title: item.title,
+        fileName: item.fileName,
+        result: item.result,
+        systems: systemTypes.map(type => SYSTEM_OPTIONS.find(option => option.type === type)?.label ?? type),
+      });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not create the PDF.');
+    }
+  };
+
+  const currentFile = selectedDocType === 'proposal' ? proposalFile : torFile;
 
   if (showFloorPlanSelection) {
     return (
       <FloorPlanSelectionSectionView
         result={floorPlanResult}
-        uploadedFile={floorPlanFile?.file}
+        uploadedFiles={doneUploads.map(item => item.file)}
+        floorPlans={doneUploads
+          .map(item => ({ fileName: item.file.name, title: item.title.trim() }))
+          .filter(label => label.title)}
         onSaveEstimation={onSaveEstimation}
         initialSystemTypes={systemTypes}
         onBackToDocument={() => setShowFloorPlanSelection(false)}
@@ -503,7 +710,7 @@ export default function TORComparisonView({ onScanningChange, onSaveEstimation }
             </h3>
             <p className="max-w-md text-sm font-medium text-blue-200" aria-live="polite">
               {floorPlanLoading
-                ? 'Reading the floor plan and identifying rooms and installation sections…'
+                ? `Analyzing ${analyzingItem ? `"${analyzingItem.title || analyzingItem.fileName}"` : 'the floor plans'} — ${finishedCount} of ${queue.length} finished. Each floor plan is analyzed on its own.`
                 : 'Extracting system requirements and reviewing the document…'}
             </p>
             <button
@@ -531,14 +738,70 @@ export default function TORComparisonView({ onScanningChange, onSaveEstimation }
                 : 'Upload a proposal to review proposed equipment and quantities.'}
             </p>
             {/* Active file or upload button */}
-            {currentFile ? (
+            {selectedDocType === 'floor_plan' ? (
+              <div className="mt-2 flex w-full max-w-2xl flex-col gap-2">
+                {floorPlanUploads.map((item, index) => (
+                  <div
+                    key={`${item.file.name}-${index}`}
+                    className="flex flex-col gap-2 rounded-xl border border-blue-200 bg-white p-3 px-4 text-left shadow-xs dark:border-blue-900 dark:bg-[#131B2E]"
+                  >
+                    <div className="flex items-center gap-3">
+                      <FileTypeIcon fileName={item.file.name} />
+                      <span className="min-w-0 flex-1 break-all text-xs font-bold text-slate-800 dark:text-white">
+                        {item.file.name}
+                        <span className="ml-2 font-semibold text-slate-400">
+                          {item.file.size < 1024 * 1024
+                            ? `${Math.max(1, Math.round(item.file.size / 1024))} KB`
+                            : `${(item.file.size / (1024 * 1024)).toFixed(1)} MB`}
+                        </span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => removeFloorPlanFile(index)}
+                        className="shrink-0 text-slate-400 hover:text-red-500 text-xs font-bold cursor-pointer"
+                      >
+                        ✕ Remove
+                      </button>
+                    </div>
+                    <input
+                      type="text"
+                      value={item.title}
+                      maxLength={MAX_FLOOR_PLAN_TITLE_LENGTH}
+                      onChange={e => updateFloorPlanTitle(index, e.target.value)}
+                      placeholder="Floor plan title, e.g. Ground Floor, 2nd Floor Mezzanine, Roof Deck"
+                      aria-label={`Title for ${item.file.name}`}
+                      className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-800 outline-none focus:border-blue-400 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                    />
+                  </div>
+                ))}
+                {floorPlanUploads.length < MAX_FLOORPLAN_FILES && (
+                  <label className="mx-auto mt-1 px-6 py-3 rounded-full text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 transition-all shadow-md shadow-blue-500/20 cursor-pointer inline-flex items-center gap-2">
+                    <span>{hasFloorPlans ? '+ Add another floor plan' : 'Open File / Select from Device'}</span>
+                    <input
+                      type="file"
+                      multiple
+                      accept={FLOOR_PLAN_ACCEPT}
+                      className="hidden"
+                      onChange={e => {
+                        if (e.target.files && e.target.files.length > 0) handleFloorPlanFiles(e.target.files);
+                        e.target.value = '';
+                      }}
+                    />
+                  </label>
+                )}
+                {hasFloorPlans && (
+                  <p className="text-center text-[10px] font-medium text-slate-400 dark:text-slate-500">
+                    Titles are optional, but tell the AI which floor each plan shows.
+                  </p>
+                )}
+              </div>
+            ) : currentFile ? (
               <div className="mt-2 flex w-full max-w-2xl items-center gap-3 rounded-xl border border-blue-200 bg-white p-3 px-4 shadow-xs dark:border-blue-900 dark:bg-[#131B2E]">
                 <span className="min-w-0 flex-1 break-all text-left text-xs font-bold text-slate-800 dark:text-white">{currentFile.parsed.fileName}</span>
                 <button
                   type="button"
                   onClick={() => {
                     if (selectedDocType === 'proposal') removeProposalFile();
-                    else if (selectedDocType === 'floor_plan') removeFloorPlanFile();
                     else removeTorFile();
                   }}
                   className="shrink-0 text-slate-400 hover:text-red-500 text-xs font-bold cursor-pointer"
@@ -556,18 +819,12 @@ export default function TORComparisonView({ onScanningChange, onSaveEstimation }
                   <span>Open File / Select from Device</span>
                   <input
                     type="file"
-                    accept={
-                      selectedDocType === 'floor_plan'
-                        ? FLOOR_PLAN_ACCEPT
-                        : REFERENCE_DOCUMENT_ACCEPT
-                    }
+                    accept={REFERENCE_DOCUMENT_ACCEPT}
                     className="hidden"
                     onChange={e => {
                       if (e.target.files && e.target.files.length > 0) {
                         if (selectedDocType === 'proposal') {
                           handleProposalFiles(e.target.files);
-                        } else if (selectedDocType === 'floor_plan') {
-                          handleFloorPlanFiles(e.target.files);
                         } else {
                           handleTorFiles(e.target.files);
                         }
@@ -581,7 +838,7 @@ export default function TORComparisonView({ onScanningChange, onSaveEstimation }
 
             <p className="text-[10px] font-medium text-slate-400 dark:text-slate-500 mt-2">
               {selectedDocType === 'floor_plan'
-                ? 'Accepted floor plans: PDF, PNG, JPG'
+                ? `Accepted floor plans: PDF, PNG, JPG — up to ${MAX_FLOORPLAN_FILES} plans, 12 MB each`
                 : 'Accepted TOR / reference documents: PDF, DOCX'}
             </p>
           </>
@@ -623,7 +880,7 @@ export default function TORComparisonView({ onScanningChange, onSaveEstimation }
           {systemTypes.length === 0
             ? 'Select at least one system type to enable AI analysis'
             : selectedDocType === 'floor_plan'
-              ? floorPlanFile
+              ? hasFloorPlans
                 ? 'Floor plan ready for AI analysis'
                 : 'Upload a floor plan to enable AI analysis'
               : currentFile
@@ -635,12 +892,12 @@ export default function TORComparisonView({ onScanningChange, onSaveEstimation }
           disabled={
             systemTypes.length === 0 ||
             (selectedDocType === 'floor_plan'
-              ? !floorPlanFile || floorPlanLoading
+              ? !hasFloorPlans || floorPlanLoading
               : !currentFile || analyzing)
           }
           className={`flex items-center justify-center gap-2 rounded-full px-6 py-3 text-xs font-bold transition-all cursor-pointer sm:w-auto ${
             systemTypes.length > 0 &&
-            (selectedDocType === 'floor_plan' ? floorPlanFile : currentFile) &&
+            (selectedDocType === 'floor_plan' ? hasFloorPlans : currentFile) &&
             !floorPlanLoading &&
             !analyzing
               ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-md shadow-blue-500/20'
@@ -657,6 +914,254 @@ export default function TORComparisonView({ onScanningChange, onSaveEstimation }
           </span>
         </button>
       </div>
+      )}
+
+      {/* Floor plan queue: live progress on the left, finished results on the right */}
+      {selectedDocType === 'floor_plan' && queue.length > 0 && (
+        <div className="grid gap-4 lg:grid-cols-2">
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs dark:border-slate-800 dark:bg-[#131B2E] sm:p-5">
+            <div className="flex items-baseline justify-between gap-2">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400">Analysis queue</p>
+              <p className="text-[10px] font-bold text-slate-400">{finishedCount} of {queue.length} finished</p>
+            </div>
+            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+              <div
+                className="h-full rounded-full bg-blue-600 transition-all duration-500"
+                style={{ width: `${(finishedCount / queue.length) * 100}%` }}
+              />
+            </div>
+            <ol className="mt-3 space-y-2">
+              {queue.map((item, index) => (
+                <li
+                  key={item.id}
+                  className={`flex items-center gap-3 rounded-xl border p-3 transition-all duration-300 ${
+                    item.status === 'analyzing'
+                      ? 'border-blue-400 bg-blue-50 shadow-sm dark:border-blue-700 dark:bg-blue-950/30'
+                      : item.status === 'done'
+                        ? 'border-emerald-200 dark:border-emerald-900/60'
+                        : item.status === 'failed'
+                          ? 'border-red-200 dark:border-red-900/60'
+                          : 'border-slate-200 dark:border-slate-800'
+                  }`}
+                >
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center">
+                    {item.status === 'analyzing' ? (
+                      <svg className="h-5 w-5 animate-spin text-blue-600" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-90" fill="currentColor" d="M4 12a8 8 0 0 1 8-8V0C5.37 0 0 5.37 0 12h4z" />
+                      </svg>
+                    ) : item.status === 'done' ? (
+                      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-500 text-[12px] font-black text-white">✓</span>
+                    ) : item.status === 'failed' ? (
+                      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-red-500 text-[12px] font-black text-white">✕</span>
+                    ) : (
+                      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-100 text-[11px] font-black text-slate-400 dark:bg-slate-800">{index + 1}</span>
+                    )}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-xs font-bold text-slate-800 dark:text-white">{item.title || item.fileName}</p>
+                    <p className={`text-[10px] font-medium ${item.status === 'failed' ? 'text-red-500' : 'text-slate-500 dark:text-slate-400'}`}>
+                      {item.note
+                        ? item.note
+                        : item.status === 'waiting'
+                          ? 'Waiting in the queue'
+                          : item.status === 'analyzing'
+                            ? 'Analyzing this floor plan…'
+                            : item.status === 'done'
+                              ? `Done — ${sectionsOfResult(item.result).length} sections found`
+                              : item.status === 'cancelled'
+                                ? 'Cancelled'
+                                : item.error || 'Analysis failed'}
+                    </p>
+                  </div>
+                  {item.status === 'failed' && !floorPlanLoading && (
+                    <button
+                      type="button"
+                      onClick={() => void runFloorPlanQueue([item.id])}
+                      className="shrink-0 rounded-full bg-red-600 px-3 py-1 text-[10px] font-bold text-white hover:bg-red-700 cursor-pointer"
+                    >
+                      Retry
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ol>
+          </div>
+
+          <div className="flex flex-col gap-3">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400">Results by floor plan</p>
+            {doneItems.length === 0 ? (
+              <p className="rounded-2xl border border-dashed border-slate-300 p-4 text-xs font-medium text-slate-400 dark:border-slate-700 dark:text-slate-500">
+                Finished floor plans appear here one by one, while the others are still being analyzed.
+              </p>
+            ) : (
+              <div>
+                <div className="flex gap-2">
+                  <div
+                    ref={deckRef}
+                    tabIndex={0}
+                    onScroll={onDeckScroll}
+                    onKeyDown={onDeckKeyDown}
+                    onPointerDown={onDeckPointerDown}
+                    onPointerMove={onDeckPointerMove}
+                    onPointerUp={endDeckDrag}
+                    onPointerLeave={endDeckDrag}
+                    onPointerCancel={endDeckDrag}
+                    aria-label="Floor plan results. Swipe or use the up and down arrow keys to move between floor plans."
+                    className={'h-64 flex-1 overflow-y-auto rounded-2xl outline-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ' + (deckDragging ? 'cursor-grabbing select-none snap-none' : 'snap-y snap-mandatory')}
+                  >
+              {doneItems.map(item => {
+                const sections = sectionsOfResult(item.result);
+                const summary = item.result?.summary;
+                const isFlipped = Boolean(flipped[item.id]);
+                const flip = () => {
+                  if (dragRef.current.moved) return;
+                  setFlipped(prev => ({ ...prev, [item.id]: !prev[item.id] }));
+                };
+                const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? '' : 's'}`;
+                const stats: [string, string][] = [
+                  ['Sections', String(sections.length)],
+                  ['Rooms', String(summary?.totalRooms ?? 0)],
+                  ['Corridors', String(summary?.totalCorridors ?? 0)],
+                  ['Total area', `${summary?.totalArea ?? 0} ${summary?.unit || 'sqm'}`],
+                ];
+                return (
+                  // Flash card: the front shows the floor plan at a glance, the back lists its sections.
+                  <div key={item.id} className="h-64 snap-start snap-always py-1 [perspective:1200px]">
+                    <div
+                      className={`relative h-full transition-transform duration-500 [transform-style:preserve-3d] ${
+                        isFlipped ? '[transform:rotateY(180deg)]' : ''
+                      }`}
+                    >
+                      <div
+                        role="button"
+                        tabIndex={isFlipped ? -1 : 0}
+                        onClick={flip}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            flip();
+                          }
+                        }}
+                        aria-label={`${item.title || item.fileName}: show sections`}
+                        className="absolute inset-0 flex cursor-pointer flex-col rounded-2xl border border-slate-200 bg-white p-4 shadow-xs transition-shadow [backface-visibility:hidden] hover:shadow-md dark:border-slate-800 dark:bg-[#131B2E]"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="truncate text-base font-black text-slate-900 dark:text-white">{item.title || item.fileName}</p>
+                            <p className="truncate text-[10px] font-medium text-slate-400">{item.fileName}</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={e => {
+                              e.stopPropagation();
+                              void downloadReport(item);
+                            }}
+                            className="shrink-0 rounded-full bg-blue-600 px-3 py-1.5 text-[10px] font-bold text-white hover:bg-blue-700 cursor-pointer"
+                          >
+                            ⬇ Download PDF
+                          </button>
+                        </div>
+                        <div className="mt-3 grid flex-1 grid-cols-2 gap-2">
+                          {stats.map(([label, value]) => (
+                            <div key={label} className="flex flex-col justify-center rounded-xl bg-slate-50 px-3 dark:bg-slate-900">
+                              <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400">{label}</span>
+                              <span className="text-lg font-black text-slate-900 dark:text-white">{value}</span>
+                            </div>
+                          ))}
+                        </div>
+                        <p className="mt-2 text-center text-[10px] font-bold text-blue-600 dark:text-blue-400">
+                          Tap the card to see its {plural(sections.length, 'section')} ↻
+                        </p>
+                      </div>
+
+                      <div
+                        onClick={flip}
+                        aria-hidden={!isFlipped}
+                        className="absolute inset-0 flex cursor-pointer flex-col rounded-2xl border border-blue-300 bg-blue-50 p-4 shadow-md [backface-visibility:hidden] [transform:rotateY(180deg)] dark:border-blue-800 dark:bg-blue-950/40"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <p className="truncate text-sm font-black text-slate-900 dark:text-white">
+                            {item.title || item.fileName} — {plural(sections.length, 'section')}
+                          </p>
+                          <button
+                            type="button"
+                            tabIndex={isFlipped ? 0 : -1}
+                            onClick={e => {
+                              e.stopPropagation();
+                              void downloadReport(item);
+                            }}
+                            className="shrink-0 rounded-full bg-blue-600 px-3 py-1.5 text-[10px] font-bold text-white hover:bg-blue-700 cursor-pointer"
+                          >
+                            ⬇ PDF
+                          </button>
+                        </div>
+                        <ul
+                          onClick={e => e.stopPropagation()}
+                          className="mt-2 flex-1 space-y-1.5 overflow-y-auto pr-1"
+                        >
+                          {sections.map(section => (
+                            <li
+                              key={section.sectionId}
+                              className="flex items-center justify-between gap-2 rounded-lg bg-white px-3 py-1.5 text-[11px] dark:bg-slate-900"
+                            >
+                              <span className="truncate font-bold text-slate-800 dark:text-slate-100">{section.label || section.sectionId}</span>
+                              <span className="shrink-0 font-semibold text-slate-500 dark:text-slate-400">
+                                {section.area !== undefined ? `${section.area} ${section.unit || 'sqm'}` : '—'}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                        <p className="mt-2 text-center text-[10px] font-bold text-blue-600 dark:text-blue-400">Tap the card to flip back ↻</p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+                  </div>
+                  <div className="flex w-10 shrink-0 flex-col items-center justify-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => goToCard(deckIndex - 1)}
+                      disabled={deckIndex <= 0}
+                      aria-label="Previous floor plan"
+                      className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-xs font-black text-slate-600 transition-colors hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-slate-800 dark:text-slate-300 cursor-pointer"
+                    >
+                      ▲
+                    </button>
+                    <span className="text-[10px] font-black text-slate-500 dark:text-slate-400">{Math.min(deckIndex + 1, doneItems.length)}/{doneItems.length}</span>
+                    <button
+                      type="button"
+                      onClick={() => goToCard(deckIndex + 1)}
+                      disabled={deckIndex >= doneItems.length - 1}
+                      aria-label="Next floor plan"
+                      className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-xs font-black text-slate-600 transition-colors hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-slate-800 dark:text-slate-300 cursor-pointer"
+                    >
+                      ▼
+                    </button>
+                  </div>
+                </div>
+                {doneItems.length > 1 && (
+                  <p className="mt-1 text-center text-[10px] font-semibold text-slate-400">Swipe up or down for the next floor plan</p>
+                )}
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={continueToSections}
+              disabled={floorPlanLoading || doneItems.length === 0}
+              className={`rounded-full px-6 py-3 text-xs font-bold transition-all ${
+                floorPlanLoading || doneItems.length === 0
+                  ? 'cursor-not-allowed bg-blue-50 text-blue-300 dark:bg-blue-950/40 dark:text-blue-700'
+                  : 'cursor-pointer bg-blue-600 text-white shadow-md shadow-blue-500/20 hover:bg-blue-700'
+              }`}
+            >
+              {floorPlanLoading
+                ? 'Waiting for the queue to finish…'
+                : `Continue — select areas (${doneItems.length} floor plan${doneItems.length === 1 ? '' : 's'})`}
+            </button>
+          </div>
+        </div>
       )}
 
       {/* Requirements extraction error */}

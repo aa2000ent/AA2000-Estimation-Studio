@@ -719,7 +719,7 @@ export function FloorPlanAnalysisPanel({
               style={{ color: accent(isDark) }}
             >
               <StatBuilding className="w-4 h-4" />
-              PAGE {page.pageNumber}
+              {page.title ? `${page.title} · ` : ''}PAGE {page.pageNumber}
               {page.floorNumber !== undefined ? ` · FLOOR ${page.floorNumber}` : ''}
               {page.dimensions?.width
                 ? ` · ${page.dimensions.width} × ${page.dimensions.height} ${page.dimensions.unit || ''}`

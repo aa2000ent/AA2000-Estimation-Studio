@@ -1,6 +1,7 @@
 /**
  * Utility to export BOQ and Estimation results as downloadable PDFs using html2pdf.js
  */
+import { getHeaderDataUrl, getPdfHeaderHtml } from './pdfHeaderImage';
 
 export interface BOQPdfData {
   title: string;
@@ -59,26 +60,11 @@ export async function exportBOQPdf(data: BOQPdfData): Promise<void> {
   container.style.fontFamily = "'Inter', system-ui, -apple-system, sans-serif";
   container.style.color = '#1E293B';
 
-  const headerHtml = `
-    <div style="background: #1E3A8A; color: #FFFFFF; padding: 18px 24px; display: flex; align-items: center; justify-content: space-between; border-radius: 2px;">
-      <div style="display: flex; align-items: center;">
-        <div style="width: 32px; height: 32px; border-radius: 50%; border: 3px solid #FFFFFF; display: flex; align-items: center; justify-content: center; background: radial-gradient(circle, #FFFFFF 30%, transparent 70%); margin-right: 12px; flex-shrink: 0;">
-          <div style="width: 12px; height: 12px; border-radius: 50%; background: #FFFFFF;"></div>
-        </div>
-        <div>
-          <div style="font-size: 24px; font-weight: 900; line-height: 1; letter-spacing: 0.05em;">AA2000</div>
-          <div style="font-size: 10px; font-weight: 600; opacity: 0.9; margin-top: 2px;">Security and Technology Solutions Inc.</div>
-        </div>
-      </div>
-      <div style="text-align: right; font-size: 8px; line-height: 1.45; opacity: 0.95;">
-        <div>Unit 2-C Norkis Building, 11 Calbayog Cor., Mand. City, PH 1550</div>
-        <div>T: (02) 8571-5693 | M: 0917-884-8844 | E: aa2000ent@gmail.com</div>
-      </div>
-    </div>
-  `;
+  const headerImg = await getHeaderDataUrl();
+  const headerHtml = getPdfHeaderHtml(headerImg);
 
   const footerHtml = `
-    <div style="position: absolute; bottom: 25px; left: 40px; right: 40px; border-top: 1px dashed #CBD5E1; padding-top: 10px; display: flex; justify-content: space-between; align-items: center; color: #64748B; font-size: 8px;">
+    <div style="position: absolute; bottom: 25px; left: 35px; right: 35px; border-top: 1px dashed #CBD5E1; padding-top: 10px; display: flex; justify-content: space-between; align-items: center; color: #64748B; font-size: 8px;">
       <div>AA2000 Security &amp; Technology Solutions Inc. &nbsp;|&nbsp; Official BOQ Report</div>
       <div style="font-weight: 700; color: #475569;">Generated on ${formattedDate}</div>
     </div>
@@ -118,10 +104,11 @@ export async function exportBOQPdf(data: BOQPdfData): Promise<void> {
   `).join('');
 
   container.innerHTML = `
-    <div style="box-sizing: border-box; width: 100%; min-height: 1045px; padding: 35px; position: relative; background: #FFFFFF; border: 1px solid #CBD5E1;">
+    <div style="box-sizing: border-box; width: 100%; min-height: 1045px; position: relative; background: #FFFFFF; margin: 0; padding: 0;">
       ${headerHtml}
 
-      <div style="margin-top: 20px; display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 2px solid #1E3A8A; padding-bottom: 8px;">
+      <div style="padding: 20px 35px 60px 35px;">
+        <div style="display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 2px solid #1E3A8A; padding-bottom: 8px;">
         <div>
           <h1 style="color: #1E3A8A; font-size: 16px; font-weight: 900; margin: 0; text-transform: uppercase;">${data.title}</h1>
           ${data.projectName ? `<p style="font-size: 11px; color: #475569; font-weight: 700; margin: 3px 0 0 0;">Project: ${data.projectName}</p>` : ''}
@@ -237,6 +224,7 @@ export async function exportBOQPdf(data: BOQPdfData): Promise<void> {
           </div>
         </div>
       ` : ''}
+      </div>
 
       ${footerHtml}
     </div>
@@ -256,6 +244,7 @@ export async function exportBOQPdf(data: BOQPdfData): Promise<void> {
   };
 
   try {
+    await new Promise(resolve => setTimeout(resolve, 150));
     await (window as any).html2pdf().set(opt).from(container).save();
   } finally {
     document.body.removeChild(outer);
@@ -348,22 +337,13 @@ export async function exportAuditPdf(data: AuditPdfData): Promise<void> {
   const manpowerRows = (data.manpowerComparison || []).map(m => ({ col1: m.role || '', col2: `${m.technicianHours ?? 0}h`, col3: `${m.aiHours ?? 0}h`, col4: m.variance ?? 0, col5: m.rationale || '' }));
   const consumableRows = (data.consumablesComparison || []).map(c => ({ col1: c.name || '', col2: c.technicianQty ?? 0, col3: c.aiQty ?? 0, col4: c.variance ?? 0, col5: c.rationale || '' }));
 
+  const headerImg = await getHeaderDataUrl();
+  const headerHtml = getPdfHeaderHtml(headerImg, 'margin-bottom: 0;');
+
   const html = `
     <div style="font-family:'Inter',system-ui,sans-serif;color:#1E293B;width:816px;background:#FFFFFF;box-sizing:border-box;">
       <!-- Header -->
-      <div style="background:#1E3A8A;color:#FFFFFF;padding:18px 24px;display:flex;align-items:center;justify-content:space-between;">
-        <div style="display:flex;align-items:center;gap:12px;">
-          <div style="width:32px;height:32px;border-radius:50%;border:3px solid #FFFFFF;display:flex;align-items:center;justify-content:center;"></div>
-          <div>
-            <div style="font-size:22px;font-weight:900;letter-spacing:0.05em;">AA2000</div>
-            <div style="font-size:9px;font-weight:600;opacity:0.9;">Security and Technology Solutions Inc.</div>
-          </div>
-        </div>
-        <div style="text-align:right;font-size:8px;line-height:1.5;opacity:0.9;">
-          <div>Unit 2-C Norkis Building, 11 Calbayog Cor., Mand. City, PH 1550</div>
-          <div>T: (02) 8571-5693 | M: 0917-884-8844 | E: aa2000ent@gmail.com</div>
-        </div>
-      </div>
+      ${headerHtml}
 
       <!-- Title Bar -->
       <div style="background:#EFF6FF;border-bottom:2px solid #DBEAFE;padding:14px 24px;display:flex;align-items:center;justify-content:space-between;">
@@ -461,6 +441,7 @@ export async function exportAuditPdf(data: AuditPdfData): Promise<void> {
   };
 
   try {
+    await new Promise(resolve => setTimeout(resolve, 150));
     await (window as any).html2pdf().set(opt).from(container).save();
   } finally {
     document.body.removeChild(outer);

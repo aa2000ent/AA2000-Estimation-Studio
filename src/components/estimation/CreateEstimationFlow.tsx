@@ -74,7 +74,7 @@ const AI_STEPS = [
   'Section Requirements',
 ];
 
-const MAX_PLAN_FILES = 6;
+const MAX_PLAN_FILES = 5;
 const MAX_FILE_BYTES = 12 * 1024 * 1024;
 
 // Optional TOR / Proposal documents: parsed to text in the wizard and sent to

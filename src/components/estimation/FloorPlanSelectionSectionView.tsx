@@ -3,6 +3,7 @@ import type { Project } from '../../App';
 import {
   extractSectionRequirements,
   type FloorPlanAnalyzeResult,
+  type FloorPlanLabel,
   type FloorPlanSection,
   type SectionRequirementsResult,
 } from '../../services/api/estimationFlow';
@@ -206,6 +207,10 @@ interface Props {
   result?: FloorPlanAnalyzeResult | null;
   /** Original uploaded floor plan, previewed alongside the extracted sections. */
   uploadedFile?: File;
+  /** All uploaded floor plans (multi-floor); previewed one at a time. */
+  uploadedFiles?: File[];
+  /** Titles the user gave each plan, sent to the AI with every follow-up call. */
+  floorPlans?: FloorPlanLabel[];
   /** Persists the floor-plan analysis to the database (wizard form in a modal). */
   onSaveEstimation?: SaveEstimationFn;
   /** Systems picked before the analysis — prefills the save form. */
@@ -263,22 +268,28 @@ export default function FloorPlanSelectionSectionView({
   isDark = false,
   result = null,
   uploadedFile,
+  uploadedFiles,
+  floorPlans,
   onSaveEstimation,
   initialSystemTypes,
   projects,
 }: Props) {
   const { toast } = useToast();
   const [uploadedFileUrl, setUploadedFileUrl] = useState<string | null>(null);
+  const previewFiles = uploadedFiles && uploadedFiles.length > 0 ? uploadedFiles : uploadedFile ? [uploadedFile] : [];
+  const [previewIndex, setPreviewIndex] = useState(0);
+  const activeFile = previewFiles[Math.min(previewIndex, Math.max(previewFiles.length - 1, 0))];
+  const titleFor = (file: File) => floorPlans?.find(label => label.fileName === file.name)?.title || file.name;
 
   useEffect(() => {
-    if (!uploadedFile) {
+    if (!activeFile) {
       setUploadedFileUrl(null);
       return;
     }
-    const url = URL.createObjectURL(uploadedFile);
+    const url = URL.createObjectURL(activeFile);
     setUploadedFileUrl(url);
     return () => URL.revokeObjectURL(url);
-  }, [uploadedFile]);
+  }, [activeFile]);
 
   // Wizard steps: 2 = Select areas, 3 = Review, 4 = Summary
   const [step, setStep] = useState<2 | 3 | 4 | 5>(2);
@@ -354,6 +365,7 @@ export default function FloorPlanSelectionSectionView({
         },
         // Scopes the endpoint's recommendation: systemTypes is a strict scope
         // (prompt + result filter), floors/buildingType tailor quantities.
+        floorPlans,
         projectContext: {
           systemTypes: activeSystemTypes,
           ...(floors > 0 ? { floors } : {}),
@@ -404,6 +416,7 @@ export default function FloorPlanSelectionSectionView({
           area: section.area,
           unit: section.unit,
         },
+        floorPlans,
         projectContext: { systemTypes: nextSystems },
         analysisOptions: {
           includeCatalogMatches: true,
@@ -496,6 +509,7 @@ export default function FloorPlanSelectionSectionView({
   const dbAiContext: EstimationFlowAiContext = {
     mode: 'ai',
     floorPlan: result ?? null,
+    floorPlans,
     selectedSection: analyzedSection?.raw ?? null,
     sectionRequirements: reqResult,
     estimation: null,
@@ -569,22 +583,40 @@ export default function FloorPlanSelectionSectionView({
                 <p className="text-[11px] text-slate-400 font-medium">
                   {isSample
                     ? 'Ground floor • Sample extracted layout'
-                    : `${result?.fileInfo?.pages || result?.pages?.length || 1} page(s) • ${sections.length} sections extracted`}
+                    : `${result?.fileInfo?.pages || result?.pages?.length || 1} page(s)${(floorPlans?.length ?? 0) > 0 ? ` (${floorPlans!.map(label => label.title).join(', ')})` : ''} • ${sections.length} sections extracted`}
                 </p>
               </div>
 
-              {uploadedFile && uploadedFileUrl ? (
+              {activeFile && uploadedFileUrl ? (
                 <div className="my-2 overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 dark:border-slate-700 dark:bg-slate-900">
-                  {/\.(png|jpe?g)$/i.test(uploadedFile.name) ? (
+                  {previewFiles.length > 1 && (
+                    <div className="flex flex-wrap gap-2 border-b border-slate-200 p-2 dark:border-slate-700">
+                      {previewFiles.map((file, index) => (
+                        <button
+                          key={`${file.name}-${index}`}
+                          type="button"
+                          onClick={() => setPreviewIndex(index)}
+                          className={`rounded-full px-3 py-1 text-[10px] font-bold cursor-pointer ${
+                            index === previewIndex
+                              ? 'bg-blue-600 text-white'
+                              : 'bg-white text-slate-600 dark:bg-slate-800 dark:text-slate-300'
+                          }`}
+                        >
+                          {titleFor(file)}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {/\.(png|jpe?g)$/i.test(activeFile.name) ? (
                     <img
                       src={uploadedFileUrl}
-                      alt={`Preview of ${uploadedFile.name}`}
+                      alt={`Preview of ${activeFile.name}`}
                       className="max-h-[420px] min-h-64 w-full bg-slate-950 object-contain"
                     />
                   ) : (
                     <iframe
                       src={`${uploadedFileUrl}#toolbar=0&navpanes=0`}
-                      title={`Preview of ${uploadedFile.name}`}
+                      title={`Preview of ${activeFile.name}`}
                       className="h-[420px] w-full bg-white"
                     />
                   )}
