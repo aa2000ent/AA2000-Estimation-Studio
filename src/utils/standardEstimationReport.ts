@@ -1,4 +1,5 @@
-import { groupProposalSections, renderProposalSystem, renderProposalCosts, renderProposalTimeline, renderProposalTerms, renderProposalRemarks, proposalTemplateCss } from './estimationProposalSections';
+import type { FloorPlanImage } from './floorPlanPreviews';
+import { groupProposalSections, renderFloorPlanFigures, renderProposalSystem, renderProposalCosts, renderProposalTimeline, renderProposalTerms, renderProposalRemarks, proposalTemplateCss } from './estimationProposalSections';
 import type { Project, User } from '../App';
 import type {
   EstimationAdditionalFeeEntry,
@@ -29,6 +30,8 @@ export interface StandardEstimationReportInput {
   hasUnsavedChanges?: boolean;
   isDraft?: boolean;
   header?: Partial<QuotationHeaderState>;
+  /** Saved previews of the client's floor plans (with their titles). */
+  floorPlanImages?: FloorPlanImage[];
 }
 
 const escapeHtml = (value: unknown): string => String(value ?? '')
@@ -399,13 +402,13 @@ export function buildStandardEstimationReportHtml(input: StandardEstimationRepor
         </section>
         <section class="report-section overview-floor-plan">
           <h2>Client Floor Plan (As Submitted)</h2>
-          <div class="plan-grid overview-plan"><div><b>CLIENT FLOOR PLAN — AS RECEIVED</b><br>Original client plan is not embedded in this report.<br>Refer to the source project attachments.</div></div>
+          ${renderFloorPlanFigures(input.floorPlanImages ?? [], '<b>CLIENT FLOOR PLAN — AS RECEIVED</b><br>Original client plan is not embedded in this report.<br>Refer to the source project attachments.', 'overview')}
           <small>Device layouts require a verified client plan. No device positions are assumed.</small>
         </section>
         ${siteConditions.length ? `<section class="report-section overview-site-conditions"><h2>Site Conditions &amp; Technician Notes</h2><table><colgroup><col style="width:28%"><col></colgroup><tbody>${siteConditions.map(([label, value]) => `<tr><td class="overview-label">${escapeHtml(label)}</td><td>${multiline(value)}</td></tr>`).join('')}</tbody></table></section>` : ''}
 
         </div>
-        ${proposalSections.map((section, index) => `<div class="logical-sheet">${pageHeader}${renderProposalSystem(section, index, showPrices)}</div>`).join('')}
+        ${proposalSections.map((section, index) => `<div class="logical-sheet">${pageHeader}${renderProposalSystem(section, index, showPrices, input.floorPlanImages ?? [])}</div>`).join('')}
         <div class="logical-sheet" data-report-anchor="timeline">${pageHeader}${renderProposalTimeline(systems.length ? systems : ['Project Requirements'])}</div>
         <div class="logical-sheet" data-report-anchor="cost">${pageHeader}${renderProposalCosts(proposalSections, showPrices)}${renderProposalRemarks()}
         </div><div class="logical-sheet" data-report-anchor="terms">${pageHeader}${renderProposalTerms(preparedBy)}</div>

@@ -40,6 +40,7 @@ import {
   SectionRequirementsPanel,
 } from './EstimationAiPanels';
 import type { EstimationFlowAiContext } from '../../services/estimationWizardSnapshot';
+import { buildFloorPlanPreviews } from '../../utils/floorPlanPreviews';
 
 interface Props {
   userRole?: string;
@@ -1583,6 +1584,10 @@ export default function CreateEstimationFlow({
         floorPlan: mode === 'ai' ? planResult : null,
         selectedSection: mode === 'ai' ? selectedSection : null,
         sectionRequirements: mode === 'ai' ? reqResult : null,
+        // Plan previews for the PDF report (this flow has no plan titles: the file name is used)
+        floorPlanImages: mode === 'ai' && planFiles.length > 0
+          ? await buildFloorPlanPreviews(planFiles, file => file.name.replace(/\.[^.]+$/, ''))
+          : [],
       };
       const result = await onSave(form, ai);
       if (!result.success) {

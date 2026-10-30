@@ -167,3 +167,17 @@ test('draft exports are labelled', () => {
   assert.match(build({ isDraft: true }), /class="[^"]*draft-banner[^"]*"/g);
   assert.doesNotMatch(build(), /class="draft-banner"/);
 });
+
+test('saved floor plans print under their titles in the overview and each system layout', () => {
+  const plan = { title: 'Ground Floor <b>', fileName: 'gf.png', dataUrl: 'data:image/jpeg;base64,AAAA' };
+  const html = build({ floorPlanImages: [plan, { ...plan, title: 'Roof Deck', page: 2 }] });
+  // Both plans in the overview and in every system's DEVICE LAYOUT
+  const layouts = html.split('DEVICE LAYOUT</h3>').length - 1;
+  assert.ok(layouts >= 2);
+  assert.equal(html.split('<figure class="plan-figure">').length - 1, 2 * (1 + layouts));
+  assert.match(html, /Ground Floor &lt;b&gt;/);
+  assert.match(html, /Roof Deck — page 2/);
+  assert.doesNotMatch(html, /Original plan and verified device positions are not embedded/);
+  // Without saved plans the placeholder stays
+  assert.match(build(), /Original plan and verified device positions are not embedded/);
+});

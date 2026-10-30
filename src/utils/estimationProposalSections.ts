@@ -1,3 +1,4 @@
+import type { FloorPlanImage } from './floorPlanPreviews';
 import { computeEstimationStats, laborLineTotal, materialLineTotal } from '../services/estimationStats';
 import type { EstimationManpowerEntry, EstimationConsumableEntry, EstimationAdditionalFeeEntry } from '../types';
 
@@ -31,7 +32,13 @@ export const proposalTemplateCss = `
   .estimation-report .layout-block h3 {font-size:9px;color:#050505;text-transform:uppercase}
   .estimation-report .plan-grid {height:175px;border:1px dashed #8d9cb0;background-color:#f6f8fc;background-image:linear-gradient(#dfe7f0 1px,transparent 1px),linear-gradient(90deg,#dfe7f0 1px,transparent 1px);background-size:24px 24px;display:flex;align-items:center;justify-content:center;text-align:center;color:#6e819b;font-size:9px;padding:25px}
   .estimation-report .layout-block small {font-style:italic}
-  .estimation-report .section-total {background:#e1e7ee;border:1px solid #333;padding:8px;display:flex;justify-content:space-between;font-size:9px}
+  .estimation-report .plan-set {display:grid;gap:8px;padding:8px;border:1px dashed #8d9cb0;background-color:#f6f8fc;background-image:linear-gradient(#dfe7f0 1px,transparent 1px),linear-gradient(90deg,#dfe7f0 1px,transparent 1px);background-size:24px 24px;break-inside:avoid;page-break-inside:avoid}
+  .estimation-report .plan-set.cols-2 {grid-template-columns:1fr 1fr}
+  .estimation-report .plan-set.cols-3 {grid-template-columns:1fr 1fr 1fr}
+  .estimation-report .plan-figure {margin:0;border:1px solid #b2c4dd;background:#fff;display:flex;flex-direction:column;min-width:0}
+  .estimation-report .plan-figure figcaption {background:#eef2f7;border-bottom:1px solid #b2c4dd;padding:3px 6px;font-size:8px;font-weight:700;text-transform:uppercase;color:#050505;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .estimation-report .plan-figure img {display:block;width:100%;object-fit:contain;background:#fff}
+  .estimation-report .section-total {color:#fff;padding:8px 10px;display:flex;justify-content:space-between;font-size:9px;break-inside:avoid}
   .estimation-report .cost-system td {color:#fff;font-weight:700;padding:7px 10px}
   .estimation-report .summary-row td:first-child {text-align:right;font-weight:700}
   .estimation-report .discount {color:#f01430}
@@ -96,6 +103,7 @@ export const proposalTemplateCss = `
   .estimation-report .template-overview small {display:inline;font-size:8px;margin-left:8px;color:#111}
   .estimation-report .selected-system {color:#d33e13;white-space:nowrap}
   .estimation-report .overview-plan {height:430px;margin:8px 0 4px;position:relative}
+  .estimation-report .overview-floor-plan .plan-set {margin:8px 0 4px}
   .estimation-report .overview-plan:before {content:'';position:absolute;inset:50px;border:1px solid #b2c4dd;pointer-events:none}
   .estimation-report .overview-plan>div {position:relative}
   .estimation-report .overview-floor-plan>small {font-size:7px;font-style:italic}
@@ -138,7 +146,26 @@ const subtotal = (label: string, value: number, priced: boolean): string => pric
 const materialsTotal = (items: EstimationConsumableEntry[]): number => computeEstimationStats([], items).totalMaterials;
 export const sectionAmounts = (section: ProposalSection): number[] => [computeEstimationStats([], [], section.fees).totalFees, computeEstimationStats(section.manpower, []).totalLabor, materialsTotal(section.materials.filter(item => !cable(item) && !rough(item))), materialsTotal(section.materials.filter(item => !cable(item) && rough(item))), materialsTotal(section.materials.filter(cable))];
 
-export function renderProposalSystem(section: ProposalSection, index: number, priced: boolean): string {
+/** The uploaded floor plans, each under its title; the dashed placeholder when none were saved. */
+/**
+ * The uploaded floor plans inside one fixed-size plan box, as in the proposal template:
+ * 'overview' is the large box under Project Overview, 'section' the short box above a
+ * system's A-E tables. Several plans share the box side by side, so the box never grows
+ * past its page slot. The dashed placeholder is shown when no plan was saved.
+ */
+export function renderFloorPlanFigures(images: FloorPlanImage[], placeholder: string, size: 'overview' | 'section' = 'section'): string {
+  if (images.length === 0) {
+    return `<div class="plan-grid${size === 'overview' ? ' overview-plan' : ''}"><div>${placeholder}</div></div>`;
+  }
+  const cols = images.length === 1 ? 1 : images.length === 2 || images.length === 4 ? 2 : 3;
+  const rows = Math.ceil(images.length / cols);
+  // Total image height per box, matching the template's plan areas
+  const boxHeight = size === 'overview' ? 400 : 175;
+  const imageHeight = Math.floor((boxHeight - (rows - 1) * 22) / rows) - 18;
+  return `<div class="plan-set cols-${cols}">${images.map(image => `<figure class="plan-figure"><figcaption>${esc(image.title)}${image.page ? ` — page ${image.page}` : ''}</figcaption><img src="${image.dataUrl}" alt="${esc(image.title)} floor plan" style="height:${imageHeight}px"></figure>`).join('')}</div>`;
+}
+
+export function renderProposalSystem(section: ProposalSection, index: number, priced: boolean, floorPlanImages: FloorPlanImage[] = []): string {
   const materialTable = (title: string, items: EstimationConsumableEntry[]): string => {
     const groups = new Map<string, EstimationConsumableEntry[]>();
     items.forEach(item => { const key = item.brand || (title.startsWith('C.') ? 'DEVICES & EQUIPMENT' : ''); groups.set(key, [...(groups.get(key) || []), item]); });
@@ -149,14 +176,14 @@ export function renderProposalSystem(section: ProposalSection, index: number, pr
   const totals = computeEstimationStats(section.manpower, section.materials, section.fees);
   const feeRows = section.fees.map((fee, i) => `<tr><td class="center">${i + 1}</td><td>${esc(fee.description || fee.type)}${fee.notes ? `<small>${esc(fee.notes)}</small>` : ''}</td><td class="center">1</td><td class="center">LOT</td>${priced ? `<td class="number">${money(fee.amount || 0)}</td><td class="number strong">${money(fee.amount || 0)}</td>` : ''}</tr>`).join('');
   const laborRows = section.manpower.map((row, i) => `<tr><td class="center">${i + 1}</td><td><b>${esc(row.role)}</b><small>${row.headcount} pax · ${row.hours} hrs</small></td><td class="center">${row.manDays}</td><td class="center">MAN-DAY</td>${priced ? `<td class="number">${row.dayRate == null ? 'Not recorded' : money(row.dayRate)}</td><td class="number strong">${money(laborLineTotal(row))}</td>` : ''}</tr>`).join('');
-  return `<div class="section-heading" style="background:${sectionColor(section.name)}" data-report-anchor="system-${index}">SECTION ${index + 1} — ${esc(section.name === 'FDAS' ? 'FDAS (FIRE DETECTION & ALARM SYSTEM)' : section.name)}</div>
-    ${section.name === 'Shared Project Items' ? '<p class="compact-note">Project-wide items are counted once; no per-system allocation is recorded.</p>' : `<div class="layout-block"><h3>${index + 1}.1 ${esc(section.name)} DEVICE LAYOUT</h3><div class="plan-grid"><div><b>CLIENT FLOOR PLAN — ${esc(section.name)} LAYOUT</b><br>Original plan and verified device positions are not embedded in this report.<br>Refer to the source project attachments.</div></div><small>Device positions require an approved client plan before installation.</small></div>`}
+  return `<div class="section-intro"><div class="section-heading" style="background:${sectionColor(section.name)}" data-report-anchor="system-${index}">SECTION ${index + 1} — ${esc(section.name === 'FDAS' ? 'FDAS (FIRE DETECTION & ALARM SYSTEM)' : section.name)}</div>
+    ${section.name === 'Shared Project Items' ? '<p class="compact-note">Project-wide items are counted once; no per-system allocation is recorded.</p>' : `<div class="layout-block"><h3>${index + 1}.1 ${esc(section.name)} DEVICE LAYOUT</h3>${renderFloorPlanFigures(floorPlanImages, `<b>CLIENT FLOOR PLAN — ${esc(section.name)} LAYOUT</b><br>Original plan and verified device positions are not embedded in this report.<br>Refer to the source project attachments.`)}<small>${floorPlanImages.length ? 'Client floor plan as submitted. Device positions are not marked and require an approved client plan before installation.' : 'Device positions require an approved client plan before installation.'}</small></div>`}</div>
     ${table('A. General Requirements', headers(priced), feeRows + (feeRows ? subtotal('GENERAL REQUIREMENTS', totals.totalFees, priced) : ''), priced)}
     ${table('B. Scope of Works (Installation Labor)', headers(priced), laborRows + (laborRows ? subtotal(`INSTALLATION LABOR — ${section.name}`, totals.totalLabor, priced) : ''), priced)}
     ${materialTable('C. Active Components', section.materials.filter(item => !cable(item) && !rough(item)))}
     ${materialTable('D. Roughing-Ins Materials', section.materials.filter(item => !cable(item) && rough(item)))}
     ${materialTable('E. Cable Components', section.materials.filter(cable))}
-    ${priced ? `<div class="section-total"><b>TOTAL — ${esc(section.name)} SECTION (VAT EXCLUSIVE)</b><b>${money(totals.subtotal)}</b></div>` : ''}`;
+    ${priced ? `<div class="section-total" style="background:${sectionColor(section.name)}"><b>TOTAL — ${esc(section.name)} SECTION (VAT EXCLUSIVE)</b><b>${money(totals.subtotal)}</b></div>` : ''}`;
 }
 
 export function renderProposalCosts(sections: ProposalSection[], priced: boolean): string {

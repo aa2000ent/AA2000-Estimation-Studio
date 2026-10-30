@@ -9,6 +9,7 @@ import {
 } from '../../services/api/estimationFlow';
 import { SYSTEM_OPTIONS, type SystemType } from './CreateSurveyForm';
 import { SectionRequirementsPanel } from './EstimationAiPanels';
+import { buildFloorPlanPreviews, type FloorPlanImage } from '../../utils/floorPlanPreviews';
 import SystemSelectionModal from './SystemSelectionModal';
 import SaveEstimationModal from './SaveEstimationModal';
 import { useToast } from '../utils/Toast';
@@ -294,6 +295,19 @@ export default function FloorPlanSelectionSectionView({
   // Wizard steps: 2 = Select areas, 3 = Review, 4 = Summary
   const [step, setStep] = useState<2 | 3 | 4 | 5>(2);
 
+  // Previews of every uploaded plan, saved with the estimation for the PDF report
+  const [floorPlanImages, setFloorPlanImages] = useState<FloorPlanImage[]>([]);
+  const previewKey = previewFiles.map(file => `${file.name}:${file.size}:${titleFor(file)}`).join('|');
+  useEffect(() => {
+    let active = true;
+    if (previewFiles.length === 0) {
+      setFloorPlanImages([]);
+      return;
+    }
+    buildFloorPlanPreviews(previewFiles, titleFor).then(images => { if (active) setFloorPlanImages(images); });
+    return () => { active = false; };
+  }, [previewKey]);
+
   // Step 2 State — real sections extracted by /api/floorplan/analyze
   const [sections, setSections] = useState<PlanSection[]>(() =>
     result?.pages && result.pages.length > 0
@@ -510,6 +524,7 @@ export default function FloorPlanSelectionSectionView({
     mode: 'ai',
     floorPlan: result ?? null,
     floorPlans,
+    floorPlanImages,
     selectedSection: analyzedSection?.raw ?? null,
     sectionRequirements: reqResult,
     estimation: null,
