@@ -675,46 +675,199 @@ export async function extractSectionRequirements(
           responsibilities: 'Coordinate installation and testing.',
         },
       ],
-      materials: [
-        {
-          name: '4 MP IP Dome Camera',
-          category: 'CCTV',
-          brand: 'Generic',
-          quantity: 3,
-          unit: 'pcs',
-          srp: 8500,
-          unitPrice: 8500,
-          totalPrice: 25500,
-          source: 'local mock',
-        },
-        {
-          name: 'Cat6 UTP Cable',
-          category: 'Cabling',
-          quantity: 150,
-          unit: 'm',
-          srp: 32,
-          unitPrice: 32,
-          totalPrice: 4800,
-          source: 'local mock',
-        },
-      ],
-      scopeOfWorks: [
-        { itemNumber: 1, description: 'Supply and install CCTV devices.', unit: 'lot' },
-        { itemNumber: 2, description: 'Test, commission, and document the system.', unit: 'lot' },
-      ],
-      constraints: {
-        physical: 'Coordinate ceiling access with the building administrator.',
-        electrical: 'Confirm PoE switch capacity before installation.',
-        installation: 'Perform disruptive work outside business hours.',
-      },
-      materialSummary: {
-        categories: [
-          { category: 'CCTV', itemCount: 1, estimatedCost: 25500 },
-          { category: 'Cabling', itemCount: 1, estimatedCost: 4800 },
-        ],
-        totalEstimatedCost: 30300,
-        currency: 'PHP',
-      },
+      ...(() => {
+        const reqSys = request.projectContext?.systemTypes || ['CCTV'];
+        const hasCctv = reqSys.includes('CCTV') || reqSys.some(s => /cctv/i.test(s));
+        const hasFdas = reqSys.includes('FDAS') || reqSys.some(s => /fdas|fire/i.test(s));
+        const hasAccess = reqSys.includes('ACCESS_CONTROL') || reqSys.some(s => /access/i.test(s));
+
+        const mats: FormMaterialItem[] = [];
+        if (hasCctv || (!hasFdas && !hasAccess)) {
+          mats.push(
+            {
+              name: '4 MP IP Dome Camera',
+              category: 'CCTV',
+              brand: 'Hikvision',
+              quantity: 3,
+              unit: 'pcs',
+              srp: 8500,
+              unitPrice: 8500,
+              totalPrice: 25500,
+              source: 'local mock',
+            },
+            {
+              name: '8-Channel Network Video Recorder (NVR)',
+              category: 'CCTV',
+              brand: 'Hikvision',
+              quantity: 1,
+              unit: 'unit',
+              srp: 14500,
+              unitPrice: 14500,
+              totalPrice: 14500,
+              source: 'local mock',
+            },
+            {
+              name: 'Cat6 UTP Cable',
+              category: 'CCTV',
+              brand: 'Generic',
+              quantity: 150,
+              unit: 'm',
+              srp: 32,
+              unitPrice: 32,
+              totalPrice: 4800,
+              source: 'local mock',
+            }
+          );
+        }
+
+        if (hasFdas) {
+          mats.push(
+            {
+              name: 'Addressable Optical Smoke Detector',
+              category: 'FDAS',
+              brand: 'Asenware',
+              quantity: 4,
+              unit: 'pcs',
+              srp: 1850,
+              unitPrice: 1850,
+              totalPrice: 7400,
+              source: 'local mock',
+            },
+            {
+              name: 'Addressable Rate-of-Rise Heat Detector',
+              category: 'FDAS',
+              brand: 'Asenware',
+              quantity: 2,
+              unit: 'pcs',
+              srp: 1950,
+              unitPrice: 1950,
+              totalPrice: 3900,
+              source: 'local mock',
+            },
+            {
+              name: 'Manual Pull Station',
+              category: 'FDAS',
+              brand: 'Asenware',
+              quantity: 2,
+              unit: 'pcs',
+              srp: 2200,
+              unitPrice: 2200,
+              totalPrice: 4400,
+              source: 'local mock',
+            },
+            {
+              name: 'Fire Alarm Horn Strobe 24VDC',
+              category: 'FDAS',
+              brand: 'Asenware',
+              quantity: 2,
+              unit: 'pcs',
+              srp: 2400,
+              unitPrice: 2400,
+              totalPrice: 4800,
+              source: 'local mock',
+            },
+            {
+              name: 'Fire Alarm Control Panel 2-Loop',
+              category: 'FDAS',
+              brand: 'Asenware',
+              quantity: 1,
+              unit: 'unit',
+              srp: 65000,
+              unitPrice: 65000,
+              totalPrice: 65000,
+              source: 'local mock',
+            },
+            {
+              name: 'Red EMT Conduit Pipe 20mm',
+              category: 'FDAS',
+              brand: 'Generic',
+              quantity: 25,
+              unit: 'pcs',
+              srp: 280,
+              unitPrice: 280,
+              totalPrice: 7000,
+              source: 'local mock',
+            },
+            {
+              name: 'Octagonal Junction Box 4x4 with Red Cover',
+              category: 'FDAS',
+              brand: 'Generic',
+              quantity: 10,
+              unit: 'pcs',
+              srp: 85,
+              unitPrice: 85,
+              totalPrice: 850,
+              source: 'local mock',
+            },
+            {
+              name: 'Fire-Rated Signal Wire (16/2 AWG)',
+              category: 'FDAS',
+              brand: 'Generic',
+              quantity: 100,
+              unit: 'm',
+              srp: 45,
+              unitPrice: 45,
+              totalPrice: 4500,
+              source: 'local mock',
+            }
+          );
+        }
+
+        if (hasAccess) {
+          mats.push(
+            {
+              name: 'Biometric Access Controller with RFID',
+              category: 'ACCESS CONTROL',
+              brand: 'ZKTeco',
+              quantity: 1,
+              unit: 'set',
+              srp: 14500,
+              unitPrice: 14500,
+              totalPrice: 14500,
+              source: 'local mock',
+            },
+            {
+              name: '600 lbs Electromagnetic Lock',
+              category: 'ACCESS CONTROL',
+              brand: 'Generic',
+              quantity: 1,
+              unit: 'pcs',
+              srp: 3200,
+              unitPrice: 3200,
+              totalPrice: 3200,
+              source: 'local mock',
+            }
+          );
+        }
+
+        const summaryCats = Object.values(
+          mats.reduce((acc, item) => {
+            const cat = item.category || 'Materials';
+            acc[cat] = acc[cat] || { category: cat, itemCount: 0, estimatedCost: 0 };
+            acc[cat].itemCount += item.quantity || 1;
+            acc[cat].estimatedCost += item.totalPrice || 0;
+            return acc;
+          }, {} as Record<string, { category: string; itemCount: number; estimatedCost: number }>)
+        );
+
+        return {
+          materials: mats,
+          scopeOfWorks: [
+            { itemNumber: 1, description: 'Supply, delivery, and installation of system devices and cabling.', unit: 'lot' },
+            { itemNumber: 2, description: 'Testing, commissioning, and system programming.', unit: 'lot' },
+          ],
+          constraints: {
+            physical: 'Coordinate ceiling access with the building administrator.',
+            electrical: 'Confirm clean dedicated power supply capacity before installation.',
+            installation: 'Perform disruptive work outside business hours.',
+          },
+          materialSummary: {
+            categories: summaryCats,
+            totalEstimatedCost: summaryCats.reduce((sum, c) => sum + c.estimatedCost, 0),
+            currency: 'PHP',
+          },
+        };
+      })(),
       compliance: {
         gaps: [
           {

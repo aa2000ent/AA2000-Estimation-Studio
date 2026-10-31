@@ -117,7 +117,7 @@ export default function DocumentRequirementsView({
           <span className="px-3.5 py-1 rounded-full bg-blue-100 dark:bg-blue-950 text-blue-600 dark:text-blue-400 font-bold border border-blue-200 dark:border-blue-900">
             3. Review
           </span>
-          <span>4. Summary</span>
+          <span>4. Report</span>
         </div>
 
         {/* Analyzed document context (same card as the floor-plan module's section context) */}

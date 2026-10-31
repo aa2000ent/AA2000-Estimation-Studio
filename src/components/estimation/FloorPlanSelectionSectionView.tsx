@@ -9,14 +9,30 @@ import {
 } from '../../services/api/estimationFlow';
 import { SYSTEM_OPTIONS, type SystemType } from './CreateSurveyForm';
 import { SectionRequirementsPanel } from './EstimationAiPanels';
-import { buildFloorPlanPreviews, type FloorPlanImage } from '../../utils/floorPlanPreviews';
+import { buildFloorPlanPreviews, type FloorPlanImage, sanitizeFloorPlanImages } from '../../utils/floorPlanPreviews';
 import SystemSelectionModal from './SystemSelectionModal';
 import SaveEstimationModal from './SaveEstimationModal';
 import { useToast } from '../utils/Toast';
+import { buildWizardEstimationCache } from '../../services/estimationWizardSnapshot';
+import {
+  buildStandardEstimationReportHtml,
+  prepareEstimationReportLayout,
+} from '../../utils/standardEstimationReport';
+import reportHeaderBackground from '../../assets/pdf/PDF_header.png';
+import reportLogo from '../../assets/pdf/aa2000_logo.png';
+import { computeEstimationTotals } from '../../services/estimationStats';
+import type { QuotationHeaderState } from './QuotationModal';
 import type {
   EstimationFlowAiContext,
   SaveEstimationFn,
 } from '../../services/estimationWizardSnapshot';
+import { ensureSystemProposalItems } from '../../utils/defaultSystemProposalItems';
+import ProposalItemsEditor from './ProposalItemsEditor';
+import type {
+  EstimationAdditionalFeeEntry,
+  EstimationConsumableEntry,
+  EstimationManpowerEntry,
+} from '../../types';
 
 interface PlanSection {
   id: string;
@@ -203,6 +219,268 @@ async function createRequirementsPdf(
   }
 }
 
+
+export type EstimationReportType = 'summary' | 'proposal';
+
+function getReportPdfFilename(type: EstimationReportType, projectName?: string, date = new Date()): string {
+  const dateStamp = [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0'),
+  ].join('-');
+  if (type === 'proposal') {
+    const safe = (projectName || 'Project').replace(/[^a-z0-9-_]+/gi, '_').slice(0, 40);
+    return `${dateStamp}_AA2000_Commercial_Quotation_${safe}.pdf`;
+  }
+  return `${dateStamp}_estimation_summary.pdf`;
+}
+
+const QUOTATION_HEADER_FIELDS: Array<{ key: keyof QuotationHeaderState; label: string }> = [
+  { key: 'attentionTo', label: 'Attention To' },
+  { key: 'thru', label: 'Position / Thru' },
+  { key: 'company', label: 'Company' },
+  { key: 'contactNo', label: 'Tel/Mobile No.' },
+  { key: 'emailAdd', label: 'Email' },
+  { key: 'address', label: 'Address' },
+  { key: 'projectTitle', label: 'Project For' },
+  { key: 'projectSite', label: 'Project Site' },
+  { key: 'referenceCode', label: 'Reference No.' },
+  { key: 'quoteDate', label: 'Date' },
+  { key: 'validityPeriod', label: 'Validity' },
+];
+
+function buildProposalHtml(
+  analyzedLabel: string,
+  analyzedArea: number | undefined,
+  activeSystemTypes: SystemType[],
+  dbAiContext: EstimationFlowAiContext,
+  floorPlanImages: FloorPlanImage[],
+  quotHeader: QuotationHeaderState,
+  projectList?: Project[],
+  customItems?: {
+    manpower?: EstimationManpowerEntry[];
+    consumables?: EstimationConsumableEntry[];
+    fees?: EstimationAdditionalFeeEntry[];
+  },
+  selectedProposalSystems?: SystemType[]
+): string {
+  const existingProj = projectList?.[0];
+  const activeSystemsToUse = selectedProposalSystems && selectedProposalSystems.length > 0
+    ? selectedProposalSystems
+    : activeSystemTypes;
+
+  const cache = buildWizardEstimationCache(
+    {
+      projectName: quotHeader.projectTitle || analyzedLabel || 'Commercial Project',
+      clientName: quotHeader.company || 'Valued Client',
+      location: quotHeader.projectSite || 'Site Location',
+      systemTypes: activeSystemsToUse,
+    },
+    dbAiContext
+  );
+
+  const initialItems = ensureSystemProposalItems(
+    activeSystemsToUse.map(s => SYSTEM_OPTIONS.find(o => o.type === s)?.label || s),
+    cache.manpower,
+    cache.consumables,
+    cache.fees
+  );
+
+  const isSysMatch = (text: string, sys: string): boolean => {
+    const combined = text.toUpperCase();
+    const sUpper = sys.toUpperCase();
+    if (/FDAS|FIRE/i.test(sUpper)) return /FDAS|FIRE/i.test(combined);
+    if (/CCTV/i.test(sUpper)) return /CCTV|CAMERA|SURVEILLANCE|NVR/i.test(combined);
+    if (/ACCESS/i.test(sUpper)) return /ACCESS|DOOR|LOCK/i.test(combined);
+    return combined.includes(sUpper) || sUpper.includes(combined);
+  };
+
+  const rawManpower = customItems?.manpower && customItems.manpower.length > 0
+    ? customItems.manpower
+    : initialItems.manpower;
+  const rawConsumables = customItems?.consumables && customItems.consumables.length > 0
+    ? customItems.consumables
+    : initialItems.consumables;
+  const rawFees = customItems?.fees && customItems.fees.length > 0
+    ? customItems.fees
+    : initialItems.fees;
+
+  const manpower = rawManpower.filter(m =>
+    activeSystemsToUse.some(sys => isSysMatch(`${m.role} ${m.responsibilities || ''}`, sys))
+  );
+  const consumables = rawConsumables.filter(c =>
+    activeSystemsToUse.some(sys => isSysMatch(`${c.systemLabel || ''} ${c.systemType || ''} ${c.category || ''} ${c.name}`, sys))
+  );
+  const fees = rawFees.filter(f =>
+    activeSystemsToUse.some(sys => isSysMatch(`${f.type} ${f.description || ''} ${f.notes || ''}`, sys))
+  );
+
+  const totals = computeEstimationTotals(manpower, consumables, fees);
+
+  const project: Project = {
+    id: existingProj?.id || 'PROJ-EST',
+    name: quotHeader.projectTitle || existingProj?.name || analyzedLabel || 'Commercial Installation Project',
+    clientName: quotHeader.company || existingProj?.clientName || 'Valued Client',
+    clientContactName: quotHeader.attentionTo || existingProj?.clientContactName || 'Valued Client',
+    clientEmail: quotHeader.emailAdd || existingProj?.clientEmail || '',
+    clientPhone: quotHeader.contactNo || existingProj?.clientPhone || '',
+    location: quotHeader.projectSite || existingProj?.location || 'Philippines',
+    technicianName: existingProj?.technicianName || 'AA2000 Technical Specialist',
+    status: existingProj?.status || 'Draft',
+    progress: existingProj?.progress ?? 0,
+    type: (activeSystemsToUse?.[0] as any) || existingProj?.type || 'CCTV',
+    systemTypes: activeSystemsToUse.map(s => SYSTEM_OPTIONS.find(o => o.type === s)?.label || s),
+    scope: existingProj?.scope || 'Installation and commissioning',
+    createdAt: existingProj?.createdAt || new Date().toISOString(),
+    updatedAt: existingProj?.updatedAt || new Date().toISOString(),
+    totalFloorArea: analyzedArea ?? existingProj?.totalFloorArea,
+  };
+
+  return buildStandardEstimationReportHtml({
+    project,
+    user: null,
+    manpower,
+    consumables,
+    fees,
+    scopeOfWorks: cache.scopeOfWorks,
+    constraints: cache.constraints,
+    technicianNotes: cache.technicianNotes,
+    totals,
+    showPrices: true,
+    headerBackgroundUrl: reportHeaderBackground,
+    logoUrl: reportLogo,
+    header: quotHeader,
+    floorPlanImages: sanitizeFloorPlanImages(floorPlanImages),
+  });
+}
+
+async function createProposalPdf(
+  html: string,
+  projectName = 'Project'
+): Promise<Blob> {
+  const getPdfGenerator = () =>
+    (window as Window & { html2pdf?: Html2PdfFactory }).html2pdf;
+  if (!getPdfGenerator()) {
+    await new Promise<void>((resolve, reject) => {
+      const existingScript = document.querySelector<HTMLScriptElement>('script[data-aa2000-html2pdf]');
+      existingScript?.remove();
+
+      const script = document.createElement('script');
+      script.dataset.aa2000Html2pdf = 'true';
+      script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+      script.onload = () => resolve();
+      script.onerror = () => reject(new Error('Could not load the PDF generator. Check your connection and try again.'));
+      document.head.appendChild(script);
+    });
+  }
+  const pdfGenerator = (window as any).html2pdf;
+  if (!pdfGenerator) {
+    throw new Error('The PDF generator did not load. Check your connection and try again.');
+  }
+
+  const outer = document.createElement('div');
+  Object.assign(outer.style, {
+    position: 'fixed',
+    top: '0',
+    left: '0',
+    width: '794px',
+    height: '1px',
+    overflow: 'hidden',
+    zIndex: '99999',
+    pointerEvents: 'none',
+  });
+
+  const container = document.createElement('div');
+  container.innerHTML = html;
+  outer.appendChild(container);
+  document.body.appendChild(outer);
+
+  try {
+    const imageUrls = [reportHeaderBackground, reportLogo];
+    await Promise.all(
+      imageUrls.map(
+        src =>
+          new Promise<void>(resolve => {
+            const image = new Image();
+            image.onload = () => resolve();
+            image.onerror = () => resolve();
+            image.src = src;
+          })
+      )
+    );
+    await (document as any).fonts?.ready;
+    await new Promise(resolve => setTimeout(resolve, 100));
+    prepareEstimationReportLayout(container);
+
+    const safeProjectName = projectName
+      .trim()
+      .replace(/[^a-z0-9-_]+/gi, '_')
+      .replace(/^_+|_+$/g, '')
+      .slice(0, 80) || 'Project';
+    const filename = `AA2000_Commercial_Quotation_${safeProjectName}.pdf`;
+
+    const options = {
+      margin: [10, 0, 40, 0],
+      filename,
+      image: { type: 'jpeg', quality: 0.98 },
+      html2canvas: {
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        backgroundColor: '#FFFFFF',
+      },
+      jsPDF: { unit: 'pt', format: 'a4', orientation: 'portrait' },
+      pagebreak: {
+        mode: ['css', 'legacy'],
+      },
+    };
+
+    const pdfWorker = pdfGenerator()
+      .set(options)
+      .from(container)
+      .toPdf();
+
+    await pdfWorker.get('pdf').then((pdf: any) => {
+      const pageCount = pdf.internal.getNumberOfPages();
+      const address = 'Unit 2-C Norkis Building, 11 Calbayog Cor., Domingo M. Guevara St., Mandaluyong City, Philippines 1550';
+      const phone = 'T: (02) 8571-5693';
+      const disclaimer = 'This report reflects the estimation at export. Scope, availability and schedule remain subject to approval.';
+
+      for (let pageNumber = 1; pageNumber <= pageCount; pageNumber += 1) {
+        if (pageNumber === 1) continue;
+        pdf.setPage(pageNumber);
+        const pageWidth = pdf.internal.pageSize.getWidth();
+        const pageHeight = pdf.internal.pageSize.getHeight();
+        const footerTop = pageHeight - 32;
+
+        pdf.setDrawColor(203, 213, 225);
+        pdf.setLineWidth(0.5);
+        pdf.line(36, footerTop, pageWidth - 36, footerTop);
+
+        pdf.setTextColor(100, 116, 139);
+        pdf.setFont('helvetica', 'normal');
+        pdf.setFontSize(5.3);
+        pdf.text(address, 36, footerTop + 9);
+        pdf.text(phone, 36, footerTop + 16);
+        pdf.text(`Page ${pageNumber} of ${pageCount}`, pageWidth / 2, footerTop + 23, { align: 'center' });
+
+        pdf.setTextColor(71, 85, 105);
+        pdf.setFont('helvetica', 'bold');
+        const disclaimerLines = pdf.splitTextToSize(disclaimer, 205);
+        pdf.text(disclaimerLines, pageWidth - 36, footerTop + 9, { align: 'right' });
+      }
+    });
+
+    const blob = await pdfWorker.outputPdf('blob') as Blob;
+    if (!blob || blob.size === 0) {
+      throw new Error('The generated proposal is not a valid PDF. Please try again.');
+    }
+    return blob;
+  } finally {
+    outer.remove();
+  }
+}
+
 interface Props {
   onBackToDocument?: () => void;
   isDark?: boolean;
@@ -308,7 +586,48 @@ export default function FloorPlanSelectionSectionView({
   }, [activeFile]);
 
   // Wizard steps: 2 = Select areas, 3 = Review, 4 = Summary
-  const [step, setStep] = useState<2 | 3 | 4 | 5>(2);
+  // Wizard steps: 2 = Select areas, 3 = Review, 4 = Report
+  const [step, setStep] = useState<2 | 3 | 4>(2);
+  const [reportType, setReportType] = useState<EstimationReportType>('summary');
+  const [showReportTypeModal, setShowReportTypeModal] = useState(false);
+  const [modalReportSelection, setModalReportSelection] = useState<EstimationReportType>('summary');
+  const [showEditQuotationDetails, setShowEditQuotationDetails] = useState(false);
+  const [showEditProposalItems, setShowEditProposalItems] = useState(false);
+  const [proposalManpower, setProposalManpower] = useState<EstimationManpowerEntry[]>([]);
+  const [proposalConsumables, setProposalConsumables] = useState<EstimationConsumableEntry[]>([]);
+  const [proposalFees, setProposalFees] = useState<EstimationAdditionalFeeEntry[]>([]);
+  const [selectedProposalSystems, setSelectedProposalSystems] = useState<SystemType[]>(() =>
+    initialSystemTypes && initialSystemTypes.length > 0 ? [...initialSystemTypes] : ['CCTV']
+  );
+  const [proposalPdfUrl, setProposalPdfUrl] = useState<string | null>(null);
+
+  const toggleProposalSystem = (type: SystemType) => {
+    let next: SystemType[];
+    if (selectedProposalSystems.includes(type)) {
+      if (selectedProposalSystems.length === 1) {
+        toast.info('At least one section must be included in the proposal.');
+        return;
+      }
+      next = selectedProposalSystems.filter(t => t !== type);
+    } else {
+      next = [...selectedProposalSystems, type];
+    }
+    setSelectedProposalSystems(next);
+    void openProposalPdf(next);
+  };
+  const [quotHeader, setQuotHeader] = useState<QuotationHeaderState>(() => ({
+    referenceCode: `EST-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
+    attentionTo: 'Valued Client',
+    thru: 'Purchasing / Engineering',
+    emailAdd: '',
+    contactNo: '',
+    company: 'Client Company',
+    address: 'Philippines',
+    projectSite: 'Site Location',
+    projectTitle: 'Commercial Installation Project',
+    quoteDate: new Date().toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' }),
+    validityPeriod: '30 days from date of this quotation',
+  }));
 
   // Previews of every uploaded plan, saved with the estimation for the PDF report
   const [floorPlanImages, setFloorPlanImages] = useState<FloorPlanImage[]>([]);
@@ -584,6 +903,7 @@ export default function FloorPlanSelectionSectionView({
         },
       });
       setActiveSystemTypes(nextSystems);
+      setSelectedProposalSystems(prev => Array.from(new Set([...prev, ...nextSystems])));
       setReqResult({
         ...reqResult,
         ...updatedRequirements,
@@ -602,46 +922,6 @@ export default function FloorPlanSelectionSectionView({
     } finally {
       setReqLoading(false);
     }
-  };
-
-  const openSummaryPdf = async () => {
-    setPdfGenerating(true);
-    setPdfError('');
-    try {
-      const blob = await createRequirementsPdf(reqResult, analyzedLabel, activeSystemTypes);
-      setSummaryPdfUrl(URL.createObjectURL(blob));
-      setStep(4);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Could not generate the summary PDF.';
-      setPdfError(message);
-      toast.error(message);
-    } finally {
-      setPdfGenerating(false);
-    }
-  };
-
-  const shareSummaryPdf = async () => {
-    if (!summaryPdfUrl) return;
-    try {
-      const filename = getEstimationPdfFilename();
-      const file = new File(
-        [await (await fetch(summaryPdfUrl)).blob()],
-        filename,
-        { type: 'application/pdf' }
-      );
-      if (navigator.share && (!navigator.canShare || navigator.canShare({ files: [file] }))) {
-        await navigator.share({ files: [file], title: 'Estimation' });
-        return;
-      }
-      setPdfError('File sharing is not available in this browser; the PDF will download so you can share it manually.');
-    } catch (error) {
-      if (error instanceof Error && error.name === 'AbortError') return;
-      setPdfError(error instanceof Error ? error.message : 'The PDF could not be shared.');
-    }
-    const link = document.createElement('a');
-    link.href = summaryPdfUrl;
-    link.download = getEstimationPdfFilename();
-    link.click();
   };
 
   // Section that produced the current requirements result (step 3+)
@@ -684,9 +964,165 @@ export default function FloorPlanSelectionSectionView({
     floorPlans,
     floorPlanImages,
     selectedSection: analyzedSection?.raw ?? null,
-    sectionRequirements: reqResult,
+    sectionRequirements: reqResult
+      ? {
+          ...reqResult,
+          materials: (proposalConsumables.length > 0 ? proposalConsumables : (reqResult.materials || [])).map(c => ({
+            name: c.name,
+            category: c.category || c.systemLabel || 'Materials',
+            brand: c.brand,
+            quantity: c.quantity,
+            unit: c.unit,
+            srp: c.srp || c.unitPrice,
+            unitPrice: c.unitPrice,
+            totalPrice: c.totalPrice,
+          })),
+          manpower: (proposalManpower.length > 0 ? proposalManpower : (reqResult.manpower || [])).map(m => ({
+            role: m.role,
+            headcount: m.headcount,
+            hours: m.hours,
+            manDays: m.manDays,
+            dayRate: m.dayRate,
+            totalCost: m.totalCost,
+            responsibilities: m.responsibilities,
+          })),
+        }
+      : null,
     estimation: null,
   };
+
+  const initProposalItemsFromCache = (forceReset = false) => {
+    const rawCache = buildWizardEstimationCache(
+      {
+        projectName: quotHeader.projectTitle || analyzedLabel || 'Commercial Project',
+        clientName: quotHeader.company || 'Valued Client',
+        location: quotHeader.projectSite || 'Site Location',
+        systemTypes: activeSystemTypes,
+      },
+      dbAiContext
+    );
+    const ensured = ensureSystemProposalItems(
+      activeSystemTypes.map(s => SYSTEM_OPTIONS.find(o => o.type === s)?.label || s),
+      proposalManpower.length > 0 ? proposalManpower : rawCache.manpower,
+      proposalConsumables.length > 0 ? proposalConsumables : rawCache.consumables,
+      proposalFees.length > 0 ? proposalFees : rawCache.fees
+    );
+    if (forceReset || proposalConsumables.length === 0) {
+      setProposalManpower(ensured.manpower);
+      setProposalConsumables(ensured.consumables);
+      setProposalFees(ensured.fees);
+      return ensured;
+    }
+    return ensured;
+  };
+
+  const openSummaryPdf = async () => {
+    setPdfGenerating(true);
+    setPdfError('');
+    try {
+      const blob = await createRequirementsPdf(reqResult, analyzedLabel, activeSystemTypes);
+      const url = URL.createObjectURL(blob);
+      setSummaryPdfUrl(url);
+      setReportType('summary');
+      setStep(4);
+      return url;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not generate the summary PDF.';
+      setPdfError(message);
+      toast.error(message);
+      return null;
+    } finally {
+      setPdfGenerating(false);
+    }
+  };
+
+  const openProposalPdf = async (customSys?: SystemType[]) => {
+    setPdfGenerating(true);
+    setPdfError('');
+    try {
+      const systemsToRender = customSys && customSys.length > 0 ? customSys : selectedProposalSystems;
+      const items = initProposalItemsFromCache(false);
+      const html = buildProposalHtml(
+        analyzedLabel,
+        analyzedArea,
+        activeSystemTypes,
+        dbAiContext,
+        floorPlanImages,
+        quotHeader,
+        projects,
+        items,
+        systemsToRender
+      );
+      const blob = await createProposalPdf(html, analyzedLabel);
+      const url = URL.createObjectURL(blob);
+      setProposalPdfUrl(url);
+      setReportType('proposal');
+      setStep(4);
+      return url;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not generate the Project Proposal PDF.';
+      setPdfError(message);
+      toast.error(message);
+      return null;
+    } finally {
+      setPdfGenerating(false);
+    }
+  };
+
+  const handleSwitchReportType = async (type: EstimationReportType) => {
+    setReportType(type);
+    setPdfError('');
+    if (type === 'summary') {
+      if (!summaryPdfUrl) {
+        await openSummaryPdf();
+      }
+    } else {
+      if (!proposalPdfUrl) {
+        await openProposalPdf();
+      }
+    }
+  };
+
+  const handleGenerateReportSelect = async (type: EstimationReportType) => {
+    setShowReportTypeModal(false);
+    setPdfError('');
+    if (type === 'summary') {
+      await openSummaryPdf();
+    } else {
+      await openProposalPdf();
+    }
+  };
+
+  const activePdfUrl = reportType === 'proposal' ? proposalPdfUrl : summaryPdfUrl;
+  const activeFilename = getReportPdfFilename(reportType, analyzedLabel);
+
+  const shareActivePdf = async () => {
+    if (!activePdfUrl) return;
+    try {
+      const file = new File(
+        [await (await fetch(activePdfUrl)).blob()],
+        activeFilename,
+        { type: 'application/pdf' }
+      );
+      if (navigator.share && (!navigator.canShare || navigator.canShare({ files: [file] }))) {
+        await navigator.share({
+          files: [file],
+          title: reportType === 'proposal' ? 'AA2000 Commercial Quotation' : 'Estimation Summary',
+        });
+        return;
+      }
+      setPdfError('File sharing is not available in this browser; the PDF will download so you can share it manually.');
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') return;
+      setPdfError(error instanceof Error ? error.message : 'The PDF could not be shared.');
+    }
+    const link = document.createElement('a');
+    link.href = activePdfUrl;
+    link.download = activeFilename;
+    link.click();
+  };
+
+
 
   return (
     <div className="w-full max-w-[1800px] mx-auto px-2 sm:px-4 lg:px-6 py-4 space-y-6">
@@ -743,7 +1179,7 @@ export default function FloorPlanSelectionSectionView({
                 2. Select areas
               </span>
               <span>3. Review</span>
-              <span>4. Summary</span>
+              <span>4. Report</span>
             </div>
 
             {/* Floor Selection Tabs at the Top */}
@@ -1118,7 +1554,7 @@ export default function FloorPlanSelectionSectionView({
             <span className="px-3.5 py-1 rounded-full bg-blue-100 dark:bg-blue-950 text-blue-600 dark:text-blue-400 font-bold border border-blue-200 dark:border-blue-900">
               3. Review
             </span>
-            <span>4. Summary</span>
+            <span>4. Report</span>
           </div>
 
           {/* Analyzed section context */}
@@ -1132,7 +1568,7 @@ export default function FloorPlanSelectionSectionView({
           {/* Notice Banner */}
           <div className="p-3.5 px-4 bg-blue-50/80 dark:bg-blue-950/40 border border-blue-100 dark:border-blue-900/40 rounded-xl text-xs text-slate-600 dark:text-slate-300 font-medium leading-relaxed">
             Requirements below were identified by the AI for this section. Review them, then
-            continue to the summary.
+            generate the report.
           </div>
 
           {/* Identified requirements (API #2 result) */}
@@ -1145,6 +1581,31 @@ export default function FloorPlanSelectionSectionView({
               onChange={next => {
                 setReqResult(next);
                 setSummaryPdfUrl(null);
+                if (next.materials) {
+                  setProposalConsumables(
+                    next.materials.map(m => {
+                      const price = Number(m.unitPrice ?? m.srp) || 0;
+                      const qty = Number(m.quantity) || 1;
+                      return {
+                        id: (m as { id?: string }).id || crypto.randomUUID(),
+                        name: m.name || m.description || 'Material',
+                        brand: m.brand,
+                        category: m.category || 'Materials',
+                        systemType: m.category || undefined,
+                        systemLabel: m.category || undefined,
+                        quantity: qty,
+                        unit: m.unit || 'pcs',
+                        srp: price,
+                        contractorPrice: m.contractorPrice,
+                        dealerPrice: m.dealerPrice,
+                        unitPrice: price,
+                        totalPrice: Number(m.totalPrice) || price * qty,
+                        productId: m.model || m.catalog?.prod_Code,
+                        notes: m.description,
+                      };
+                    })
+                  );
+                }
               }}
               onAddSystem={() => setShowAddSystemsModal(true)}
             />
@@ -1171,27 +1632,30 @@ export default function FloorPlanSelectionSectionView({
 
             <button
               type="button"
-              onClick={() => void openSummaryPdf()}
+              onClick={() => {
+                setModalReportSelection(reportType);
+                setShowReportTypeModal(true);
+              }}
               disabled={pdfGenerating || reqLoading || !reqResult}
               className="px-6 py-2.5 rounded-full text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-md shadow-blue-500/20 cursor-pointer transition-all disabled:cursor-wait disabled:opacity-60"
             >
-              {pdfGenerating ? 'Preparing PDF…' : 'Continue to PDF Summary'}
+              {pdfGenerating ? 'Preparing Report…' : 'Generate Report'}
             </button>
           </div>
           {pdfError && <p role="alert" className="text-xs font-semibold text-red-600 dark:text-red-400">{pdfError}</p>}
         </div>
       )}
 
-      {/* ── STEP 4: ESTIMATE SUMMARY ── */}
+      {/* ── STEP 4: REPORT ── */}
       {step === 4 && (
         <div className="space-y-6 animate-fade-in-up">
           {/* Header */}
           <div>
             <h1 className="text-2xl font-black tracking-tight text-slate-900 dark:text-white">
-              Estimate summary
+              Estimation Report
             </h1>
             <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-1">
-              Review the scope before saving.
+              Select or review the generated report before saving.
             </p>
           </div>
 
@@ -1201,68 +1665,240 @@ export default function FloorPlanSelectionSectionView({
             <span>2. Select areas</span>
             <span>3. Review</span>
             <span className="px-3.5 py-1 rounded-full bg-blue-100 dark:bg-blue-950 text-blue-600 dark:text-blue-400 font-bold border border-blue-200 dark:border-blue-900">
-              4. Summary
+              4. Report
             </span>
           </div>
 
           <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-xs dark:border-slate-800 dark:bg-[#131B2E]">
+            {/* Top Toolbar with Report Selector Tabs and Actions */}
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-5 py-4 dark:border-slate-800">
-              <div>
-                <h2 className="text-sm font-black text-slate-900 dark:text-white">
-                  Estimation
-                </h2>
-                <p className="mt-1 text-[11px] font-semibold text-slate-500 dark:text-slate-400">
-                  Generated from the latest reviewed requirements for {analyzedLabel}.
-                </p>
-                {summaryPdfUrl && (
-                  <p className="mt-1 text-[10px] font-bold text-slate-400 dark:text-slate-500">
-                    {getEstimationPdfFilename()}
-                  </p>
-                )}
-              </div>
-              {summaryPdfUrl && (
-                <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-col gap-2.5">
+                {/* Interactive Report Selection Tabs */}
+                <div className="inline-flex p-1 bg-slate-100 dark:bg-slate-800/80 rounded-xl border border-slate-200 dark:border-slate-700">
                   <button
                     type="button"
-                    onClick={() => window.open(summaryPdfUrl, '_blank', 'noopener,noreferrer')}
-                    className="rounded-lg border border-slate-200 px-3 py-2 text-[11px] font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                    onClick={() => void handleSwitchReportType('summary')}
+                    className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                      reportType === 'summary'
+                        ? 'bg-white dark:bg-[#131B2E] text-blue-600 dark:text-blue-400 shadow-xs'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                    }`}
                   >
-                    Open / Print
+                    <span>📄</span>
+                    <span>Summary Report</span>
                   </button>
-                  <a
-                    href={summaryPdfUrl}
-                    download={getEstimationPdfFilename()}
-                    className="rounded-lg bg-blue-600 px-3 py-2 text-[11px] font-bold text-white hover:bg-blue-700"
-                  >
-                    Download PDF
-                  </a>
                   <button
                     type="button"
-                    onClick={() => void shareSummaryPdf()}
-                    className="rounded-lg border border-slate-200 px-3 py-2 text-[11px] font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                    onClick={() => void handleSwitchReportType('proposal')}
+                    className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                      reportType === 'proposal'
+                        ? 'bg-white dark:bg-[#131B2E] text-blue-600 dark:text-blue-400 shadow-xs'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                    }`}
                   >
-                    Share PDF
+                    <span>📋</span>
+                    <span>Project Proposal [AA2000 Commercial Quotation]</span>
                   </button>
-                  {pdfError && <span role="alert" className="text-[10px] font-semibold text-red-600">{pdfError}</span>}
                 </div>
-              )}
+
+                <div>
+                  <h2 className="text-sm font-black text-slate-900 dark:text-white">
+                    {reportType === 'proposal'
+                      ? 'AA2000 Commercial Quotation / Project Proposal'
+                      : 'Estimation Summary'}
+                  </h2>
+                  <p className="mt-0.5 text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                    {reportType === 'proposal'
+                      ? 'Official commercial quotation proposal with technical scope and pricing.'
+                      : `Generated from the latest reviewed requirements for ${analyzedLabel}.`}
+                  </p>
+                  {activePdfUrl && (
+                    <p className="mt-1 text-[10px] font-bold text-slate-400 dark:text-slate-500">
+                      {activeFilename}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex flex-wrap items-center gap-2">
+                {reportType === 'proposal' && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setShowEditQuotationDetails(prev => !prev)}
+                      className="rounded-lg border border-slate-200 px-3 py-2 text-[11px] font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800 cursor-pointer"
+                    >
+                      {showEditQuotationDetails ? 'Done Details' : 'Edit Client Details'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!showEditProposalItems) {
+                          initProposalItemsFromCache(false);
+                        }
+                        setShowEditProposalItems(prev => !prev);
+                      }}
+                      className={`rounded-lg border px-3 py-2 text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                        showEditProposalItems
+                          ? 'bg-blue-50 border-blue-300 text-blue-700 dark:bg-blue-950/60 dark:border-blue-700 dark:text-blue-300'
+                          : 'border-slate-200 text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800'
+                      }`}
+                    >
+                      <span>✏️</span>
+                      <span>{showEditProposalItems ? 'Hide Items Editor' : 'Edit Proposal Items & Scope'}</span>
+                    </button>
+                  </>
+                )}
+
+                {activePdfUrl && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => window.open(activePdfUrl, '_blank', 'noopener,noreferrer')}
+                      className="rounded-lg border border-slate-200 px-3 py-2 text-[11px] font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800 cursor-pointer"
+                    >
+                      Open / Print
+                    </button>
+                    <a
+                      href={activePdfUrl}
+                      download={activeFilename}
+                      className="rounded-lg bg-blue-600 px-3 py-2 text-[11px] font-bold text-white hover:bg-blue-700"
+                    >
+                      Download PDF
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => void shareActivePdf()}
+                      className="rounded-lg border border-slate-200 px-3 py-2 text-[11px] font-bold text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800 cursor-pointer"
+                    >
+                      Share PDF
+                    </button>
+                  </>
+                )}
+                {pdfError && <span role="alert" className="text-[10px] font-semibold text-red-600">{pdfError}</span>}
+              </div>
             </div>
-            {summaryPdfUrl ? (
+
+            {/* Interactive Proposal Section Visibility Selector */}
+            {reportType === 'proposal' && (
+              <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-3 bg-slate-50 dark:bg-slate-900/60 border-b border-slate-200 dark:border-slate-800">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                    Sections showing in Project Proposal:
+                  </span>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {activeSystemTypes.map(type => {
+                      const isSelected = selectedProposalSystems.includes(type);
+                      const label = SYSTEM_OPTIONS.find(o => o.type === type)?.label || type;
+                      return (
+                        <button
+                          key={type}
+                          type="button"
+                          onClick={() => toggleProposalSystem(type)}
+                          className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer border ${
+                            isSelected
+                              ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                              : 'bg-white dark:bg-slate-900 text-slate-500 border-slate-300 dark:border-slate-700 hover:text-slate-800 dark:hover:text-slate-200'
+                          }`}
+                        >
+                          <span>{isSelected ? '✓' : '○'}</span>
+                          <span>{label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+                <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                  Click to show or hide a system section in the quotation proposal.
+                </span>
+              </div>
+            )}
+
+            {/* Optional Collapsible Quotation Header Editor (when on Proposal report) */}
+            {reportType === 'proposal' && showEditQuotationDetails && (
+              <div className="p-4 bg-slate-50 dark:bg-slate-900/60 border-b border-slate-200 dark:border-slate-800 animate-fade-in-up">
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider">
+                    Commercial Quotation Header Details
+                  </h4>
+                  <button
+                    type="button"
+                    onClick={() => void openProposalPdf()}
+                    disabled={pdfGenerating}
+                    className="px-4 py-1.5 rounded-lg text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white cursor-pointer transition-all disabled:opacity-60"
+                  >
+                    {pdfGenerating ? 'Updating…' : 'Update Proposal PDF'}
+                  </button>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {QUOTATION_HEADER_FIELDS.map(({ key, label }) => (
+                    <label key={key} className="flex flex-col gap-1 text-[11px] font-semibold text-slate-600 dark:text-slate-400">
+                      <span>{label}</span>
+                      <input
+                        type="text"
+                        value={quotHeader[key] || ''}
+                        onChange={e => setQuotHeader(prev => ({ ...prev, [key]: e.target.value }))}
+                        className="px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#131B2E] text-slate-900 dark:text-white text-xs focus:ring-1 focus:ring-blue-500 outline-hidden"
+                      />
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Interactive Proposal Items & Scope Editor (A, B, C, D, E tables) */}
+            {reportType === 'proposal' && showEditProposalItems && (
+              <ProposalItemsEditor
+                systems={activeSystemTypes.map(s => SYSTEM_OPTIONS.find(o => o.type === s)?.label || s)}
+                manpower={proposalManpower}
+                consumables={proposalConsumables}
+                fees={proposalFees}
+                includedSystems={selectedProposalSystems.map(s => SYSTEM_OPTIONS.find(o => o.type === s)?.label || s)}
+                onToggleSystemInclusion={sysName => {
+                  const matchedType = SYSTEM_OPTIONS.find(o =>
+                    o.label.toUpperCase().includes(sysName.toUpperCase()) || sysName.toUpperCase().includes(o.type)
+                  )?.type || (sysName as SystemType);
+                  toggleProposalSystem(matchedType);
+                }}
+                onUpdateManpower={setProposalManpower}
+                onUpdateConsumables={setProposalConsumables}
+                onUpdateFees={setProposalFees}
+                onApplyChanges={() => void openProposalPdf()}
+                onResetDefaults={() => {
+                  initProposalItemsFromCache(true);
+                  toast.info('Reset proposal items to AI defaults.');
+                }}
+                onClose={() => setShowEditProposalItems(false)}
+                isGenerating={pdfGenerating}
+              />
+            )}
+
+            {/* PDF Viewer */}
+            {pdfGenerating ? (
+              <div className="flex min-h-[520px] flex-col items-center justify-center gap-3 px-6 text-center">
+                <div className="w-10 h-10 rounded-full border-4 border-slate-200 border-t-blue-600 animate-spin" />
+                <p className="text-xs font-bold text-slate-600 dark:text-slate-300">
+                  {reportType === 'proposal' ? 'Generating AA2000 Commercial Quotation PDF…' : 'Generating Summary Report PDF…'}
+                </p>
+                <p className="text-[11px] text-slate-400">Please wait while formatting pages, calculations, and brand headers.</p>
+              </div>
+            ) : activePdfUrl ? (
               <iframe
-                src={summaryPdfUrl}
-                title="Printable system requirements summary PDF"
-                className="h-[min(78vh,900px)] min-h-[520px] w-full bg-slate-100"
+                src={activePdfUrl}
+                title={reportType === 'proposal' ? 'AA2000 Project Proposal Commercial Quotation' : 'Printable system requirements summary PDF'}
+                className="h-[min(78vh,900px)] min-h-[520px] w-full bg-slate-100 dark:bg-slate-900"
               />
             ) : (
               <div className="flex min-h-64 flex-col items-center justify-center gap-3 px-6 text-center">
                 <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-                  The reviewed PDF summary is not available. Generate it again to continue.
+                  The {reportType === 'proposal' ? 'project proposal' : 'summary report'} is not available. Generate it to continue.
                 </p>
                 <button
                   type="button"
-                  onClick={() => void openSummaryPdf()}
+                  onClick={() => void (reportType === 'proposal' ? openProposalPdf() : openSummaryPdf())}
                   disabled={pdfGenerating}
-                  className="rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-blue-700 disabled:opacity-60"
+                  className="rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-blue-700 disabled:opacity-60 cursor-pointer"
                 >
                   {pdfGenerating ? 'Preparing PDF…' : 'Generate PDF'}
                 </button>
@@ -1304,7 +1940,7 @@ export default function FloorPlanSelectionSectionView({
                 </span>
               )}
             </div>
-            {pdfError && !summaryPdfUrl && <p role="alert" className="text-xs font-semibold text-red-600 dark:text-red-400">{pdfError}</p>}
+            {pdfError && !activePdfUrl && <p role="alert" className="text-xs font-semibold text-red-600 dark:text-red-400">{pdfError}</p>}
           </div>
         </div>
       )}
@@ -1351,6 +1987,121 @@ export default function FloorPlanSelectionSectionView({
               <span>⏳</span>
               <span>Please wait while the AI models process your request</span>
             </p>
+          </div>
+        </div>
+      )}
+
+      {/* ── REPORT SELECTION MODAL ── */}
+      {showReportTypeModal && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="report-modal-title"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 dark:bg-black/75 backdrop-blur-xs p-4 select-none"
+        >
+          <div className="bg-white dark:bg-[#131B2E] border border-slate-200 dark:border-slate-800 rounded-3xl p-6 sm:p-7 max-w-lg w-full shadow-2xl space-y-5 animate-scale-in">
+            <div className="space-y-1">
+              <h3 id="report-modal-title" className="text-lg font-black text-slate-900 dark:text-white tracking-tight">
+                Select Report Type
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                Choose which report format you want to generate for this estimation:
+              </p>
+            </div>
+
+            {/* Option Cards */}
+            <div className="space-y-3 pt-1">
+              {/* Option 1: Summary Report */}
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => setModalReportSelection('summary')}
+                onKeyDown={e => e.key === 'Enter' && setModalReportSelection('summary')}
+                className={`p-4 rounded-2xl border-2 transition-all cursor-pointer flex items-start gap-3.5 ${
+                  modalReportSelection === 'summary'
+                    ? 'border-blue-600 bg-blue-50/60 dark:bg-blue-950/40 dark:border-blue-500 shadow-xs'
+                    : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-transparent'
+                }`}
+              >
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                  modalReportSelection === 'summary'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
+                }`}>
+                  <span className="text-lg">📄</span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm font-bold text-slate-900 dark:text-white">
+                      Summary Report
+                    </span>
+                    {modalReportSelection === 'summary' && (
+                      <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-blue-600 text-white">
+                        Selected
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+                    Overview of reviewed system requirements, material estimates, labor hours, and compliance considerations.
+                  </p>
+                </div>
+              </div>
+
+              {/* Option 2: Project Proposal [AA2000 Commercial Quotation] */}
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => setModalReportSelection('proposal')}
+                onKeyDown={e => e.key === 'Enter' && setModalReportSelection('proposal')}
+                className={`p-4 rounded-2xl border-2 transition-all cursor-pointer flex items-start gap-3.5 ${
+                  modalReportSelection === 'proposal'
+                    ? 'border-blue-600 bg-blue-50/60 dark:bg-blue-950/40 dark:border-blue-500 shadow-xs'
+                    : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-transparent'
+                }`}
+              >
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                  modalReportSelection === 'proposal'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
+                }`}>
+                  <span className="text-lg">📋</span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-sm font-bold text-slate-900 dark:text-white">
+                      Project Proposal [AA2000 Commercial Quotation]
+                    </span>
+                    {modalReportSelection === 'proposal' && (
+                      <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-blue-600 text-white">
+                        Selected
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+                    Official client-facing commercial quotation featuring company header, project scope, bill of quantities, floor plan previews, and formal terms.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => setShowReportTypeModal(false)}
+                className="px-5 py-2.5 rounded-full text-xs font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleGenerateReportSelect(modalReportSelection)}
+                disabled={pdfGenerating}
+                className="px-6 py-2.5 rounded-full text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-md shadow-blue-500/20 cursor-pointer transition-all disabled:opacity-60"
+              >
+                {pdfGenerating ? 'Preparing Report…' : 'Generate Report'}
+              </button>
+            </div>
           </div>
         </div>
       )}

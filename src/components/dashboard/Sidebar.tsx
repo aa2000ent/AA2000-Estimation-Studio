@@ -3,6 +3,7 @@ import type { User, Project, AIScanGroup } from '../../App';
 import type { Notification } from '../notifications/NotificationBell';
 import { getRoleTheme } from '../../utils/RoleTheme';
 import { getSavedBOQCount } from '../floor-plan/SavedBOQsView';
+import appLogo from '../../images/aa2000 logo.png';
 
 export type View =
   | 'home' | 'dashboard' | 'workspace' | 'create-survey'
@@ -250,26 +251,29 @@ export default function Sidebar({
         >
           {isExpanded ? (
             <div className="flex items-center gap-3 min-w-0 flex-1">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white shadow-sm transition-transform duration-300">
-                <svg className="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
-                </svg>
-              </div>
+              <img
+                src={appLogo}
+                alt="AA2000 Estimation App Logo"
+                className="h-10 w-10 shrink-0 rounded-xl object-contain shadow-sm transition-transform duration-300"
+              />
               <div className="min-w-0 flex-1 pl-0.5">
-                <h1 className={`text-base font-bold leading-tight truncate ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                  AI Estimation
+                <h1 className={`text-sm font-black leading-tight tracking-tight truncate ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                  AA2000 Studio
                 </h1>
+                <p className="text-[10px] font-bold text-blue-500 uppercase tracking-wider">Estimation App</p>
               </div>
             </div>
           ) : (
             <div
               onClick={handleTogglePin}
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white shadow-sm cursor-pointer hover:scale-105 transition-transform"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl overflow-hidden cursor-pointer hover:scale-105 transition-transform"
               title="Pin Sidebar Expanded"
             >
-              <svg className="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
-              </svg>
+              <img
+                src={appLogo}
+                alt="AA2000 Estimation App Logo"
+                className="h-10 w-10 rounded-xl object-contain shadow-sm"
+              />
             </div>
           )}
 

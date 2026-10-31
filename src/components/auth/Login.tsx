@@ -182,7 +182,7 @@ export default function Login({ onLogin }: Props) {
 
         <div className="relative z-10 w-full max-w-md mx-auto flex flex-col flex-1">
           <div className="flex justify-center">
-            <img src={logo} alt="AA2000 Logo" className="h-36 object-contain" />
+            <img src={logo} alt="AA2000 Logo" className="h-32 w-32 object-contain rounded-2xl shadow-xl drop-shadow-md" />
           </div>
 
           <div className="flex-1 flex flex-col justify-center py-4 animate-fade-in-up">
@@ -254,7 +254,7 @@ export default function Login({ onLogin }: Props) {
           style={{ border: "1px solid #E5E7EB" }}
         >
           <div className="lg:hidden flex items-center justify-center mb-8">
-            <img src={logo} alt="AA2000 Logo" className="h-12 object-contain" />
+            <img src={logo} alt="AA2000 Logo" className="h-16 w-16 object-contain rounded-xl shadow-md" />
           </div>
 
           <div className="mb-6">

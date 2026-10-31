@@ -108,34 +108,157 @@ export const proposalTemplateCss = `
   .estimation-report .overview-plan>div {position:relative}
   .estimation-report .overview-floor-plan>small {font-size:7px;font-style:italic}
 `;
-export const sectionColor = (name: string): string => name === 'FDAS' ? '#db5018' : name === 'Shared Project Items' ? '#687a90' : '#216eb1';
+export const sectionColor = (name: string): string => name === 'FDAS' ? '#db5018' : '#216eb1';
 const cable = (item: EstimationConsumableEntry): boolean => /cable|wire|utp|fiber|fibre/i.test(`${item.category} ${item.name}`) && !/cable tray|cable tie|cable clip/i.test(item.name);
 const rough = (item: EstimationConsumableEntry): boolean => /rough|conduit|pipe|pvc|trunk|junction|mount|bracket|fastener|anchor|clamp|tape|connector|label|cable tray|cable tie/i.test(`${item.category} ${item.name}`);
 export interface ProposalSection { name: string; manpower: EstimationManpowerEntry[]; materials: EstimationConsumableEntry[]; fees: EstimationAdditionalFeeEntry[] }
 
 export function groupProposalSections(systems: string[], manpower: EstimationManpowerEntry[], materials: EstimationConsumableEntry[], fees: EstimationAdditionalFeeEntry[]): ProposalSection[] {
-  const normalize = (value: string): string => value.replace(/_/g, ' ').toUpperCase().replace(/FIRE ALARM/g, 'FDAS');
-  const tagged = materials.some(row => row.surveyId || row.systemLabel || row.systemType);
-  const names = [...new Set(materials.filter(row => row.surveyId || row.systemLabel || row.systemType).map(row => normalize(row.systemLabel || row.systemType || 'Other')))];
-  systems.forEach(name => { if (!names.some(label => label === name || label.startsWith(`${name} `))) names.push(name); });
-  const sections = (names.length ? names : ['Project Requirements']).map(name => ({ name, manpower: [] as EstimationManpowerEntry[], materials: [] as EstimationConsumableEntry[], fees: [] as EstimationAdditionalFeeEntry[] }));
-  const shared: ProposalSection = { name: 'Shared Project Items', manpower: [], materials: [], fees: [] };
-  const patterns: Record<string, RegExp> = { CCTV: /\bCCTV\b|camera|\bNVR\b|\bDVR\b/i, FDAS: /\bFDAS\b|fire alarm|smoke detector|heat detector|horn.?strobe|manual (call|pull)|\bFACP\b/i, 'ACCESS CONTROL': /access control|biometric|RFID|electromagnetic lock|exit button/i, 'BURGLAR ALARM': /burglar|intrusion|\bPIR\b|glass.?break/i, 'FIRE PROTECTION': /suppression|FM.?200|extinguisher/i };
-  const target = (text: string): ProposalSection => {
-    if (sections.length === 1) return sections[0];
-    const matches = sections.filter(section => patterns[section.name]?.test(text));
-    return matches.length === 1 ? matches[0] : shared;
+  const normalize = (value: string): string => {
+    const raw = value.replace(/_/g, ' ').replace(/\s+/g, ' ').trim().toUpperCase();
+    const numMatch = raw.match(/\b(\d+)$/);
+    const suffix = numMatch ? ` ${numMatch[1]}` : '';
+    if (/FDAS|FIRE\s*ALARM/i.test(raw)) return `FDAS${suffix}`;
+    if (/CCTV|SURVEILLANCE/i.test(raw)) return `CCTV${suffix}`;
+    if (/ACCESS\s*CONTROL/i.test(raw)) return `ACCESS CONTROL${suffix}`;
+    if (/BURGLAR\s*ALARM/i.test(raw)) return `BURGLAR ALARM${suffix}`;
+    if (/FIRE\s*PROTECTION|SUPPRESSION/i.test(raw)) return `FIRE PROTECTION${suffix}`;
+    if (/INTERCOM|PAGING|NURSE/i.test(raw)) return `INTERCOM / PAGING${suffix}`;
+    if (/PARKING/i.test(raw)) return `PARKING BARRIER${suffix}`;
+    return raw;
   };
-  manpower.forEach(row => target(row.role).manpower.push(row));
+  const normalizedSystems = (systems || []).map(normalize).filter(Boolean);
+  const names: string[] = [];
+
+  const subLabels = [
+    ...new Set(
+      materials
+        .map(row => normalize(row.systemLabel || row.systemType || ''))
+        .filter(Boolean)
+    ),
+  ];
+  const hasNumberedSurveys = subLabels.some(label => /\b\d+$/.test(label));
+
+  if (hasNumberedSurveys) {
+    subLabels.forEach(label => {
+      if (!names.includes(label)) names.push(label);
+    });
+    normalizedSystems.forEach(sys => {
+      if (!names.some(l => l === sys || l.startsWith(`${sys} `))) {
+        names.push(sys);
+      }
+    });
+  } else {
+    normalizedSystems.forEach(sys => {
+      if (!names.includes(sys)) names.push(sys);
+    });
+    subLabels.forEach(label => {
+      if (!names.some(l => l === label || l.startsWith(`${label} `) || label.startsWith(`${l} `))) {
+        names.push(label);
+      }
+    });
+  }
+
+  const sections: ProposalSection[] = (names.length ? names : ['Project Requirements']).map(name => ({
+    name,
+    manpower: [],
+    materials: [],
+    fees: [],
+  }));
+
+  const patterns: Record<string, RegExp> = {
+    CCTV: /\b(CCTV|camera|dome|bullet|turret|ptz|nvr|dvr|poe|switch|balun|bnc|coaxial|rg59|rg6|cat6|cat5|rj45|surveillance|video|lens)\b/i,
+    FDAS: /\b(FDAS|fire alarm|fire|smoke|heat|optical|detector|flame|gas|beam|manual|pull|call point|break glass|horn|strobe|sounder|bell|siren|facp|panel|annunciator|tf wire|fire.?rated|fplp|fplr)\b/i,
+    'ACCESS CONTROL': /\b(access control|access|biometric|fingerprint|facial|rfid|proximity|card|keycard|keypad|lock|maglock|electromagnetic|drop bolt|strike|exit button|push to exit|door)\b/i,
+    'BURGLAR ALARM': /\b(burglar|intrusion|pir|motion|glass.?break|magnetic contact|door contact|sensor|alarm)\b/i,
+    'FIRE PROTECTION': /\b(fire protection|suppression|fm.?200|clean agent|novec|inergen|co2|extinguisher|sprinkler)\b/i,
+    'INTERCOM / PAGING': /\b(intercom|pabx|paging|nurse call|pa system|public address|amplifier|speaker)\b/i,
+    'PARKING BARRIER': /\b(parking|barrier|boom|loop detector)\b/i,
+  };
+
+  const getPattern = (secName: string): RegExp | undefined => {
+    const base = secName.replace(/\s*\d+$/, '').trim().toUpperCase();
+    if (patterns[secName]) return patterns[secName];
+    if (patterns[base]) return patterns[base];
+    for (const [key, regex] of Object.entries(patterns)) {
+      if (base === key || base.includes(key) || key.includes(base)) return regex;
+    }
+    if (/FDAS|FIRE|ALARM/i.test(secName)) return patterns.FDAS;
+    if (/CCTV|SURVEILLANCE|CAMERA/i.test(secName)) return patterns.CCTV;
+    if (/ACCESS/i.test(secName)) return patterns['ACCESS CONTROL'];
+    if (/BURGLAR/i.test(secName)) return patterns['BURGLAR ALARM'];
+    return undefined;
+  };
+
+  const findTargetSection = (text: string, category?: string, label?: string): ProposalSection => {
+    if (sections.length === 1) return sections[0];
+
+    // Priority 1: Explicit survey / system label
+    if (label) {
+      const match = sections.find(s => {
+        const sNorm = s.name.toUpperCase();
+        const lNorm = label.toUpperCase();
+        if (sNorm === lNorm || sNorm.startsWith(lNorm) || lNorm.startsWith(sNorm)) return true;
+        if (/FDAS|FIRE/i.test(sNorm) && /FDAS|FIRE/i.test(lNorm)) return true;
+        if (/CCTV/i.test(sNorm) && /CCTV/i.test(lNorm)) return true;
+        return false;
+      });
+      if (match) return match;
+    }
+
+    // Priority 2: Category match
+    if (category) {
+      const catMatch = sections.find(s => {
+        const sNorm = s.name.toUpperCase();
+        const cNorm = category.toUpperCase();
+        if (sNorm === cNorm || category.includes(s.name) || s.name.includes(category)) return true;
+        if (/FDAS|FIRE/i.test(sNorm) && /FDAS|FIRE/i.test(cNorm)) return true;
+        if (/CCTV/i.test(sNorm) && /CCTV/i.test(cNorm)) return true;
+        const p = getPattern(s.name);
+        return p ? p.test(category) : false;
+      });
+      if (catMatch) return catMatch;
+    }
+
+    // Priority 3: Content / keyword matching on text
+    const matches = sections.filter(s => {
+      const p = getPattern(s.name);
+      return p ? p.test(text) : false;
+    });
+    if (matches.length > 0) return matches[0];
+
+    // Priority 4: Fallback to the first system section (no shared section)
+    return sections[0];
+  };
+
   materials.forEach(row => {
-    const label = row.systemLabel || row.systemType;
-    const destination = row.surveyId || label
-      ? sections.find(section => section.name === normalize(label || 'Other')) || shared
-      : tagged && sections.length > 1 ? shared : target(`${row.name} ${row.category} ${row.notes || ''}`);
-    destination.materials.push(row);
+    const label = normalize(row.systemLabel || row.systemType || '');
+    const category = normalize(row.category || '');
+    const text = `${row.name} ${row.category || ''} ${row.notes || ''}`;
+    const target = findTargetSection(text, category, label);
+    target.materials.push(row);
   });
-  fees.forEach(row => target(`${row.type} ${row.description} ${row.notes || ''}`).fees.push(row));
-  if (shared.manpower.length || shared.materials.length || shared.fees.length) sections.push(shared);
+
+  manpower.forEach(row => {
+    const text = `${row.role} ${row.responsibilities || ''}`;
+    const matches = sections.filter(s => {
+      const p = getPattern(s.name);
+      return p ? p.test(text) : false;
+    });
+    const target = matches.length > 0 ? matches[0] : sections[0];
+    target.manpower.push(row);
+  });
+
+  fees.forEach(row => {
+    const text = `${row.type} ${row.description || ''} ${row.notes || ''}`;
+    const matches = sections.filter(s => {
+      const p = getPattern(s.name);
+      return p ? p.test(text) : false;
+    });
+    const target = matches.length > 0 ? matches[0] : sections[0];
+    target.fees.push(row);
+  });
+
   return sections;
 }
 
@@ -177,7 +300,7 @@ export function renderProposalSystem(section: ProposalSection, index: number, pr
   const feeRows = section.fees.map((fee, i) => `<tr><td class="center">${i + 1}</td><td>${esc(fee.description || fee.type)}${fee.notes ? `<small>${esc(fee.notes)}</small>` : ''}</td><td class="center">1</td><td class="center">LOT</td>${priced ? `<td class="number">${money(fee.amount || 0)}</td><td class="number strong">${money(fee.amount || 0)}</td>` : ''}</tr>`).join('');
   const laborRows = section.manpower.map((row, i) => `<tr><td class="center">${i + 1}</td><td><b>${esc(row.role)}</b><small>${row.headcount} pax · ${row.hours} hrs</small></td><td class="center">${row.manDays}</td><td class="center">MAN-DAY</td>${priced ? `<td class="number">${row.dayRate == null ? 'Not recorded' : money(row.dayRate)}</td><td class="number strong">${money(laborLineTotal(row))}</td>` : ''}</tr>`).join('');
   return `<div class="section-intro"><div class="section-heading" style="background:${sectionColor(section.name)}" data-report-anchor="system-${index}">SECTION ${index + 1} — ${esc(section.name === 'FDAS' ? 'FDAS (FIRE DETECTION & ALARM SYSTEM)' : section.name)}</div>
-    ${section.name === 'Shared Project Items' ? '<p class="compact-note">Project-wide items are counted once; no per-system allocation is recorded.</p>' : `<div class="layout-block"><h3>${index + 1}.1 ${esc(section.name)} DEVICE LAYOUT</h3>${renderFloorPlanFigures(floorPlanImages, `<b>CLIENT FLOOR PLAN — ${esc(section.name)} LAYOUT</b><br>Original plan and verified device positions are not embedded in this report.<br>Refer to the source project attachments.`)}<small>${floorPlanImages.length ? 'Client floor plan as submitted. Device positions are not marked and require an approved client plan before installation.' : 'Device positions require an approved client plan before installation.'}</small></div>`}</div>
+    <div class="layout-block"><h3>${index + 1}.1 ${esc(section.name)} DEVICE LAYOUT</h3>${renderFloorPlanFigures(floorPlanImages, `<b>CLIENT FLOOR PLAN — ${esc(section.name)} LAYOUT</b><br>Original plan and verified device positions are not embedded in this report.<br>Refer to the source project attachments.`)}<small>${floorPlanImages.length ? 'Client floor plan as submitted. Device positions are not marked and require an approved client plan before installation.' : 'Device positions require an approved client plan before installation.'}</small></div></div>
     ${table('A. General Requirements', headers(priced), feeRows + (feeRows ? subtotal('GENERAL REQUIREMENTS', totals.totalFees, priced) : ''), priced)}
     ${table('B. Scope of Works (Installation Labor)', headers(priced), laborRows + (laborRows ? subtotal(`INSTALLATION LABOR — ${section.name}`, totals.totalLabor, priced) : ''), priced)}
     ${materialTable('C. Active Components', section.materials.filter(item => !cable(item) && !rough(item)))}
