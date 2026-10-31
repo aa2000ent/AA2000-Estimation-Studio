@@ -25,7 +25,9 @@ import type {
   SectionRequirementEntry,
   SectionRequirementsResult,
 } from '../../services/api/estimationFlow';
-import type { SystemType } from './CreateSurveyForm';
+import { SYSTEM_OPTIONS, type SystemType } from './CreateSurveyForm';
+import ProductCatalogModal from './ProductCatalogModal';
+import type { CatalogProduct } from '../../services/api/products';
 import { computeEstimationStats } from '../../services/estimationStats';
 
 interface PanelProps {
@@ -877,6 +879,8 @@ export function SectionRequirementsPanel({
 }) {
   const [editing, setEditing] = useState(false);
   const [requirementsPage, setRequirementsPage] = useState(0);
+  const [catalogModalTargetSystem, setCatalogModalTargetSystem] = useState<string | null>(null);
+  const [selectedMaterialTab, setSelectedMaterialTab] = useState<string>('ALL');
   const requirements = result.requirements || {};
   const canEdit = editable && typeof onChange === 'function';
   const updateEntry = (key: string, patch: Partial<SectionRequirementEntry>) => {
@@ -1016,13 +1020,15 @@ export function SectionRequirementsPanel({
   };
   const removeMaterialRow = (i: number) =>
     emit(materialPatch(materialItems.filter((_, idx) => idx !== i)));
-  const addMaterialRow = () =>
+
+  const addMaterialRow = (targetSys?: string) => {
+    const defaultSys = targetSys || (selectedSystems[0] || 'CCTV');
     emit(
       materialPatch([
         ...materialItems,
         {
           name: '',
-          category: 'Hardware',
+          category: defaultSys,
           brand: '',
           quantity: 1,
           unit: 'pcs',
@@ -1031,10 +1037,128 @@ export function SectionRequirementsPanel({
           contractorPrice: 0,
           dealerPrice: 0,
           totalPrice: 0,
-          source: 'market',
+          source: 'manual',
         },
       ])
     );
+  };
+
+  const handleSelectProductFromCatalog = (product: CatalogProduct) => {
+    const sys = catalogModalTargetSystem || (selectedSystems[0] || 'CCTV');
+    const price = Number(product.prod_price) || 0;
+    const name = product.prod_Name || product.item_description || product.model || product.prod_Code || 'Database Product';
+    const newItem: FormMaterialItem = {
+      name,
+      description: product.item_description || name,
+      category: sys,
+      brand: product.brand || '',
+      model: product.model || product.prod_Code || '',
+      quantity: 1,
+      unit: 'pcs',
+      srp: price,
+      unitPrice: price,
+      contractorPrice: Math.round(price * 0.85),
+      dealerPrice: Math.round(price * 0.75),
+      totalPrice: price,
+      source: 'database',
+      catalog: {
+        prod_Code: product.prod_Code,
+        prod_Name: product.prod_Name,
+        brand: product.brand,
+        prod_price: price,
+      },
+    };
+    emit(materialPatch([...materialItems, newItem]));
+  };
+
+  const activeSystems: string[] = [];
+  if (selectedSystems && selectedSystems.length > 0) {
+    selectedSystems.forEach(s => {
+      if (!activeSystems.includes(s)) activeSystems.push(s);
+    });
+  }
+  materialItems.forEach(item => {
+    const rawCat = (item.category || '').toUpperCase().trim();
+    if (rawCat) {
+      const match = SYSTEM_OPTIONS.find(o => o.type === rawCat || o.label.toUpperCase().includes(rawCat));
+      const sysKey = match ? match.type : rawCat;
+      if (!activeSystems.includes(sysKey) && !['MATERIALS', 'HARDWARE', 'GENERAL', 'SHARED'].includes(sysKey)) {
+        activeSystems.push(sysKey);
+      }
+    }
+  });
+  if (activeSystems.length === 0) {
+    activeSystems.push('CCTV', 'FDAS');
+  }
+
+  const getItemSystemKey = (item: FormMaterialItem): string => {
+    const cat = (item.category || '').toUpperCase().trim();
+    const name = (item.name || item.description || '').toUpperCase();
+    const combined = `${cat} ${name}`;
+
+    for (const sys of activeSystems) {
+      const s = sys.toUpperCase();
+      if (cat === s) return sys;
+      if (s === 'CCTV' && (/CCTV|SURVEILLANCE|CAMERA|NVR|DVR/i.test(cat) || /CCTV|CAMERA|NVR|DVR|DOME|BULLET|PTZ/i.test(name))) return sys;
+      if (s === 'FDAS' && (/FDAS|FIRE|ALARM/i.test(cat) || /FDAS|SMOKE|HEAT|DETECTOR|PULL STATION|SOUNDER|BELL|STROBE|FACP/i.test(name))) return sys;
+      if (s === 'ACCESS_CONTROL' && (/ACCESS/i.test(cat) || /BIOMETRIC|RFID|DOOR.*LOCK|MAGNETIC LOCK|STRIKE|EXIT/i.test(name))) return sys;
+      if (s === 'BURGLAR_ALARM' && (/BURGLAR|INTRUSION/i.test(cat) || /PIR|MAGNETIC CONTACT|SIREN|MOTION/i.test(name))) return sys;
+    }
+
+    if (/CCTV|CAMERA|NVR|DVR|SURVEILLANCE|DOME|BULLET/i.test(combined)) return 'CCTV';
+    if (/FDAS|FIRE|SMOKE|HEAT|DETECTOR|PULL STATION|SOUNDER|BELL|FACP/i.test(combined)) return 'FDAS';
+    if (/ACCESS|BIOMETRIC|RFID|DOOR.*LOCK/i.test(combined)) return 'ACCESS_CONTROL';
+
+    return item.category || activeSystems[0] || 'GENERAL';
+  };
+
+  const getSystemMeta = (sysKey: string): { label: string; color: string; bg: string } => {
+    const opt = SYSTEM_OPTIONS.find(o => o.type === sysKey || o.label.toUpperCase() === sysKey.toUpperCase());
+    if (opt) {
+      return { label: opt.label, color: opt.color || '#1D4ED8', bg: opt.bg || '#EFF6FF' };
+    }
+    if (sysKey === 'CCTV') return { label: 'CCTV System', color: '#1D4ED8', bg: '#EFF6FF' };
+    if (sysKey === 'FDAS') return { label: 'FDAS / Fire Alarm System', color: '#DC2626', bg: '#FEF2F2' };
+    if (sysKey === 'ACCESS_CONTROL') return { label: 'Access Control System', color: '#059669', bg: '#ECFDF5' };
+    if (sysKey === 'BURGLAR_ALARM') return { label: 'Burglar Alarm System', color: '#D97706', bg: '#FFFBEB' };
+    return { label: `${sysKey} Materials`, color: '#475569', bg: '#F1F5F9' };
+  };
+
+  const systemGroups: {
+    key: string;
+    meta: { label: string; color: string; bg: string };
+    items: { item: FormMaterialItem; origIndex: number }[];
+    totalCost: number;
+  }[] = [];
+
+  activeSystems.forEach(sysKey => {
+    systemGroups.push({
+      key: sysKey,
+      meta: getSystemMeta(sysKey),
+      items: [],
+      totalCost: 0,
+    });
+  });
+
+  materialItems.forEach((item, origIndex) => {
+    const sysKey = getItemSystemKey(item);
+    let grp = systemGroups.find(g => g.key === sysKey);
+    if (!grp) {
+      grp = {
+        key: sysKey,
+        meta: getSystemMeta(sysKey),
+        items: [],
+        totalCost: 0,
+      };
+      systemGroups.push(grp);
+    }
+    grp.items.push({ item, origIndex });
+    grp.totalCost += Number(item.totalPrice) || 0;
+  });
+
+  const visibleGroups = selectedMaterialTab === 'ALL'
+    ? systemGroups
+    : systemGroups.filter(g => g.key === selectedMaterialTab);
 
   const updateRecommendation = (
     i: number,
@@ -1080,53 +1204,171 @@ export function SectionRequirementsPanel({
     });
   };
 
+  const addGap = () => {
+    const base = result.compliance || {};
+    emit({
+      compliance: {
+        ...base,
+        gaps: [
+          ...(base.gaps || []),
+          { system: 'general', requirement: '', status: 'missing', recommendation: '' },
+        ],
+      },
+    });
+  };
+
+  const addRequirementEntry = () => {
+    const key = `CUSTOM_SYSTEM_${Date.now().toString(36).slice(-4).toUpperCase()}`;
+    onChange?.({
+      ...result,
+      requirements: {
+        ...requirements,
+        [key]: {
+          required: true,
+          coverage: 'Standard system coverage, device supply and installation.',
+        },
+      },
+    });
+  };
+
+  const removeRequirementEntry = (key: string) => {
+    const nextReq = { ...requirements };
+    delete nextReq[key];
+    onChange?.({
+      ...result,
+      requirements: nextReq,
+    });
+  };
+
   return (
     <div className="space-y-5">
       {canEdit && (
         <div className="flex items-center justify-between gap-2">
           <p className="text-[10px] font-semibold" style={{ color: muted(isDark) }}>
             {editing
-              ? 'Editing — the changes are stored with the estimate.'
-              : 'Materials, labor, scope, constraints and recommendations are editable.'}
+              ? 'Editing — all section information, specifications, labor, and materials are editable.'
+              : 'All section details, requirements, materials, labor, and constraints are editable.'}
           </p>
           <button
             type="button"
             onClick={() => setEditing(v => !v)}
-            className="shrink-0 text-[10px] font-bold px-3 py-1.5 rounded-lg cursor-pointer"
+            className="shrink-0 text-[10px] font-bold px-3 py-1.5 rounded-lg cursor-pointer transition-all"
             style={{
               background: editing ? 'rgba(5,150,105,0.12)' : 'rgba(37,99,235,0.12)',
               color: editing ? '#059669' : isDark ? '#93C5FD' : '#1D4ED8',
             }}
           >
-            {editing ? 'Done' : 'Edit requirements'}
+            {editing ? '✓ Done Editing' : '✏️ Edit Section Details & Requirements'}
           </button>
         </div>
       )}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatTile
-          label="Confidence"
-          value={result.confidenceScore !== undefined ? `${result.confidenceScore}%` : '—'}
-          dark={isDark}
-        />
-        <StatTile
-          label="Section"
-          value={result.sectionType || '—'}
-          sub={result.sectionLabel}
-          dark={isDark}
-        />
-        <StatTile
-          label="Labor Hours"
-          value={formatNumber(displayTotalHours)}
-          sub="total"
-          dark={isDark}
-        />
-        <StatTile
-          label="Materials"
-          value={formatMoney(materials?.totalEstimatedCost, currency)}
-          sub={currency}
-          dark={isDark}
-        />
-      </div>
+
+      {/* SECTION DETAILS & SPECIFICATIONS (Fully Editable in Edit Mode) */}
+      {activeEdit ? (
+        <div style={cardStyle(isDark)} className="space-y-3">
+          <PanelHeading
+            icon={<StatPin className="w-4 h-4 inline mr-1.5" />}
+            title="SECTION DETAILS & SPECIFICATIONS"
+            dark={isDark}
+          />
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+            <div>
+              <label className="block text-[10px] font-bold uppercase mb-1" style={{ color: muted(isDark) }}>
+                Section Label / Name
+              </label>
+              <input
+                type="text"
+                value={result.sectionLabel || ''}
+                onChange={e => emit({ sectionLabel: e.target.value })}
+                placeholder="Section Name (e.g. Ground Floor)"
+                className={cellInputCls}
+                style={cellInputStyle}
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold uppercase mb-1" style={{ color: muted(isDark) }}>
+                Section Type / Category
+              </label>
+              <input
+                type="text"
+                value={result.sectionType || ''}
+                onChange={e => emit({ sectionType: e.target.value })}
+                placeholder="Type (e.g. Room, Office, Corridor)"
+                className={cellInputCls}
+                style={cellInputStyle}
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold uppercase mb-1" style={{ color: muted(isDark) }}>
+                Floor Area
+              </label>
+              <input
+                type="number"
+                min={0}
+                value={result.area ?? ''}
+                onChange={e => emit({ area: Number(e.target.value) || 0 })}
+                placeholder="Area (e.g. 84)"
+                className={cellInputCls}
+                style={cellInputStyle}
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold uppercase mb-1" style={{ color: muted(isDark) }}>
+                Area Unit
+              </label>
+              <input
+                type="text"
+                value={result.unit || 'sqm'}
+                onChange={e => emit({ unit: e.target.value })}
+                placeholder="Unit (sqm, sqft)"
+                className={cellInputCls}
+                style={cellInputStyle}
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold uppercase mb-1" style={{ color: muted(isDark) }}>
+                Confidence Score (%)
+              </label>
+              <input
+                type="number"
+                min={0}
+                max={100}
+                value={result.confidenceScore ?? ''}
+                onChange={e => emit({ confidenceScore: Math.min(100, Math.max(0, Number(e.target.value) || 0)) })}
+                placeholder="Score (0-100)"
+                className={cellInputCls}
+                style={cellInputStyle}
+              />
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <StatTile
+            label="Confidence"
+            value={result.confidenceScore !== undefined ? `${result.confidenceScore}%` : '—'}
+            dark={isDark}
+          />
+          <StatTile
+            label="Section"
+            value={result.sectionType || '—'}
+            sub={`${result.sectionLabel || 'Section'}${result.area ? ` (${result.area} ${result.unit || 'sqm'})` : ''}`}
+            dark={isDark}
+          />
+          <StatTile
+            label="Labor Hours"
+            value={formatNumber(displayTotalHours)}
+            sub="total"
+            dark={isDark}
+          />
+          <StatTile
+            label="Materials"
+            value={formatMoney(materials?.totalEstimatedCost, currency)}
+            sub={currency}
+            dark={isDark}
+          />
+        </div>
+      )}
 
       {reqEntries.length > 0 && (
         <div style={cardStyle(isDark)}>
@@ -1134,15 +1376,28 @@ export function SectionRequirementsPanel({
             icon={<SysShield className="w-4 h-4 inline mr-1.5" />}
             title="SYSTEM REQUIREMENTS"
             dark={isDark}
-            action={onAddSystem ? (
-              <button
-                type="button"
-                onClick={onAddSystem}
-                className="rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-[10px] font-bold normal-case tracking-normal text-blue-700 transition-colors hover:bg-blue-100 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-300 dark:hover:bg-blue-950/70"
-              >
-                + Add more
-              </button>
-            ) : undefined}
+            action={
+              <div className="flex items-center gap-2">
+                {editing && (
+                  <button
+                    type="button"
+                    onClick={addRequirementEntry}
+                    className="rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1 text-[10px] font-bold text-emerald-700 hover:bg-emerald-100 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300 cursor-pointer"
+                  >
+                    + Add requirement
+                  </button>
+                )}
+                {onAddSystem && (
+                  <button
+                    type="button"
+                    onClick={onAddSystem}
+                    className="rounded-lg border border-blue-200 bg-blue-50 px-2 py-1 text-[10px] font-bold text-blue-700 hover:bg-blue-100 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-300 cursor-pointer"
+                  >
+                    + Add system
+                  </button>
+                )}
+              </div>
+            }
           />
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {visibleRequirements.map(([key, value]) => {
@@ -1163,22 +1418,34 @@ export function SectionRequirementsPanel({
                     <p className="text-xs font-black" style={{ color: heading(isDark) }}>
                       {SYSTEM_KEY_LABELS[key] || key}
                     </p>
-                    {editing ? (
-                      <button
-                        type="button"
-                        onClick={() => updateEntry(key, { required: value.required === false })}
-                        className="cursor-pointer"
-                        title="Toggle required / optional"
-                      >
+                    <div className="flex items-center gap-1.5">
+                      {editing ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => updateEntry(key, { required: value.required === false })}
+                            className="cursor-pointer"
+                            title="Toggle required / optional"
+                          >
+                            <Badge color={value.required === false ? '#64748B' : '#059669'}>
+                              {value.required === false ? 'optional' : 'required'}
+                            </Badge>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => removeRequirementEntry(key)}
+                            className="text-red-500 hover:text-red-700 p-0.5 text-xs font-bold cursor-pointer"
+                            title="Remove requirement"
+                          >
+                            ✕
+                          </button>
+                        </>
+                      ) : (
                         <Badge color={value.required === false ? '#64748B' : '#059669'}>
                           {value.required === false ? 'optional' : 'required'}
                         </Badge>
-                      </button>
-                    ) : (
-                      <Badge color={value.required === false ? '#64748B' : '#059669'}>
-                        {value.required === false ? 'optional' : 'required'}
-                      </Badge>
-                    )}
+                      )}
+                    </div>
                   </div>
 
                   {editing ? (
@@ -1334,11 +1601,20 @@ export function SectionRequirementsPanel({
                   <tr key={i} className="text-xs" style={{ color: heading(isDark), borderTop: `1px solid ${isDark ? '#1E293B' : '#F1F5F9'}` }}>
                     {activeEdit ? (
                       <>
-                        <td className="py-2 pr-3">
+                        <td className="py-2 pr-3 min-w-[200px]">
                           <input
                             type="text"
                             value={m.role || ''}
                             onChange={e => updateManpowerRow(i, { role: e.target.value })}
+                            placeholder="Role name"
+                            className={`${cellInputCls} font-bold mb-1`}
+                            style={cellInputStyle}
+                          />
+                          <input
+                            type="text"
+                            value={m.responsibilities || ''}
+                            onChange={e => updateManpowerRow(i, { responsibilities: e.target.value })}
+                            placeholder="Responsibilities / scope"
                             className={cellInputCls}
                             style={cellInputStyle}
                           />
@@ -1501,135 +1777,385 @@ export function SectionRequirementsPanel({
         </div>
       )}
 
-      {(materialItems.length > 0 || activeEdit) && (
-        <div style={cardStyle(isDark)}>
-          <div className="mb-3 flex items-center justify-between gap-2">
+      <div style={cardStyle(isDark)} className="space-y-4">
+        {/* Header with Title, Total, and Database search action */}
+        <div
+          className="flex flex-wrap items-center justify-between gap-3 border-b pb-3"
+          style={{ borderColor: isDark ? '#1E293B' : '#E2E8F0' }}
+        >
+          <div>
             <p
-              className="text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5"
+              className="text-[11px] font-black uppercase tracking-wider flex items-center gap-1.5"
               style={{ color: accent(isDark) }}
             >
-              <Package className="w-4 h-4 inline mr-1.5" />
-              MATERIAL ITEMS
+              <Package className="w-4 h-4 inline mr-1" />
+              MATERIAL ITEMS (SEPARATED BY SYSTEM)
             </p>
+            <p className="text-[10px] mt-0.5" style={{ color: muted(isDark) }}>
+              Items separated by system ({activeSystems.map(s => getSystemMeta(s).label).join(', ')}). Search and select products directly from the database or add custom items.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span
+              className="text-[11px] font-bold px-2.5 py-1 rounded-lg"
+              style={{
+                background: isDark ? 'rgba(37,99,235,0.2)' : 'rgba(30,58,138,0.06)',
+                color: isDark ? '#93C5FD' : '#1E3A8A',
+                border: `1px solid ${isDark ? 'rgba(37,99,235,0.4)' : 'rgba(30,58,138,0.1)'}`,
+              }}
+            >
+              Total: {formatMoney(materialItems.reduce((sum, item) => sum + (Number(item.totalPrice) || 0), 0), currency)}
+            </span>
+            <button
+              type="button"
+              onClick={() => setCatalogModalTargetSystem(activeSystems[0] || 'CCTV')}
+              className="text-[10px] font-bold px-3 py-1.5 rounded-lg cursor-pointer flex items-center gap-1.5 text-white shadow-sm transition-all hover:opacity-95"
+              style={{ background: '#1E3A8A' }}
+              title="Search official database for products"
+            >
+              <span>🔍</span>
+              <span>+ Select from Database</span>
+            </button>
             {activeEdit && (
               <button
                 type="button"
-                onClick={addMaterialRow}
-                className="text-[10px] font-bold px-2.5 py-1 rounded-lg cursor-pointer"
-                style={{ background: 'rgba(37,99,235,0.12)', color: isDark ? '#93C5FD' : '#1D4ED8' }}
+                onClick={() => addMaterialRow(activeSystems[0] || 'CCTV')}
+                className="text-[10px] font-bold px-2.5 py-1.5 rounded-lg cursor-pointer transition-all"
+                style={{
+                  background: isDark ? '#1E293B' : '#F1F5F9',
+                  color: isDark ? '#CBD5E1' : '#475569',
+                  border: `1px solid ${isDark ? '#334155' : '#CBD5E1'}`,
+                }}
               >
-                + Add material
+                + Add Custom
               </button>
             )}
           </div>
-          <div className="space-y-2">
-            {(activeEdit ? materialItems : materialItems.slice(0, 12)).map((item, i) =>
-              activeEdit ? (
+        </div>
+
+        {/* System Filter Tabs if more than 1 system */}
+        {activeSystems.length > 1 && (
+          <div className="flex flex-wrap gap-1.5 pb-1">
+            <button
+              type="button"
+              onClick={() => setSelectedMaterialTab('ALL')}
+              className={`px-3 py-1 rounded-lg text-[10px] font-bold cursor-pointer transition-all ${
+                selectedMaterialTab === 'ALL'
+                  ? 'bg-blue-600 text-white shadow-sm'
+                  : isDark
+                  ? 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
+            >
+              All Systems ({materialItems.length})
+            </button>
+            {systemGroups.map(grp => (
+              <button
+                key={grp.key}
+                type="button"
+                onClick={() => setSelectedMaterialTab(grp.key)}
+                className={`px-3 py-1 rounded-lg text-[10px] font-bold cursor-pointer transition-all flex items-center gap-1.5 ${
+                  selectedMaterialTab === grp.key
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : isDark
+                    ? 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                <span className="w-2 h-2 rounded-full" style={{ background: grp.meta.color }} />
+                <span>{grp.meta.label}</span>
+                <span className="opacity-80">({grp.items.length})</span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* System Groups Cards */}
+        <div className="space-y-4">
+          {visibleGroups.map(grp => (
+            <div
+              key={grp.key}
+              className="rounded-xl border p-3.5 space-y-3 transition-all"
+              style={{
+                background: isDark ? '#0D1527' : '#F8FAFC',
+                borderColor: isDark ? '#1E293B' : '#E2E8F0',
+              }}
+            >
+              {/* Group Header */}
+              <div
+                className="flex flex-wrap items-center justify-between gap-2 border-b pb-2.5"
+                style={{ borderColor: isDark ? '#1E293B' : '#EDF2F7' }}
+              >
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full" style={{ background: grp.meta.color }} />
+                  <span className="text-xs font-black uppercase tracking-wide" style={{ color: heading(isDark) }}>
+                    {grp.meta.label}
+                  </span>
+                  <span
+                    className="text-[10px] font-bold px-2 py-0.5 rounded-full"
+                    style={{
+                      background: isDark ? 'rgba(30,58,138,0.3)' : '#EFF6FF',
+                      color: isDark ? '#93C5FD' : '#1D4ED8',
+                    }}
+                  >
+                    {grp.items.length} {grp.items.length === 1 ? 'item' : 'items'}
+                  </span>
+                  <span className="text-xs font-black" style={{ color: accent(isDark) }}>
+                    · {formatMoney(grp.totalCost, currency)}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setCatalogModalTargetSystem(grp.key)}
+                    className="text-[10px] font-bold px-2.5 py-1 rounded-lg cursor-pointer flex items-center gap-1 transition-all"
+                    style={{
+                      background: isDark ? 'rgba(37,99,235,0.25)' : 'rgba(30,58,138,0.08)',
+                      color: isDark ? '#93C5FD' : '#1D4ED8',
+                      border: `1px solid ${isDark ? 'rgba(37,99,235,0.4)' : 'rgba(30,58,138,0.18)'}`,
+                    }}
+                    title={`Search official database for ${grp.meta.label} products`}
+                  >
+                    <span>🔍</span>
+                    <span>+ Select from Database</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => addMaterialRow(grp.key)}
+                    className="text-[10px] font-bold px-2.5 py-1 rounded-lg cursor-pointer transition-all"
+                    style={{
+                      background: isDark ? '#1E293B' : '#FFFFFF',
+                      color: isDark ? '#CBD5E1' : '#475569',
+                      border: `1px solid ${isDark ? '#334155' : '#CBD5E1'}`,
+                    }}
+                  >
+                    + Add Custom
+                  </button>
+                </div>
+              </div>
+
+              {/* Items in this system */}
+              {grp.items.length === 0 ? (
                 <div
-                  key={i}
-                  className="p-2 rounded-xl space-y-1.5"
+                  className="p-3.5 rounded-lg text-center text-xs font-medium border border-dashed"
                   style={{
-                    background: isDark ? '#0F172A' : '#F8FAFC',
-                    border: `1px solid ${isDark ? '#1E293B' : '#E2E8F0'}`,
+                    borderColor: isDark ? '#334155' : '#CBD5E1',
+                    color: muted(isDark),
                   }}
                 >
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      value={item.name || item.description || ''}
-                      onChange={e => updateMaterialRow(i, { name: e.target.value })}
-                      placeholder="Item name"
-                      className={`${cellInputCls} flex-1`}
-                      style={cellInputStyle}
-                    />
-                    <input
-                      type="text"
-                      value={item.brand || ''}
-                      onChange={e => updateMaterialRow(i, { brand: e.target.value })}
-                      placeholder="Brand"
-                      className={`${cellInputCls} w-28`}
-                      style={cellInputStyle}
-                    />
+                  <p>No material items assigned to {grp.meta.label} yet.</p>
+                  <div className="mt-2.5 flex items-center justify-center gap-2">
                     <button
                       type="button"
-                      onClick={() => removeMaterialRow(i)}
-                      aria-label="Remove material"
-                      className="shrink-0 w-6 h-6 rounded-full text-[10px] font-black cursor-pointer"
-                      style={{ background: isDark ? '#1E293B' : '#FFFFFF', color: '#DC2626' }}
+                      onClick={() => setCatalogModalTargetSystem(grp.key)}
+                      className="text-[10px] font-bold px-3 py-1.5 rounded-lg text-white cursor-pointer shadow-sm"
+                      style={{ background: '#1E3A8A' }}
                     >
-                      ✕
+                      🔍 Select from Database
                     </button>
-                  </div>
-                  <div className="flex items-center gap-2 text-[10px]" style={{ color: muted(isDark) }}>
-                    <input
-                      type="number"
-                      min={0}
-                      value={item.quantity ?? 0}
-                      onChange={e => updateMaterialRow(i, { quantity: Number(e.target.value) || 0 })}
-                      title="Quantity"
-                      className={`${cellInputCls} w-20`}
-                      style={cellInputStyle}
-                    />
-                    <input
-                      type="text"
-                      value={item.unit || ''}
-                      onChange={e => updateMaterialRow(i, { unit: e.target.value })}
-                      title="Unit"
-                      className={`${cellInputCls} w-16`}
-                      style={cellInputStyle}
-                    />
-                    <input
-                      type="number"
-                      min={0}
-                      value={item.unitPrice ?? item.srp ?? 0}
-                      onChange={e => updateMaterialRow(i, { unitPrice: Number(e.target.value) || 0 })}
-                      title="Unit price"
-                      className={`${cellInputCls} w-28`}
-                      style={cellInputStyle}
-                    />
-                    <span className="font-black ml-auto shrink-0" style={{ color: accent(isDark) }}>
-                      {formatMoney(item.totalPrice, currency)}
-                    </span>
+                    <button
+                      type="button"
+                      onClick={() => addMaterialRow(grp.key)}
+                      className="text-[10px] font-bold px-3 py-1.5 rounded-lg border cursor-pointer"
+                      style={{
+                        borderColor: isDark ? '#334155' : '#CBD5E1',
+                        color: heading(isDark),
+                      }}
+                    >
+                      + Add Custom Line Item
+                    </button>
                   </div>
                 </div>
               ) : (
-                <div
-                  key={i}
-                  className="flex items-start justify-between gap-3 text-xs"
-                  style={{ borderTop: i > 0 ? `1px solid ${isDark ? '#1E293B' : '#F1F5F9'}` : undefined }}
-                >
-                  <div className="min-w-0">
-                    <p className="font-bold" style={{ color: heading(isDark) }}>
-                      {item.name || item.description || 'Material'}
-                      {item.brand ? ` · ${item.brand}` : ''}
-                    </p>
-                    <p className="text-[10px]" style={{ color: muted(isDark) }}>
-                      {formatNumber(item.quantity)} {item.unit || 'unit'} @ {formatMoney(item.unitPrice || item.srp, currency)}
-                      {' · '}
-                      <span style={{ color: isDark ? '#93C5FD' : '#1D4ED8' }}>
-                        Contractor {formatMoney(item.contractorPrice, currency)} · Dealer {formatMoney(item.dealerPrice, currency)}
-                      </span>
-                    </p>
-                  </div>
-                  <p className="font-black shrink-0" style={{ color: accent(isDark) }}>
-                    {formatMoney(item.totalPrice, currency)}
-                  </p>
+                <div className="space-y-2">
+                  {grp.items.map(({ item, origIndex }) =>
+                    activeEdit ? (
+                      <div
+                        key={origIndex}
+                        className="p-2.5 rounded-xl space-y-2"
+                        style={{
+                          background: isDark ? '#0F172A' : '#FFFFFF',
+                          border: `1px solid ${isDark ? '#1E293B' : '#E2E8F0'}`,
+                        }}
+                      >
+                        <div className="flex flex-wrap items-center gap-2">
+                          <select
+                            value={item.category || grp.key}
+                            onChange={e =>
+                              updateMaterialRow(origIndex, {
+                                category: e.target.value,
+                                systemType: e.target.value,
+                                systemLabel: e.target.value,
+                              })
+                            }
+                            className={`${cellInputCls} w-32 cursor-pointer`}
+                            style={cellInputStyle}
+                            title="System Category"
+                          >
+                            {activeSystems.map(s => (
+                              <option key={s} value={s}>
+                                {getSystemMeta(s).label}
+                              </option>
+                            ))}
+                            <option value="ROUGHING">Roughing-ins</option>
+                            <option value="CABLING">Cable Components</option>
+                            <option value="GENERAL">General</option>
+                          </select>
+                          <input
+                            type="text"
+                            value={item.name || item.description || ''}
+                            onChange={e => updateMaterialRow(origIndex, { name: e.target.value })}
+                            placeholder="Product name or description"
+                            className={`${cellInputCls} flex-1 min-w-[180px]`}
+                            style={cellInputStyle}
+                          />
+                          <input
+                            type="text"
+                            value={item.model || item.catalog?.prod_Code || ''}
+                            onChange={e => updateMaterialRow(origIndex, { model: e.target.value })}
+                            placeholder="Model / Code"
+                            className={`${cellInputCls} w-24`}
+                            style={cellInputStyle}
+                            title="Model or product code"
+                          />
+                          <input
+                            type="text"
+                            value={item.brand || ''}
+                            onChange={e => updateMaterialRow(origIndex, { brand: e.target.value })}
+                            placeholder="Brand"
+                            className={`${cellInputCls} w-24`}
+                            style={cellInputStyle}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => removeMaterialRow(origIndex)}
+                            aria-label="Remove material"
+                            className="shrink-0 w-6 h-6 rounded-full text-[10px] font-black cursor-pointer hover:bg-red-100 dark:hover:bg-red-950 flex items-center justify-center transition-colors"
+                            style={{ background: isDark ? '#1E293B' : '#FEE2E2', color: '#DC2626' }}
+                            title="Remove item"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2 text-[10px]" style={{ color: muted(isDark) }}>
+                          <div className="flex items-center gap-1">
+                            <span className="font-semibold">Qty:</span>
+                            <input
+                              type="number"
+                              min={0}
+                              value={item.quantity ?? 0}
+                              onChange={e => updateMaterialRow(origIndex, { quantity: Number(e.target.value) || 0 })}
+                              className={`${cellInputCls} w-16 text-center`}
+                              style={cellInputStyle}
+                            />
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <span className="font-semibold">Unit:</span>
+                            <input
+                              type="text"
+                              value={item.unit || 'pcs'}
+                              onChange={e => updateMaterialRow(origIndex, { unit: e.target.value })}
+                              className={`${cellInputCls} w-16 text-center`}
+                              style={cellInputStyle}
+                            />
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <span className="font-semibold">Unit Price:</span>
+                            <input
+                              type="number"
+                              min={0}
+                              value={item.unitPrice ?? item.srp ?? 0}
+                              onChange={e => updateMaterialRow(origIndex, { unitPrice: Number(e.target.value) || 0 })}
+                              className={`${cellInputCls} w-24`}
+                              style={cellInputStyle}
+                            />
+                          </div>
+                          {item.source === 'database' && (
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300">
+                              Database Item
+                            </span>
+                          )}
+                          <div className="ml-auto flex items-center gap-3">
+                            <span className="text-[10px]">
+                              Contractor: {formatMoney(item.contractorPrice, currency)}
+                            </span>
+                            <span className="font-black text-xs" style={{ color: accent(isDark) }}>
+                              Total: {formatMoney(item.totalPrice, currency)}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div
+                        key={origIndex}
+                        className="flex items-start justify-between gap-3 text-xs p-2.5 rounded-lg transition-colors hover:bg-white dark:hover:bg-slate-800/60"
+                        style={{
+                          background: isDark ? '#0F172A' : '#FFFFFF',
+                          border: `1px solid ${isDark ? '#1E293B' : '#F1F5F9'}`,
+                        }}
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-1.5 font-bold" style={{ color: heading(isDark) }}>
+                            <span>{item.name || item.description || 'Material'}</span>
+                            {(item.model || item.catalog?.prod_Code) && (
+                              <span className="text-[9px] px-1.5 py-0.5 rounded border border-blue-200 dark:border-blue-900 text-blue-700 dark:text-blue-300 bg-blue-50/60 dark:bg-blue-950/40 font-mono">
+                                {item.model || item.catalog?.prod_Code}
+                              </span>
+                            )}
+                            {item.brand && (
+                              <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-semibold">
+                                {item.brand}
+                              </span>
+                            )}
+                            {item.source === 'database' && (
+                              <span className="text-[8px] px-1.5 py-0.5 rounded font-black tracking-wide uppercase bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300">
+                                Database
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[10px] mt-0.5" style={{ color: muted(isDark) }}>
+                            {formatNumber(item.quantity)} {item.unit || 'unit'} @ {formatMoney(item.unitPrice || item.srp, currency)}
+                            {' · '}
+                            <span style={{ color: isDark ? '#93C5FD' : '#1D4ED8' }}>
+                              Contractor {formatMoney(item.contractorPrice, currency)} · Dealer {formatMoney(item.dealerPrice, currency)}
+                            </span>
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2.5 shrink-0">
+                          <p className="font-black" style={{ color: accent(isDark) }}>
+                            {formatMoney(item.totalPrice, currency)}
+                          </p>
+                          {canEdit && (
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => setEditing(true)}
+                                className="text-[11px] p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                                title="Edit item"
+                              >
+                                ✏️
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => removeMaterialRow(origIndex)}
+                                className="text-[11px] p-1 rounded hover:bg-red-100 dark:hover:bg-red-950 text-red-600 cursor-pointer"
+                                title="Remove item"
+                              >
+                                ✕
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  )}
                 </div>
-              )
-            )}
-            {!activeEdit && materialItems.length > 12 && (
-              <p className="text-[10px]" style={{ color: muted(isDark) }}>
-                +{materialItems.length - 12} more items applied to the form
-              </p>
-            )}
-            {activeEdit && materialItems.length === 0 && (
-              <p className="text-[10px]" style={{ color: muted(isDark) }}>
-                No materials yet — add the first one.
-              </p>
-            )}
-          </div>
+              )}
+            </div>
+          ))}
         </div>
-      )}
+      </div>
 
       {materials && materials.categories && materials.categories.length > 0 && (
         <div style={cardStyle(isDark)}>
@@ -1652,7 +2178,21 @@ export function SectionRequirementsPanel({
 
       {compliance && (compliance.overallCompliance !== undefined || (compliance.gaps || []).length > 0 || activeEdit) && (
         <div style={cardStyle(isDark)}>
-          <PanelHeading icon={<NotifExclamation className="w-4 h-4 inline mr-1.5" />} title="COMPLIANCE" dark={isDark} />
+          <PanelHeading
+            icon={<NotifExclamation className="w-4 h-4 inline mr-1.5" />}
+            title="COMPLIANCE"
+            dark={isDark}
+            action={activeEdit ? (
+              <button
+                type="button"
+                onClick={addGap}
+                className="text-[10px] font-bold px-2 py-1 rounded-lg cursor-pointer"
+                style={{ background: 'rgba(37,99,235,0.12)', color: isDark ? '#93C5FD' : '#1D4ED8' }}
+              >
+                + Add gap
+              </button>
+            ) : undefined}
+          />
           {(compliance.overallCompliance !== undefined || activeEdit) && (
             <div className="mb-3 flex items-center gap-2">
               <Badge color={compliance.overallCompliance !== undefined && compliance.overallCompliance >= 80 ? '#059669' : compliance.overallCompliance !== undefined && compliance.overallCompliance >= 60 ? '#D97706' : '#DC2626'}>
@@ -1864,6 +2404,19 @@ export function SectionRequirementsPanel({
         editable={activeEdit}
         onChange={next => emit({ constraints: next })}
       />
+
+      {catalogModalTargetSystem && (
+        <ProductCatalogModal
+          onSelect={handleSelectProductFromCatalog}
+          onAddCustom={() => {
+            const sys = catalogModalTargetSystem;
+            setCatalogModalTargetSystem(null);
+            addMaterialRow(sys);
+          }}
+          onClose={() => setCatalogModalTargetSystem(null)}
+          isDark={isDark}
+        />
+      )}
     </div>
   );
 }

@@ -115,7 +115,8 @@ test('untagged rows join the only system, or a shared group when there are sever
 test('report keeps source survey sections apart in the updated proposal layout', () => {
   const html = build();
   for (const title of ['A. General Requirements', 'B. Scope of Works', 'C. Active Components', 'D. Roughing-Ins Materials', 'E. Cable Components', 'F. Breakdown of Cost', 'Note and Remarks', 'Terms and Conditions', 'Confirmation']) assert.ok(html.includes(title), title);
-  for (const label of ['CCTV 1', 'CCTV 2', 'FDAS', 'Shared Project Items']) assert.ok(html.includes(label), label);
+  for (const label of ['CCTV 1', 'CCTV 2', 'FDAS']) assert.ok(html.includes(label), label);
+  assert.ok(!html.includes('Shared Project Items'), 'Shared Project Items must not be present');
   for (const row of consumables) assert.equal(html.split(row.name).length - 1, 1, row.name + ' must appear once');
   const totals = computeEstimationTotals(manpower, consumables, fees);
   const fmt = (n: number) => 'PHP ' + n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -180,4 +181,30 @@ test('saved floor plans print under their titles in the overview and each system
   assert.doesNotMatch(html, /Original plan and verified device positions are not embedded/);
   // Without saved plans the placeholder stays
   assert.match(build(), /Original plan and verified device positions are not embedded/);
+});
+
+test('proposal groups AI suggested active components by system category and removes Shared Project Items', () => {
+  const aiMaterials: EstimationConsumableEntry[] = [
+    item('4 MP IP Dome Camera', 3, 8500, { category: 'CCTV' }),
+    item('Cat6 UTP Cable', 150, 32, { category: 'CCTV' }),
+    item('Addressable Optical Smoke Detector', 4, 1850, { category: 'FDAS' }),
+    item('Manual Pull Station', 2, 2200, { category: 'FDAS' }),
+    item('Fire Alarm Control Panel 2-Loop', 1, 65000, { category: 'FDAS' }),
+    item('Fire-Rated Signal Wire', 100, 45, { category: 'FDAS' }),
+  ];
+
+  const html = build({
+    project: project(['CCTV', 'FDAS']),
+    consumables: aiMaterials,
+  });
+
+  assert.ok(html.includes('SECTION 1 — CCTV'));
+  assert.ok(html.includes('SECTION 2 — FDAS (FIRE DETECTION &amp; ALARM SYSTEM)'));
+  assert.ok(!html.includes('Shared Project Items'));
+
+  // Active Components for CCTV should include Dome Camera
+  assert.ok(html.includes('4 MP IP Dome Camera'));
+  // Active Components for FDAS should include Smoke Detector and FACP
+  assert.ok(html.includes('Addressable Optical Smoke Detector'));
+  assert.ok(html.includes('Fire Alarm Control Panel 2-Loop'));
 });

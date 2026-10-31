@@ -1360,6 +1360,7 @@ export default function CreateEstimationFlow({
               result={reqResult}
               isDark={dark}
               editable
+              selectedSystems={form.systemTypes}
               onChange={next => setReqResult(next)}
             />
           )}

@@ -135,6 +135,8 @@ function mapAnalysisConsumables(est?: EstimationAnalyzeResult | null): Estimatio
         unitPrice: num(item.unitPrice) || srp,
         totalPrice: num(item.totalPrice),
         productId: item.catalog?.prod_Code || undefined,
+        systemType: item.category || undefined,
+        systemLabel: item.category || undefined,
       });
     });
   });
@@ -212,6 +214,8 @@ function mapSectionConsumables(req?: SectionRequirementsResult | null): Estimati
         unitPrice: num(item.unitPrice) || srp,
         totalPrice: num(item.totalPrice),
         productId: item.catalog?.prod_Code || undefined,
+        systemType: item.category || undefined,
+        systemLabel: item.category || undefined,
       };
     });
   }
