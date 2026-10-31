@@ -5,10 +5,12 @@
 import type {
   EstimationAnalyzeResult,
   FloorPlanAnalyzeResult,
+  FloorPlanLabel,
   FloorPlanSection,
   SectionRequirementsResult,
 } from './api/estimationFlow';
 import type { SurveyFormData } from '../components/estimation/CreateSurveyForm';
+import type { FloorPlanImage } from '../utils/floorPlanPreviews';
 import type {
   EstimationManpowerEntry,
   EstimationConsumableEntry,
@@ -27,6 +29,10 @@ export interface EstimationFlowAiContext {
   estimation?: EstimationAnalyzeResult | null;
   /** AI-Assisted flow — API #1 result. */
   floorPlan?: FloorPlanAnalyzeResult | null;
+  /** The titled floor plans the AI was given (e.g. "Ground Floor"). */
+  floorPlans?: FloorPlanLabel[];
+  /** Small previews of the uploaded plans, printed in the PDF report under their titles. */
+  floorPlanImages?: FloorPlanImage[];
   selectedSection?: FloorPlanSection | null;
   /** AI-Assisted flow — API #2 result (fallback rows when #3 never ran). */
   sectionRequirements?: SectionRequirementsResult | null;
@@ -398,6 +404,8 @@ export function buildWizardEstimationCache(
             },
             estimation: ai!.estimation ?? null,
             floorPlan: ai!.floorPlan ?? null,
+            floorPlans: ai!.floorPlans ?? [],
+            floorPlanImages: ai!.floorPlanImages ?? [],
             selectedSection: ai!.selectedSection ?? null,
             sectionRequirements: ai!.sectionRequirements ?? null,
           },

@@ -9,6 +9,7 @@
     "build:pricelist": "node scripts/buildPricelist.js",
     "build": "npm run build:pricelist && vite build",
     "lint": "tsc --noEmit",
+    "test": "node scripts/runTests.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -17,6 +18,7 @@
     "clsx": "^2.1.0",
     "framer-motion": "^12.0.0",
     "mammoth": "^1.12.0",
+    "pdfjs-dist": "6.4.299",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-markdown": "^10.1.0",
