@@ -78,7 +78,10 @@ export class ApiClient {
   getSessionToken(): string | null {
     // Auto-hydrate from localStorage if in-memory token is null
     if (!this.sessionToken && typeof window !== 'undefined') {
-      this.sessionToken = localStorage.getItem('session_token') || localStorage.getItem('token');
+      this.sessionToken =
+        (typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('aa2000_estimation_session_token') : null) ||
+        localStorage.getItem('session_token') ||
+        localStorage.getItem('token');
     }
     return this.sessionToken;
   }

@@ -24,6 +24,16 @@ import {
   type EstimationAnalyzeResult,
 } from '../../services/api/estimationFlow';
 import { downloadFloorPlanReport, sectionsOfResult } from '../../utils/floorPlanReportPdf';
+import {
+  isPdfFile,
+  getPdfPageCount,
+  getPdfPageThumbnail,
+  extractPdfPages,
+  type PdfExtractedPage,
+} from '../../utils/pdfPageSeparator';
+import PdfPageVerificationModal from './PdfPageVerificationModal';
+import FloorPlanZoomModal from './FloorPlanZoomModal';
+import FloorPlanCardSystemSelector from './FloorPlanCardSystemSelector';
 
 interface FileWithContent {
   file: File;
@@ -36,6 +46,11 @@ interface FileWithContent {
 interface FloorPlanUpload {
   file: File;
   title: string;
+  thumbnailUrl?: string;
+  pageNumber?: number;
+  originalPdfName?: string;
+  pageCount?: number;
+  systemTypes?: SystemType[];
 }
 
 type QueueStatus = 'waiting' | 'analyzing' | 'done' | 'failed' | 'cancelled';
@@ -175,6 +190,31 @@ export default function TORComparisonView({ onScanningChange, onSaveEstimation }
   const [systemTypes, setSystemTypes] = useState<SystemType[]>([]);
   const [showSystemModal, setShowSystemModal] = useState(false);
 
+  // PDF separation & verification state
+  const [separatingIndex, setSeparatingIndex] = useState<number | null>(null);
+  const [separationProgress, setSeparationProgress] = useState<{ current: number; total: number } | null>(null);
+  const [verificationModalOpen, setVerificationModalOpen] = useState(false);
+  const [verificationPages, setVerificationPages] = useState<PdfExtractedPage[]>([]);
+  const [verificationTargetIndex, setVerificationTargetIndex] = useState<number | null>(null);
+  const [verificationFileName, setVerificationFileName] = useState<string>('');
+
+  // Zoom & Widen modal state
+  const [zoomModalOpen, setZoomModalOpen] = useState(false);
+  const [zoomModalIndex, setZoomModalIndex] = useState(0);
+
+  const activeZoomUpload = floorPlanUploads[zoomModalIndex] || null;
+
+  const handleOpenZoom = (index: number) => {
+    setZoomModalIndex(index);
+    setZoomModalOpen(true);
+  };
+  const handlePrevZoom = () => {
+    setZoomModalIndex(prev => Math.max(0, prev - 1));
+  };
+  const handleNextZoom = () => {
+    setZoomModalIndex(prev => Math.min(floorPlanUploads.length - 1, prev + 1));
+  };
+
   const handleTorFiles = useCallback(async (files: FileList | File[]) => {
     const fileArray = Array.from(files);
     if (fileArray.length === 0) return;
@@ -219,7 +259,7 @@ export default function TORComparisonView({ onScanningChange, onSaveEstimation }
     }
   }, [toast]);
 
-  const handleFloorPlanFiles = useCallback((files: FileList | File[]) => {
+  const handleFloorPlanFiles = useCallback(async (files: FileList | File[]) => {
     const incoming = Array.from(files);
     if (incoming.length === 0) return;
     const next = [...floorPlanUploads];
@@ -240,16 +280,109 @@ export default function TORComparisonView({ onScanningChange, onSaveEstimation }
         toast.error(`"${file.name}" is already uploaded.`);
         continue;
       }
-      next.push({ file, title: '' });
+      let pageCount = 1;
+      let thumbnailUrl: string | undefined = undefined;
+      if (isPdfFile(file)) {
+        try {
+          pageCount = await getPdfPageCount(file);
+          const thumb = await getPdfPageThumbnail(file, 1);
+          if (thumb) thumbnailUrl = thumb;
+        } catch {
+          pageCount = 1;
+        }
+      } else if (file.type.startsWith('image/') || /\.(png|jpe?g|webp|gif)$/i.test(file.name)) {
+        thumbnailUrl = URL.createObjectURL(file);
+      }
+      const defaultSystems = systemTypes.length > 0 ? [...systemTypes] : [];
+      next.push({ file, title: '', pageCount, thumbnailUrl, systemTypes: defaultSystems });
     }
     setFloorPlanUploads(next);
     setFloorPlanResult(null);
     setQueue([]);
   }, [floorPlanUploads, toast]);
 
+  const handleSeparatePdf = useCallback(async (index: number) => {
+    const target = floorPlanUploads[index];
+    if (!target) return;
+    setSeparatingIndex(index);
+    setSeparationProgress(null);
+    try {
+      const pages = await extractPdfPages(target.file, (current, total) => {
+        setSeparationProgress({ current, total });
+      });
+      if (pages.length === 0) {
+        toast.error('Could not extract any pages from this PDF.');
+        return;
+      }
+      setVerificationPages(pages);
+      setVerificationFileName(target.file.name);
+      setVerificationTargetIndex(index);
+      setVerificationModalOpen(true);
+    } catch (err) {
+      console.error('Failed to extract PDF pages:', err);
+      toast.error(`Failed to separate PDF pages: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setSeparatingIndex(null);
+      setSeparationProgress(null);
+    }
+  }, [floorPlanUploads, toast]);
+
+  const handleVerificationConfirm = useCallback(
+    (selectedPages: { file: File; title: string; thumbnailUrl: string; pageNumber: number }[]) => {
+      if (selectedPages.length === 0) {
+        toast.error('Please select at least one page to proceed.');
+        return;
+      }
+      setFloorPlanUploads(prev => {
+        const next = [...prev];
+        const targetIdx = verificationTargetIndex !== null && verificationTargetIndex >= 0
+          ? verificationTargetIndex
+          : 0;
+
+        const newItems: FloorPlanUpload[] = selectedPages.map(sp => ({
+          file: sp.file,
+          title: sp.title,
+          thumbnailUrl: sp.thumbnailUrl,
+          pageNumber: sp.pageNumber,
+          originalPdfName: verificationFileName,
+        }));
+
+        if (targetIdx < next.length) {
+          next.splice(targetIdx, 1, ...newItems);
+        } else {
+          next.push(...newItems);
+        }
+
+        return next.slice(0, MAX_FLOORPLAN_FILES);
+      });
+
+      setVerificationModalOpen(false);
+      setVerificationPages([]);
+      setVerificationTargetIndex(null);
+      setFloorPlanResult(null);
+      setQueue([]);
+      toast.success(`Loaded ${selectedPages.length} separated floor plan pages for analysis.`);
+    },
+    [verificationTargetIndex, verificationFileName, toast]
+  );
+
   const updateFloorPlanTitle = useCallback((index: number, title: string) => {
     setFloorPlanUploads(prev => prev.map((item, i) => (i === index ? { ...item, title } : item)));
   }, []);
+
+  const updateFloorPlanSystems = useCallback((index: number, systems: SystemType[]) => {
+    setFloorPlanUploads(prev => prev.map((item, i) => (i === index ? { ...item, systemTypes: systems } : item)));
+  }, []);
+
+  const copySystemsToAllPlans = useCallback((fromIndex: number, systemsToApply?: SystemType[]) => {
+    const sourceSystems = systemsToApply ?? floorPlanUploads[fromIndex]?.systemTypes ?? [];
+    if (sourceSystems.length === 0) {
+      toast.info('No systems selected on this card to copy.');
+      return;
+    }
+    setFloorPlanUploads(prev => prev.map(item => ({ ...item, systemTypes: [...sourceSystems] })));
+    toast.success(`Copied ${sourceSystems.length} system${sourceSystems.length === 1 ? '' : 's'} to all ${floorPlanUploads.length} floor plans.`);
+  }, [floorPlanUploads, toast]);
 
   const removeTorFile = useCallback(() => {
     setTorFile(null);
@@ -291,10 +424,15 @@ export default function TORComparisonView({ onScanningChange, onSaveEstimation }
         patch(id, { status: 'analyzing', error: undefined, note: undefined });
         for (let attempt = 0; ; attempt += 1) {
           try {
+            // Use the floor plan's specific selected systems, or fall back to project-level systemTypes
+            const planSystemTypes = (upload.systemTypes && upload.systemTypes.length > 0)
+              ? upload.systemTypes
+              : (systemTypes.length > 0 ? systemTypes : ['CCTV']);
+
             const result = await analyzeFloorPlanFile(upload.file, {
-              title: upload.title,
+              title: upload.title.trim() || (upload.pageNumber ? `Page ${upload.pageNumber}` : upload.file.name.replace(/\.[^/.]+$/, '')),
               // Selected systems reach the prompt as "System types of interest".
-              projectContext: { systemTypes },
+              projectContext: { systemTypes: planSystemTypes },
               analysisOptions: {
                 extractDimensions: true,
                 extractAnnotations: true,
@@ -352,15 +490,16 @@ export default function TORComparisonView({ onScanningChange, onSaveEstimation }
         }
         seenTitles.add(key);
       }
-      if (systemTypes.length === 0) {
+      const hasAnySystems = floorPlanUploads.some(u => u.systemTypes && u.systemTypes.length > 0) || systemTypes.length > 0;
+      if (!hasAnySystems) {
         setShowSystemModal(true);
         return;
       }
 
-      const items: QueueItem[] = floorPlanUploads.map(upload => ({
+      const items: QueueItem[] = floorPlanUploads.map((upload, idx) => ({
         id: queueId(upload.file),
         fileName: upload.file.name,
-        title: upload.title.trim(),
+        title: upload.title.trim() || (upload.pageNumber ? `Page ${upload.pageNumber}` : `Floor Plan ${idx + 1}`),
         status: 'waiting',
       }));
       setQueue(items);
@@ -466,6 +605,18 @@ export default function TORComparisonView({ onScanningChange, onSaveEstimation }
   const analyzingItem = queue.find(item => item.status === 'analyzing');
   const finishedCount = queue.filter(item => item.status === 'done' || item.status === 'failed').length;
 
+  const currentFile = selectedDocType === 'proposal' ? proposalFile : torFile;
+
+  // Check whether all floor plans have at least one system selected
+  const allFloorPlansConfigured =
+    hasFloorPlans &&
+    floorPlanUploads.every(item => item.systemTypes && item.systemTypes.length > 0);
+
+  const isAnalysisReady =
+    selectedDocType === 'floor_plan'
+      ? hasFloorPlans && !floorPlanLoading && (allFloorPlansConfigured || systemTypes.length > 0)
+      : Boolean(currentFile) && systemTypes.length > 0 && !analyzing;
+
   const goToCard = (index: number) => {
     const count = doneItems.length;
     const el = deckRef.current;
@@ -544,18 +695,19 @@ export default function TORComparisonView({ onScanningChange, onSaveEstimation }
     }
   };
 
-  const currentFile = selectedDocType === 'proposal' ? proposalFile : torFile;
-
   if (showFloorPlanSelection) {
     return (
       <FloorPlanSelectionSectionView
         result={floorPlanResult}
         uploadedFiles={doneUploads.map(item => item.file)}
-        floorPlans={doneUploads
-          .map(item => ({ fileName: item.file.name, title: item.title.trim() }))
-          .filter(label => label.title)}
+        floorPlans={doneUploads.map((item, idx) => ({ fileName: item.file.name, title: item.title.trim() || (item.pageNumber ? `Page ${item.pageNumber}` : `Floor Plan #${idx + 1}`) }))
+
+        }
         onSaveEstimation={onSaveEstimation}
-        initialSystemTypes={systemTypes}
+        initialSystemTypes={Array.from(new Set([
+          ...systemTypes,
+          ...floorPlanUploads.flatMap(u => u.systemTypes || [])
+        ]))}
         onBackToDocument={() => setShowFloorPlanSelection(false)}
       />
     );
@@ -739,44 +891,239 @@ export default function TORComparisonView({ onScanningChange, onSaveEstimation }
             </p>
             {/* Active file or upload button */}
             {selectedDocType === 'floor_plan' ? (
-              <div className="mt-2 flex w-full max-w-2xl flex-col gap-2">
-                {floorPlanUploads.map((item, index) => (
-                  <div
-                    key={`${item.file.name}-${index}`}
-                    className="flex flex-col gap-2 rounded-xl border border-blue-200 bg-white p-3 px-4 text-left shadow-xs dark:border-blue-900 dark:bg-[#131B2E]"
-                  >
-                    <div className="flex items-center gap-3">
-                      <FileTypeIcon fileName={item.file.name} />
-                      <span className="min-w-0 flex-1 break-all text-xs font-bold text-slate-800 dark:text-white">
-                        {item.file.name}
-                        <span className="ml-2 font-semibold text-slate-400">
-                          {item.file.size < 1024 * 1024
-                            ? `${Math.max(1, Math.round(item.file.size / 1024))} KB`
-                            : `${(item.file.size / (1024 * 1024)).toFixed(1)} MB`}
+              <div className="mt-3 w-full max-w-5xl xl:max-w-6xl">
+                {/* Header bar when there are floor plans */}
+                {hasFloorPlans && (
+                  <div className="mb-4 flex flex-wrap items-center justify-between gap-2 px-1 text-left">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-slate-800 dark:text-white">
+                          Uploaded Floor Plans
                         </span>
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => removeFloorPlanFile(index)}
-                        className="shrink-0 text-slate-400 hover:text-red-500 text-xs font-bold cursor-pointer"
-                      >
-                        ✕ Remove
-                      </button>
+                        <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-bold text-blue-700 dark:bg-blue-950 dark:text-blue-300">
+                          {floorPlanUploads.length} / {MAX_FLOORPLAN_FILES}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-400">
+                        Click any floor plan card to widen and zoom in to inspect details.
+                      </p>
                     </div>
-                    <input
-                      type="text"
-                      value={item.title}
-                      maxLength={MAX_FLOOR_PLAN_TITLE_LENGTH}
-                      onChange={e => updateFloorPlanTitle(index, e.target.value)}
-                      placeholder="Floor plan title, e.g. Ground Floor, 2nd Floor Mezzanine, Roof Deck"
-                      aria-label={`Title for ${item.file.name}`}
-                      className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-800 outline-none focus:border-blue-400 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
-                    />
+
+                    {floorPlanUploads.length < MAX_FLOORPLAN_FILES && (
+                      <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white shadow-xs hover:bg-blue-700 transition-all">
+                        <span>+ Add Floor Plan</span>
+                        <input
+                          type="file"
+                          multiple
+                          accept={FLOOR_PLAN_ACCEPT}
+                          className="hidden"
+                          onChange={e => {
+                            if (e.target.files && e.target.files.length > 0) handleFloorPlanFiles(e.target.files);
+                            e.target.value = '';
+                          }}
+                        />
+                      </label>
+                    )}
                   </div>
-                ))}
-                {floorPlanUploads.length < MAX_FLOORPLAN_FILES && (
-                  <label className="mx-auto mt-1 px-6 py-3 rounded-full text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 transition-all shadow-md shadow-blue-500/20 cursor-pointer inline-flex items-center gap-2">
-                    <span>{hasFloorPlans ? '+ Add another floor plan' : 'Open File / Select from Device'}</span>
+                )}
+
+                {/* Cards Grid */}
+                <div
+                  className={
+                    floorPlanUploads.length === 1
+                      ? 'mx-auto max-w-md'
+                      : 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4'
+                  }
+                >
+                  {floorPlanUploads.map((item, index) => (
+                    <div
+                      key={`${item.file.name}-${index}`}
+                      className="group relative flex flex-col justify-between rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#131B2E] p-3.5 text-left shadow-xs hover:border-blue-400 dark:hover:border-blue-500 hover:shadow-md transition-all duration-200"
+                    >
+                      {/* Top Preview Area with Zoom Overlay */}
+                      <div
+                        onClick={() => handleOpenZoom(index)}
+                        className="relative w-full aspect-16/10 rounded-xl overflow-hidden bg-slate-900 border border-slate-100 dark:border-slate-800 flex items-center justify-center cursor-pointer mb-3"
+                        title="Click to widen and zoom"
+                      >
+                        {item.thumbnailUrl ? (
+                          <img
+                            src={item.thumbnailUrl}
+                            alt={item.title || item.file.name}
+                            className="w-full h-full object-contain transition-transform duration-300 group-hover:scale-105"
+                          />
+                        ) : (
+                          <div className="flex flex-col items-center gap-1.5 text-slate-400">
+                            <FileTypeIcon fileName={item.file.name} />
+                            <span className="text-[10px] font-semibold text-slate-300">Click to preview</span>
+                          </div>
+                        )}
+
+                        {/* Top-left Badges */}
+                        <div className="absolute top-2 left-2 flex items-center gap-1.5 pointer-events-none">
+                          {item.pageNumber && (
+                            <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-600/90 text-white shadow-xs backdrop-blur-xs">
+                              Page {item.pageNumber}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Top-right Remove button */}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            removeFloorPlanFile(index);
+                          }}
+                          className="absolute top-2 right-2 w-7 h-7 rounded-full bg-slate-900/80 hover:bg-red-600 text-slate-300 hover:text-white flex items-center justify-center text-xs font-bold transition-colors shadow-xs z-10 cursor-pointer"
+                          title="Remove this floor plan"
+                        >
+                          ✕
+                        </button>
+
+                        {/* Hover Overlay with Wide/Zoom Icon */}
+                        <div className="absolute inset-0 bg-slate-950/50 opacity-0 group-hover:opacity-100 flex items-center justify-center gap-1.5 text-white text-xs font-bold transition-opacity">
+                          <span className="p-1 rounded-md bg-blue-600/80">🔍</span>
+                          <span>Widen &amp; Zoom</span>
+                        </div>
+                      </div>
+
+                      {/* Card Content & Inputs */}
+                      <div className="flex flex-col gap-2.5 flex-1 justify-between">
+                        <div>
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-xs font-bold text-slate-800 dark:text-white truncate" title={item.file.name}>
+                              {item.file.name}
+                            </span>
+                            <span className="text-[10px] font-semibold text-slate-400 shrink-0">
+                              {item.file.size < 1024 * 1024
+                                ? `${Math.max(1, Math.round(item.file.size / 1024))} KB`
+                                : `${(item.file.size / (1024 * 1024)).toFixed(1)} MB`}
+                            </span>
+                          </div>
+                          {item.originalPdfName && (
+                            <p className="text-[10px] text-slate-400 truncate mt-0.5">
+                              From: {item.originalPdfName}
+                            </p>
+                          )}
+                        </div>
+
+                        {/* Multi-page PDF scan option */}
+                        {isPdfFile(item.file) && !item.originalPdfName && (
+                          <div className="flex flex-wrap items-center justify-between gap-2 p-2 rounded-xl bg-blue-50/80 dark:bg-blue-950/40 border border-blue-200/80 dark:border-blue-900/60">
+                            <div className="text-[11px] text-blue-700 dark:text-blue-300">
+                              <span className="font-bold">
+                                {item.pageCount && item.pageCount > 1
+                                  ? `${item.pageCount} Pages`
+                                  : 'PDF'}
+                              </span>
+                              <span className="ml-1 text-[10px] text-slate-500 dark:text-slate-400">
+                                (Separate all)
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                void handleSeparatePdf(index);
+                              }}
+                              disabled={separatingIndex !== null}
+                              className="px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold shadow-xs cursor-pointer flex items-center gap-1 transition-all disabled:opacity-50"
+                            >
+                              {separatingIndex === index ? (
+                                <>
+                                  <span className="animate-spin text-[10px]">⏳</span>
+                                  <span>Separating…</span>
+                                </>
+                              ) : (
+                                <>
+                                  <span>⚡ Scan All</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        )}
+
+                        {/* Title input (Optional) */}
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between">
+                            <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400">
+                              Floor Title <span className="font-normal text-slate-400">(Optional)</span>
+                            </label>
+                            {item.title && (
+                              <span className="text-[9px] text-slate-400">
+                                {item.title.length}/{MAX_FLOOR_PLAN_TITLE_LENGTH}
+                              </span>
+                            )}
+                          </div>
+                          <input
+                            type="text"
+                            value={item.title}
+                            maxLength={MAX_FLOOR_PLAN_TITLE_LENGTH}
+                            onChange={(e) => updateFloorPlanTitle(index, e.target.value)}
+                            placeholder="e.g. Ground Floor, 2nd Floor (Optional)"
+                            aria-label={`Title for ${item.file.name}`}
+                            className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-semibold text-slate-800 outline-none focus:border-blue-400 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                          />
+                        </div>
+
+                        {/* Systems to Implement (Multiple Selection per Floor Plan) */}
+                        <FloorPlanCardSystemSelector
+                          floorTitle={item.title.trim() || (item.pageNumber ? `Page ${item.pageNumber}` : `Floor Plan #${index + 1}`)}
+                          selected={item.systemTypes || []}
+                          onChange={(systems) => updateFloorPlanSystems(index, systems)}
+                          onApplyToAll={(systems) => copySystemsToAllPlans(index, systems)}
+                          hasMultiplePlans={floorPlanUploads.length > 1}
+                        />
+
+                        {/* Card bottom quick action */}
+                        <div className="pt-1.5 flex items-center justify-between border-t border-slate-100 dark:border-slate-800/80">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenZoom(index)}
+                            className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 cursor-pointer"
+                          >
+                            <span>🔍</span>
+                            <span>Wide / Zoom View</span>
+                          </button>
+                          <span className="text-[10px] font-semibold text-slate-400">#{index + 1}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+
+                  {/* Add Another Card slot in grid */}
+                  {hasFloorPlans && floorPlanUploads.length < MAX_FLOORPLAN_FILES && (
+                    <label className="flex flex-col items-center justify-center min-h-[220px] rounded-2xl border-2 border-dashed border-blue-200 dark:border-blue-900/60 bg-blue-50/20 dark:bg-blue-950/10 hover:bg-blue-50/60 dark:hover:bg-blue-950/30 p-5 text-center cursor-pointer transition-all hover:border-blue-400 group">
+                      <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-400 flex items-center justify-center mb-2 group-hover:scale-110 transition-transform">
+                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                        </svg>
+                      </div>
+                      <span className="text-xs font-bold text-slate-800 dark:text-white mb-0.5">
+                        + Add Floor Plan
+                      </span>
+                      <span className="text-[10px] text-slate-400">
+                        PDF, PNG, JPG (up to 12 MB)
+                      </span>
+                      <input
+                        type="file"
+                        multiple
+                        accept={FLOOR_PLAN_ACCEPT}
+                        className="hidden"
+                        onChange={e => {
+                          if (e.target.files && e.target.files.length > 0) handleFloorPlanFiles(e.target.files);
+                          e.target.value = '';
+                        }}
+                      />
+                    </label>
+                  )}
+                </div>
+
+                {/* Empty State / Initial upload button */}
+                {!hasFloorPlans && (
+                  <label className="mx-auto mt-2 px-6 py-3 rounded-full text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 transition-all shadow-md shadow-blue-500/20 cursor-pointer inline-flex items-center gap-2">
+                    <span>Open File / Select from Device</span>
                     <input
                       type="file"
                       multiple
@@ -788,11 +1135,6 @@ export default function TORComparisonView({ onScanningChange, onSaveEstimation }
                       }}
                     />
                   </label>
-                )}
-                {hasFloorPlans && (
-                  <p className="text-center text-[10px] font-medium text-slate-400 dark:text-slate-500">
-                    Titles are optional, but tell the AI which floor each plan shows.
-                  </p>
                 )}
               </div>
             ) : currentFile ? (
@@ -854,21 +1196,33 @@ export default function TORComparisonView({ onScanningChange, onSaveEstimation }
       >
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <p className="text-[10px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400">
-            System Types *
+            {selectedDocType === 'floor_plan' && allFloorPlansConfigured
+              ? 'Project System Scope (Configured on Cards)'
+              : 'System Types *'}
           </p>
           <p className="text-[10px] font-bold text-blue-600 dark:text-blue-400">
-            {systemTypes.length === 0 ? 'Choose systems' : 'Change'}
+            {systemTypes.length === 0 ? 'Choose default systems' : 'Change'}
           </p>
         </div>
         <p className="mt-1 text-xs font-semibold text-slate-600 dark:text-slate-300">
-          {systemTypes.length === 0
-            ? 'None selected — open the modal to pick the systems for this project.'
-            : `${systemTypes.length} selected: ${systemTypes
-                .map(t => SYSTEM_OPTIONS.find(o => o.type === t)?.label ?? t)
-                .join(', ')}`}
+          {selectedDocType === 'floor_plan' && allFloorPlansConfigured ? (
+            `${Array.from(new Set(floorPlanUploads.flatMap(u => u.systemTypes || []))).length} distinct systems selected across ${floorPlanUploads.length} floor plans: ${Array.from(new Set(floorPlanUploads.flatMap(u => u.systemTypes || [])))
+              .map(t => SYSTEM_OPTIONS.find(o => o.type === t)?.label ?? t)
+              .join(', ')}`
+          ) : systemTypes.length === 0 ? (
+            selectedDocType === 'floor_plan'
+              ? 'Set systems on each floor plan card above, or click here to set default systems for all plans.'
+              : 'None selected — open the modal to pick the systems for this project.'
+          ) : (
+            `${systemTypes.length} selected: ${systemTypes
+              .map(t => SYSTEM_OPTIONS.find(o => o.type === t)?.label ?? t)
+              .join(', ')}`
+          )}
         </p>
         <p className="mt-2 text-[10px] font-medium text-slate-400 dark:text-slate-500">
-          Selected before analysis so the AI recommends requirements for this project's systems.
+          {selectedDocType === 'floor_plan'
+            ? 'Each floor plan can have its own systems configured above. You can also set a default system list here.'
+            : "Selected before analysis so the AI recommends requirements for this project's systems."}
         </p>
       </button>
       )}
@@ -877,30 +1231,29 @@ export default function TORComparisonView({ onScanningChange, onSaveEstimation }
       {!floorPlanLoading && !analyzing && (
       <div className="flex flex-col gap-3 border-t border-slate-100 pt-4 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between">
         <span className="text-xs font-medium text-slate-400 dark:text-slate-500">
-          {systemTypes.length === 0
-            ? 'Select at least one system type to enable AI analysis'
-            : selectedDocType === 'floor_plan'
-              ? hasFloorPlans
-                ? 'Floor plan ready for AI analysis'
-                : 'Upload a floor plan to enable AI analysis'
-              : currentFile
-                ? 'Document ready for AI analysis'
-                : 'Choose a document to enable AI analysis'}
+          {selectedDocType === 'floor_plan' ? (
+            !hasFloorPlans ? (
+              'Upload a floor plan to enable AI analysis'
+            ) : !allFloorPlansConfigured && systemTypes.length === 0 ? (
+              'Select system types on each floor plan card (or choose project systems) to enable AI analysis'
+            ) : (
+              'Floor plans ready for AI analysis'
+            )
+          ) : !currentFile ? (
+            'Choose a document to enable AI analysis'
+          ) : systemTypes.length === 0 ? (
+            'Select at least one system type to enable AI analysis'
+          ) : (
+            'Document ready for AI analysis'
+          )}
         </span>
         <button
+          type="button"
           onClick={handleRunComparison}
-          disabled={
-            systemTypes.length === 0 ||
-            (selectedDocType === 'floor_plan'
-              ? !hasFloorPlans || floorPlanLoading
-              : !currentFile || analyzing)
-          }
-          className={`flex items-center justify-center gap-2 rounded-full px-6 py-3 text-xs font-bold transition-all cursor-pointer sm:w-auto ${
-            systemTypes.length > 0 &&
-            (selectedDocType === 'floor_plan' ? hasFloorPlans : currentFile) &&
-            !floorPlanLoading &&
-            !analyzing
-              ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-md shadow-blue-500/20'
+          disabled={!isAnalysisReady}
+          className={`flex items-center justify-center gap-2 rounded-full px-6 py-3 text-xs font-bold transition-all sm:w-auto ${
+            isAnalysisReady
+              ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-md shadow-blue-500/20 cursor-pointer'
               : 'bg-blue-50 dark:bg-blue-950/40 text-blue-300 dark:text-blue-700 cursor-not-allowed'
           }`}
         >
@@ -1184,9 +1537,37 @@ export default function TORComparisonView({ onScanningChange, onSaveEstimation }
         onClose={() => setShowSystemModal(false)}
         onConfirm={selected => {
           setSystemTypes(selected);
+          setFloorPlanUploads(prev => prev.map(item => (!item.systemTypes || item.systemTypes.length === 0 ? { ...item, systemTypes: selected } : item)));
           setShowSystemModal(false);
         }}
         selected={systemTypes}
+      />
+
+      {/* PDF Page Verification Modal */}
+      <PdfPageVerificationModal
+        isOpen={verificationModalOpen}
+        onClose={() => {
+          setVerificationModalOpen(false);
+          setVerificationPages([]);
+          setVerificationTargetIndex(null);
+        }}
+        fileName={verificationFileName}
+        pages={verificationPages}
+        onConfirm={handleVerificationConfirm}
+      />
+
+      {/* Floor Plan Zoom & Pan Modal */}
+      <FloorPlanZoomModal
+        isOpen={zoomModalOpen}
+        onClose={() => setZoomModalOpen(false)}
+        file={activeZoomUpload?.file || null}
+        thumbnailUrl={activeZoomUpload?.thumbnailUrl}
+        title={activeZoomUpload?.title || ''}
+        pageNumber={activeZoomUpload?.pageNumber}
+        currentIndex={zoomModalIndex}
+        totalCount={floorPlanUploads.length}
+        onPrev={handlePrevZoom}
+        onNext={handleNextZoom}
       />
     </div>
   );

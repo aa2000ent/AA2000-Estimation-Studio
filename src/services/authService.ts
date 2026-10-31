@@ -24,41 +24,42 @@ export interface BackendSession {
   createdAt: string;
 }
 
-export interface PinLoginResponse {
+export interface LoginResponse {
   message: string;
-  employee: BackendEmployee;
+  employee: BackendEmployee | null;
   account: BackendAccount;
   session: BackendSession;
 }
 
+export type PinLoginResponse = LoginResponse;
+
 /**
  * Login using either:
- * - account username + PIN
- * - employee ID + PIN
+ * - account username + password
+ * - employee ID / email + password
+ * Validated against POST /security/login/verification
  */
-export async function loginWithPin(
+export async function loginWithPassword(
   identifier: string,
-  pin: string
-): Promise<PinLoginResponse> {
+  password: string
+): Promise<LoginResponse> {
   const username = identifier.trim();
-  const cleanedPin = pin.trim();
 
-  if (!username || !cleanedPin) {
-    throw new Error('Username/Employee ID and PIN are required.');
+  if (!username || !password) {
+    throw new Error('Username/Employee ID and Password are required.');
   }
 
-  const response = await apiClient.post<PinLoginResponse>(
-  '/security/pin-authenticate',
-  {
-    username,
-    Emp_IDno: username,
-    pin: cleanedPin,
-  }
-);
+  const response = await apiClient.post<LoginResponse>(
+    '/security/login/verification',
+    {
+      username,
+      password,
+    }
+  );
 
   if (!response.success || !response.data) {
     throw new Error(
-      response.error?.message || 'Unable to log in.'
+      response.error?.message || 'Invalid username or password.'
     );
   }
 
@@ -80,6 +81,11 @@ export async function loginWithPin(
 
   return response.data;
 }
+
+/**
+ * Backward compatibility alias for loginWithPassword
+ */
+export const loginWithPin = loginWithPassword;
 
 /**
  * Restore the session token after refreshing the page.

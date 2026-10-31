@@ -8,7 +8,7 @@ import { apiClient } from './index';
 const AI_REQUEST_TIMEOUT_MS = 180000;
 // The live /api/floorplan/analyze takes one drawing per call and allows 5 calls a
 // minute per session, so one analysis covers at most 5 floor plans.
-export const MAX_FLOORPLAN_FILES = 5;
+export const MAX_FLOORPLAN_FILES = 12;
 export const MAX_FLOORPLAN_FILE_BYTES = 12 * 1024 * 1024;
 const SUPPORTED_EXTENSIONS = ['pdf', 'png', 'jpg', 'jpeg', 'gif', 'webp'];
 
@@ -360,6 +360,15 @@ export async function analyzeFloorPlanFile(
   if (!result) {
     throw new Error('Floor plan analysis returned an empty response.');
   }
+
+  // Ensure each page preserves the user's floor plan title (or fallback to file name)
+  if (result.pages && result.pages.length > 0) {
+    result.pages = result.pages.map(p => ({
+      ...p,
+      title: p.title || title || file.name.replace(/\.[^/.]+$/, ''),
+    }));
+  }
+
   return result;
 }
 
@@ -423,6 +432,7 @@ function mergeFloorPlanResults(results: FloorPlanAnalyzeResult[]): FloorPlanAnal
     (result.pages ?? []).map(page => ({
       ...page,
       pageNumber: ++pageNumber,
+      title: page.title || result.fileInfo?.fileName?.replace(/\.[^/.]+$/, '') || `Floor Plan #${index + 1}`,
       sections: prefixIds(page.sections, index + 1),
       corridors: prefixIds(page.corridors, index + 1),
       verticalCirculation: prefixIds(page.verticalCirculation, index + 1),

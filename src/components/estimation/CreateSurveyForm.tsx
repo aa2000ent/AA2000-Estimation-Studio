@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react';
+import CustomerCombobox from './CustomerCombobox';
+import { getCustomerFullName, getCustomerAddressString, type BackendCustomer } from '../../services/customerService';
 import { Plus, Check, SysCamera, SysBell, SysFire, SysLock, SysShield, SysKey, SysTag, SysDroplet, SysElevator, SysPhone, SysSpeaker, SysCar, SysComputer, SysThermometer, SysMicroscope, StatBuilding, Folder, systemBadgeIcons } from '../../utils/Icons';
 
 interface Props {
@@ -112,6 +114,24 @@ export default function CreateSurveyForm({
     floorHeight: initialData?.floorHeight ?? '',
     startDate: initialData?.startDate ?? new Date().toISOString().split('T')[0],
   });
+
+  const handleCustomerSelect = (customer: BackendCustomer) => {
+    const contactName = getCustomerFullName(customer);
+    const company = customer.company_name?.trim() || contactName;
+    const addressStr = getCustomerAddressString(customer);
+
+    setForm((prev) => ({
+      ...prev,
+      companyName: company || prev.companyName,
+      clientName: contactName || prev.clientName,
+      clientContactNumber: customer.cus_cnum ? customer.cus_cnum.replace(/\D/g, '').slice(0, 11) : prev.clientContactNumber,
+      clientEmail: customer.cus_email || prev.clientEmail,
+      locationName: addressStr || prev.locationName,
+      projectName: prev.projectName || (company ? `${company} - Site Survey` : prev.projectName),
+      latitude: customer.Address?.Addrss_lat ? Number(customer.Address.Addrss_lat) : prev.latitude,
+      longitude: customer.Address?.Addrss_long ? Number(customer.Address.Addrss_long) : prev.longitude,
+    }));
+  };
 
   const toggleSystemType = (type: SystemType) => {
     setForm(prev => ({
@@ -270,6 +290,11 @@ export default function CreateSurveyForm({
               <p className="text-[10px] font-bold uppercase tracking-wider mb-4" style={{ color: dark ? '#60A5FA' : '#1D4ED8' }}>
                 <StatBuilding className="w-4 h-4 inline mr-1.5" /> COMPANY & PROJECT DETAILS
               </p>
+
+              {/* Combobox for Existing Customer (auto-fill) */}
+              <div className="mb-5 p-3.5 rounded-xl border border-slate-200/90 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/40">
+                <CustomerCombobox onSelectCustomer={handleCustomerSelect} />
+              </div>
               <div className="space-y-6">
                 <div className="grid grid-cols-2 gap-3">
                   <div>
